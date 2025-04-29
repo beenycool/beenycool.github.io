@@ -487,7 +487,26 @@ Example feedback for reference:
             </div>
           </div>
           
-          <motion.div 
+          {feedback && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+              className="mt-6 p-4 bg-gray-50 rounded-lg"
+            >
+              <h3 className="font-semibold mb-2">AI Feedback:</h3>
+              <div className="prose max-w-none">
+                <ReactMarkdown>{feedback}</ReactMarkdown>
+              </div>
+              {grade && (
+                <div className="mt-4 p-3 bg-blue-50 rounded-md">
+                  <p className="font-medium">Estimated Grade: <span className="text-blue-700">{grade}</span></p>
+                </div>
+              )}
+            </motion.div>
+          )}
+          
+          <motion.div
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >
