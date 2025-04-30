@@ -25,19 +25,26 @@ const AIMarker = () => {
   const [marksOutOf, setMarksOutOf] = useState("");
   const [userType, setUserType] = useState("student");
   const [error, setError] = useState(null);
+  const [selectedModel, setSelectedModel] = useState("google/gemini-2.5-pro-exp-03-25");
+  const [thinking, setThinking] = useState(false);
 
   const [openai, setOpenai] = useState(null);
 
   useEffect(() => {
-    setOpenai(new OpenAI({
+    const config = {
       baseURL: 'https://openrouter.ai/api/v1',
-      apiKey: process.env.NEXT_PUBLIC_OPENROUTER_API_KEY,
-      dangerouslyAllowBrowser: true, // WARNING: Only for development - move to API route for production
+      apiKey: process.env.NEXT_PUBLIC_OPENROUTER_API_KEY || '',
       defaultHeaders: {
         'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : '',
         'X-Title': 'GCSE AI Marker',
       },
-    }));
+    };
+    
+    if (config.apiKey) {
+      setOpenai(new OpenAI(config));
+    } else {
+      console.error('OpenRouter API key not configured');
+    }
   }, []);
 
   useEffect(() => {
@@ -63,11 +70,42 @@ const AIMarker = () => {
     }
   }, [answer]);
 
+  const [lastRequestTime, setLastRequestTime] = useState(0);
+  const [dailyRequests, setDailyRequests] = useState(0);
+  const [lastRequestDate, setLastRequestDate] = useState(new Date().toDateString());
+
   const handleSubmitForMarking = async () => {
+    const now = Date.now();
+    const today = new Date().toDateString();
+    
+    // Reset counter if new day
+    if (today !== lastRequestDate) {
+      setDailyRequests(0);
+      setLastRequestDate(today);
+    }
+    
+    // Check rate limits based on model
+    if (selectedModel.includes('gemini') && now - lastRequestTime < 60000) {
+      setError({
+        type: "rate_limit",
+        message: "Please wait at least 1 minute between Gemini requests"
+      });
+      return;
+    }
+    
+    if (selectedModel.includes('deepseek') && dailyRequests >= 500) {
+      setError({
+        type: "rate_limit",
+        message: "Daily DeepSeek request limit reached (500/day)"
+      });
+      return;
+    }
+
     setLoading(true);
     setFeedback("");
     setGrade("");
     setError(null);
+    setLastRequestTime(now);
     
     // Basic validation
     if (!answer) {
@@ -217,6 +255,7 @@ Example feedback for reference:
       });
     } finally {
       setLoading(false);
+      setThinking(false);
     }
   };
 
@@ -319,6 +358,18 @@ Example feedback for reference:
                     AI detected: {detectedSubject}
                   </div>
                 )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">AI Model</label>
+                <Select value={selectedModel} onValueChange={setSelectedModel}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select AI model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="google/gemini-2.5-pro-exp-03-25">Gemini Pro</SelectItem>
+                    <SelectItem value="deepseek/deepseek-r1:free">DeepSeek R1</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             
