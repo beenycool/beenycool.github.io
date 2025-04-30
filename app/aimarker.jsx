@@ -38,12 +38,23 @@ const AIMarker = () => {
         'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : '',
         'X-Title': 'GCSE AI Marker',
       },
+      dangerouslyAllowBrowser: true // Required for client-side usage
     };
     
-    if (config.apiKey) {
-      setOpenai(new OpenAI(config));
-    } else {
+    if (!config.apiKey) {
       console.error('OpenRouter API key not configured');
+      return;
+    }
+
+    try {
+      const client = new OpenAI(config);
+      setOpenai(client);
+    } catch (error) {
+      console.error('Failed to initialize OpenAI client:', error);
+      setError({
+        type: 'initialization',
+        message: 'Failed to initialize AI service. Please check your API key.'
+      });
     }
   }, []);
 
