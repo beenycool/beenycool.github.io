@@ -31,29 +31,38 @@ const AIMarker = () => {
   const [openai, setOpenai] = useState(null);
 
   useEffect(() => {
-    const config = {
-      baseURL: 'https://openrouter.ai/api/v1',
-      apiKey: process.env.NEXT_PUBLIC_OPENROUTER_API_KEY || '',
-      defaultHeaders: {
-        'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : '',
-        'X-Title': 'GCSE AI Marker',
-      },
-      dangerouslyAllowBrowser: true // Required for client-side usage
-    };
-    
-    if (!config.apiKey) {
+    const apiKey = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY;
+    if (!apiKey) {
       console.error('OpenRouter API key not configured');
+      setError({
+        type: 'config',
+        message: 'API key not configured. Please contact support.'
+      });
       return;
     }
 
     try {
-      const client = new OpenAI(config);
+      const client = new OpenAI({
+        apiKey: apiKey, // Explicitly pass API key
+        baseURL: 'https://openrouter.ai/api/v1',
+        dangerouslyAllowBrowser: true,
+        defaultHeaders: {
+          'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : '',
+          'X-Title': 'GCSE AI Marker'
+        }
+      });
+      
+      // Verify client is properly configured
+      if (!client.apiKey || client.baseURL !== 'https://openrouter.ai/api/v1') {
+        throw new Error('Client configuration failed');
+      }
+      
       setOpenai(client);
     } catch (error) {
-      console.error('Failed to initialize OpenAI client:', error);
+      console.error('OpenAI client initialization failed:', error);
       setError({
         type: 'initialization',
-        message: 'Failed to initialize AI service. Please check your API key.'
+        message: 'AI service initialization failed. Please refresh the page.'
       });
     }
   }, []);
