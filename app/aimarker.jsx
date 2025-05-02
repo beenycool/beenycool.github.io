@@ -1,6 +1,6 @@
 "use client";
-import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import OpenAI from 'openai';
 import { getSubjectGuidance } from "@/lib/utils";
@@ -8,28 +8,69 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, ClipboardPaste } from "lucide-react";
+import { Loader2, ClipboardPaste, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+
+const SUBJECTS = [
+  { value: "english", label: "English" },
+  { value: "maths", label: "Maths" },
+  { value: "science", label: "Science" },
+  { value: "history", label: "History" },
+  { value: "geography", label: "Geography" },
+  { value: "computerScience", label: "Computer Science" },
+  { value: "businessStudies", label: "Business Studies" }
+];
+
+const EXAM_BOARDS = [
+  { value: "aqa", label: "AQA" },
+  { value: "edexcel", label: "Edexcel" },
+  { value: "ocr", label: "OCR" },
+  { value: "wjec", label: "WJEC" }
+];
+
+const USER_TYPES = [
+  { value: "student", label: "Student" },
+  { value: "teacher", label: "Teacher" }
+];
+
+const subjectKeywords = {
+  english: ['shakespeare', 'poem', 'poetry', 'novel', 'character', 'theme', 'literature'],
+  maths: ['equation', 'solve', 'calculate', 'algebra', 'geometry', 'trigonometry', 'formula'],
+  science: ['experiment', 'hypothesis', 'cell', 'atom', 'energy', 'physics', 'chemistry', 'biology'],
+  history: ['war', 'battle', 'king', 'queen', 'century', 'revolution', 'empire', 'historical'],
+  geography: ['map', 'climate', 'population', 'country', 'city', 'river', 'mountain', 'ecosystem'],
+  computerScience: ['programming', 'algorithm', 'code', 'computer', 'software', 'hardware'],
+  businessStudies: ['business', 'market', 'finance', 'profit', 'enterprise', 'economy']
+};
 
 const AIMarker = () => {
+  // Form state
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
-  const [feedback, setFeedback] = useState("");
-  const [loading, setLoading] = useState(false);
   const [subject, setSubject] = useState("english");
-  const [detectedSubject, setDetectedSubject] = useState(null);
-  const [showHowTo, setShowHowTo] = useState(false);
   const [examBoard, setExamBoard] = useState("aqa");
-  const [grade, setGrade] = useState("");
-  const [image, setImage] = useState(null);
-  const [markScheme, setMarkScheme] = useState("");
-  const [marksOutOf, setMarksOutOf] = useState("");
   const [userType, setUserType] = useState("student");
+  const [marksOutOf, setMarksOutOf] = useState("");
+  const [markScheme, setMarkScheme] = useState("");
+  const [image, setImage] = useState(null);
+  
+  // UI state
+  const [showHowTo, setShowHowTo] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const [grade, setGrade] = useState("");
   const [error, setError] = useState(null);
-  const [selectedModel, setSelectedModel] = useState("google/gemini-2.5-pro-exp-03-25");
-  const [thinking, setThinking] = useState(false);
-
+  const [success, setSuccess] = useState(null);
+  const [detectedSubject, setDetectedSubject] = useState(null);
+  
+  // API and rate limiting
   const [openai, setOpenai] = useState(null);
+  const [lastRequestTime, setLastRequestTime] = useState(0);
+  const [dailyRequests, setDailyRequests] = useState(0);
+  const [lastRequestDate, setLastRequestDate] = useState(new Date().toDateString());
+  const selectedModel = "google/gemini-2.5-pro-exp-03-25"; // Could be made configurable
 
+  // Initialize OpenAI client
   useEffect(() => {
     const apiKey = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY;
     if (!apiKey) {
@@ -43,7 +84,7 @@ const AIMarker = () => {
 
     try {
       const client = new OpenAI({
-        apiKey: apiKey, // Explicitly pass API key
+        apiKey: apiKey,
         baseURL: 'https://openrouter.ai/api/v1',
         dangerouslyAllowBrowser: true,
         defaultHeaders: {
@@ -52,7 +93,6 @@ const AIMarker = () => {
         }
       });
       
-      // Verify client is properly configured
       if (!client.apiKey || client.baseURL !== 'https://openrouter.ai/api/v1') {
         throw new Error('Client configuration failed');
       }
@@ -67,132 +107,151 @@ const AIMarker = () => {
     }
   }, []);
 
+  // Detect subject from answer text
   useEffect(() => {
     if (!answer) return;
     
-    const answerLower = answer.toLowerCase();
-    const subjectKeywords = {
-      english: ['shakespeare', 'poem', 'poetry', 'novel', 'character', 'theme', 'literature'],
-      maths: ['equation', 'solve', 'calculate', 'algebra', 'geometry', 'trigonometry', 'formula'],
-      science: ['experiment', 'hypothesis', 'cell', 'atom', 'energy', 'physics', 'chemistry', 'biology'],
-      history: ['war', 'battle', 'king', 'queen', 'century', 'revolution', 'empire', 'historical'],
-      geography: ['map', 'climate', 'population', 'country', 'city', 'river', 'mountain', 'ecosystem'],
-      computerScience: ['programming', 'algorithm', 'code', 'computer', 'software', 'hardware'],
-      businessStudies: ['business', 'market', 'finance', 'profit', 'enterprise', 'economy']
+    const detectSubjectFromText = () => {
+      const answerLower = answer.toLowerCase();
+      
+      for (const [subj, keywords] of Object.entries(subjectKeywords)) {
+        if (keywords.some(keyword => answerLower.includes(keyword))) {
+          return subj;
+        }
+      }
+      return null;
     };
     
-    for (const [subj, keywords] of Object.entries(subjectKeywords)) {
-      if (keywords.some(keyword => answerLower.includes(keyword))) {
-        setSubject(subj);
-        setDetectedSubject(subj);
-        break;
-      }
+    const detected = detectSubjectFromText();
+    if (detected) {
+      setSubject(detected);
+      setDetectedSubject(detected);
     }
   }, [answer]);
 
-  const [lastRequestTime, setLastRequestTime] = useState(0);
-  const [dailyRequests, setDailyRequests] = useState(0);
-  const [lastRequestDate, setLastRequestDate] = useState(new Date().toDateString());
-
-  const handleSubmitForMarking = async () => {
-    const now = Date.now();
-    const today = new Date().toDateString();
+  // Process image upload
+  const processImageUpload = useCallback(async (imageFile) => {
+    if (!imageFile || !openai) return null;
     
-    // Reset counter if new day
-    if (today !== lastRequestDate) {
-      setDailyRequests(0);
-      setLastRequestDate(today);
-    }
-    
-    // Check rate limits based on model
-    if (selectedModel.includes('gemini') && now - lastRequestTime < 60000) {
-      setError({
-        type: "rate_limit",
-        message: "Please wait at least 1 minute between Gemini requests"
+    try {
+      const reader = new FileReader();
+      const imageBase64 = await new Promise((resolve) => {
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.readAsDataURL(imageFile);
       });
-      return;
-    }
-    
-    if (selectedModel.includes('deepseek') && dailyRequests >= 500) {
-      setError({
-        type: "rate_limit",
-        message: "Daily DeepSeek request limit reached (500/day)"
+      
+      const imageCompletion = await openai.chat.completions.create({
+        model: 'google/gemini-2.0-flash-exp:free',
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Convert this image to text with autocorrection for spelling and grammar. Return only the corrected text."
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: `data:image/jpeg;base64,${imageBase64}`
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: 2000
       });
-      return;
+      
+      return imageCompletion.choices[0].message.content;
+    } catch (error) {
+      console.error("Error processing image:", error);
+      setError({
+        type: "image_processing",
+        message: "Failed to process the image. Please try again or enter text manually."
+      });
+      return null;
     }
+  }, [openai]);
 
-    setLoading(true);
+  // Reset form
+  const resetForm = () => {
+    setQuestion("");
+    setAnswer("");
     setFeedback("");
     setGrade("");
     setError(null);
-    setLastRequestTime(now);
+    setSuccess(null);
+  };
+
+  // Submit handler
+  const handleSubmitForMarking = async () => {
+    // Clear previous feedback and errors
+    setFeedback("");
+    setGrade("");
+    setError(null);
+    setSuccess(null);
     
-    // Basic validation
+    // Validate inputs
     if (!answer) {
       setError({
         type: "validation",
         message: "Please enter an answer to be marked"
       });
-      setLoading(false);
       return;
     }
     
+    // Rate limiting checks
+    const now = Date.now();
+    const today = new Date().toDateString();
+    
+    if (today !== lastRequestDate) {
+      setDailyRequests(0);
+      setLastRequestDate(today);
+    }
+    
+    if (now - lastRequestTime < 60000) {
+      setError({
+        type: "rate_limit",
+        message: "Please wait at least 1 minute between requests"
+      });
+      return;
+    }
+    
+    if (dailyRequests >= 500) {
+      setError({
+        type: "rate_limit",
+        message: "Daily request limit reached (500/day)"
+      });
+      return;
+    }
+
+    // Set loading state
+    setLoading(true);
+    setLastRequestTime(now);
+    setDailyRequests(prev => prev + 1);
+    
     try {
+      // Check if OpenAI client is initialized
       if (!openai) {
-        setError({
-          type: "initialization",
-          message: "AI service not initialized. Please refresh the page."
-        });
-        setLoading(false);
-        return;
+        throw new Error("AI service not initialized");
       }
       
+      // Process image if uploaded
       if (image) {
-        // Convert image to base64
-        const reader = new FileReader();
-        const imageBase64 = await new Promise((resolve) => {
-          reader.onload = () => resolve(reader.result.split(',')[1]);
-          reader.readAsDataURL(image);
-        });
-        
-        // Process image with gemini-2.0-flash-exp:free
-        const imageCompletion = await openai.chat.completions.create({
-          model: 'google/gemini-2.0-flash-exp:free',
-          messages: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "text",
-                  text: "Convert this image to text with autocorrection for spelling and grammar. Return only the corrected text."
-                },
-                {
-                  type: "image_url",
-                  image_url: {
-                    url: `data:image/jpeg;base64,${imageBase64}`
-                  }
-                }
-              ]
-            }
-          ],
-          max_tokens: 2000
-        });
-        
-        const imageText = imageCompletion.choices[0].message.content;
-        setAnswer(prev => prev ? `${prev}\n${imageText}` : imageText);
+        const imageText = await processImageUpload(image);
+        if (imageText) {
+          setAnswer(prev => prev ? `${prev}\n${imageText}` : imageText);
+        }
       }
        
+      // Build prompt for AI
       let content = `Please mark this ${examBoard.toUpperCase()} ${subject} GCSE response:\n\nQuestion: ${question}\n\nAnswer: ${answer}`;
-      if (marksOutOf) {
-        content += `\n\nThis question is out of ${marksOutOf} marks.`;
-      }
+      if (marksOutOf) content += `\n\nThis question is out of ${marksOutOf} marks.`;
+      if (markScheme) content += `\n\nMark Scheme: ${markScheme}`;
        
-      if (markScheme) {
-        content += `\n\nMark Scheme: ${markScheme}`;
-      }
-       
+      // Get AI feedback
       const completion = await openai.chat.completions.create({
-        model: 'google/gemini-2.5-pro-exp-03-25',
+        model: selectedModel,
         messages: [
           {
             role: "system",
@@ -219,10 +278,7 @@ const AIMarker = () => {
    - Avoid vague statements - always reference the answer
 
 4. SUBJECT-SPECIFIC GUIDANCE:
-   ${getSubjectGuidance(subject, examBoard)}
-
-Example feedback for reference:
-"Your analysis of the poem's structure is insightful (strength). You correctly identified the rhyme scheme (evidence). To improve, try linking this to the poem's themes (suggestion). Your grade is 6 - with more thematic links you could reach 7."`
+   ${getSubjectGuidance(subject, examBoard)}`
           },
           {
             role: "user",
@@ -230,28 +286,26 @@ Example feedback for reference:
           }
         ],
         temperature: 0.7,
-        max_tokens: 4000, // Increased from 1000
+        max_tokens: 4000,
         top_p: 1,
         frequency_penalty: 0,
         presence_penalty: 0
       });
 
-      console.log("API Response:", completion); // Full response log
-      const data = completion;
-      if (data.choices && data.choices[0].message.content) {
-        const content = data.choices[0].message.content;
-        console.log("Full AI response:", {
-          length: content.length,
-          preview: content.substring(0, 100) + (content.length > 100 ? "..." : "")
-        });
+      // Process response
+      if (completion.choices && completion.choices[0].message.content) {
+        const content = completion.choices[0].message.content;
         setFeedback(content);
         
-        // Extract the grade from the content
         const gradeMatch = content.match(/grade\s*:?\s*([1-9])/i);
         if (gradeMatch && gradeMatch[1]) {
           setGrade(gradeMatch[1]);
         }
       }
+      
+      setSuccess({
+        message: "Answer marked successfully!"
+      });
     } catch (error) {
       console.error("Error marking work:", error);
       
@@ -275,407 +329,279 @@ Example feedback for reference:
       });
     } finally {
       setLoading(false);
-      setThinking(false);
+    }
+  };
+
+  // Handle image file selection
+  const handleImageChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        setError({
+          type: "validation",
+          message: "Image file is too large. Maximum size is 5MB."
+        });
+        return;
+      }
+      setImage(file);
+      setSuccess({
+        message: `Image "${file.name}" loaded successfully. Click 'Get Feedback' to process.`
+      });
     }
   };
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.5 }}
-      className="w-full max-w-4xl mx-auto p-4"
+      className="w-full max-w-4xl mx-auto p-4 md:p-6"
     >
-      <Card className="w-full shadow-lg rounded-xl">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-3xl font-bold text-center">GCSE AI Marker</CardTitle>
-          <CardDescription className="text-center text-base">Submit your answer for instant feedback</CardDescription>
-          <div className="flex justify-center mt-2">
+      <Card className="w-full shadow-lg rounded-xl bg-gradient-to-br from-blue-50/50 to-white">
+        <CardHeader className="pb-4">
+          <CardTitle className="text-3xl font-bold text-center bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent">
+            GCSE AI Marker
+          </CardTitle>
+          <CardDescription className="text-center text-base text-gray-600">
+            Submit your answer for instant feedback
+          </CardDescription>
+          <div className="flex justify-center mt-3">
             <Button
               variant="link"
               onClick={() => setShowHowTo(!showHowTo)}
-              className="text-sm"
+              className="text-sm text-blue-600 hover:text-blue-800 transition-colors"
             >
               {showHowTo ? 'Hide' : 'Show'} How to Use
             </Button>
           </div>
         </CardHeader>
         
-        {showHowTo && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.2 }}
-            className="px-6 pb-4"
-          >
-            <Card className="bg-blue-50 border-blue-200">
-              <CardContent className="p-4">
-                <h3 className="font-semibold mb-2">How to Use the GCSE AI Marker:</h3>
-                <ol className="list-decimal pl-5 space-y-2 text-sm">
-                  <li>Enter the question in the "Question" field</li>
-                  <li>Type or paste your answer in the "Your Answer" text area</li>
-                  <li>For handwritten answers:
-                    <ul className="list-disc pl-5 mt-1">
-                      <li>Click "Upload Image"</li>
-                      <li>Select a clear photo of your answer</li>
-                      <li>The text will be automatically extracted and added to your answer</li>
-                    </ul>
-                  </li>
-                  <li>The AI will detect the subject based on your answer's content</li>
-                  <li>Select your exam board for more accurate feedback</li>
-                  <li>Add mark scheme details if available</li>
-                  <li>Click "Submit for Marking" to get detailed feedback and grade</li>
-                </ol>
-                <div className="mt-3 space-y-1 text-sm">
-                  <p className="text-blue-700 font-medium">Tips for best results:</p>
-                  <ul className="list-disc pl-5 text-blue-700">
-                    <li>Ensure photos are well-lit and in focus</li>
-                    <li>Include the question for more relevant feedback</li>
-                    <li>Provide mark scheme details when available</li>
-                  </ul>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        )}
-        <CardContent className="space-y-6">
-          <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-200">Step 1: Choose Details</h3>
-          <div className="grid grid-cols-3 gap-6">
-            <div className="space-y-1">
-              <label className="block text-base font-medium text-gray-800 dark:text-gray-200 mb-2">User Type</label>
-              <Select value={userType} onValueChange={setUserType}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select user type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="student">Student</SelectItem>
-                  <SelectItem value="teacher">Teacher</SelectItem>
-                </SelectContent>
-              </Select>
+        <AnimatePresence>
+          {showHowTo && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.2 }}
+              className="px-6 pb-6"
+            >
+              <Card className="bg-blue-50/50 border-blue-200 shadow-sm">
+                <CardContent className="p-6">
+                  <h3 className="font-semibold mb-4 text-lg text-blue-800">How to Use the GCSE AI Marker:</h3>
+                  <ol className="list-decimal pl-5 space-y-3 text-base text-gray-700">
+                    <li>Enter the question in the "Question" field</li>
+                    <li>Type or paste your answer in the "Your Answer" text area</li>
+                    <li>Select appropriate subject, exam board, and user type</li>
+                    <li>For handwritten answers:
+                      <ul className="list-disc pl-5 mt-1">
+                        <li>Click "Upload Image"</li>
+                        <li>Select a clear photo of your answer</li>
+                        <li>The text will be automatically extracted and added to your answer</li>
+                      </ul>
+                    </li>
+                    <li>Click "Get Feedback" to receive a detailed assessment</li>
+                  </ol>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <CardContent className="space-y-6 p-6">
+          {/* Form Section */}
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Question Section */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Question</label>
+                <Textarea
+                  value={question}
+                  onChange={(e) => setQuestion(e.target.value)}
+                  className="min-h-[100px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Enter the question text"
+                />
+              </div>
+
+              {/* Answer Section */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Your Answer</label>
+                <Textarea
+                  value={answer}
+                  onChange={(e) => setAnswer(e.target.value)}
+                  className="min-h-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Type or paste your answer here"
+                />
+              </div>
             </div>
-            <div className="space-y-1">
-              <label className="block text-base font-medium text-gray-800 dark:text-gray-200 mb-2">Subject</label>
-              <div className="relative">
-                <Select value={subject} onValueChange={(value) => {
-                  setSubject(value);
-                  setDetectedSubject(null);
-                }}>
-                  <SelectTrigger>
+
+            {/* Configuration Section */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  Subject
+                  {detectedSubject && (
+                    <span className="ml-2 text-xs text-blue-600">
+                      (Auto-detected: {SUBJECTS.find(s => s.value === detectedSubject)?.label})
+                    </span>
+                  )}
+                </label>
+                <Select value={subject} onValueChange={setSubject}>
+                  <SelectTrigger className="w-full focus:ring-2 focus:ring-blue-500">
                     <SelectValue placeholder="Select subject" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="english">English</SelectItem>
-                    <SelectItem value="maths">Mathematics</SelectItem>
-                    <SelectItem value="science">Science</SelectItem>
-                    <SelectItem value="history">History</SelectItem>
-                    <SelectItem value="geography">Geography</SelectItem>
-                    <SelectItem value="computerScience">Computer Science</SelectItem>
-                    <SelectItem value="businessStudies">Business Studies</SelectItem>
+                    {SUBJECTS.map((subj) => (
+                      <SelectItem key={subj.value} value={subj.value}>{subj.label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
-                {detectedSubject && (
-                  <div className="absolute -bottom-5 left-0 text-xs text-blue-600">
-                    AI detected: {detectedSubject}
-                  </div>
-                )}
               </div>
+
               <div className="space-y-2">
-                <label className="block text-base font-medium text-gray-800 dark:text-gray-200">
-                  AI Model
-                  <span className="text-sm text-gray-500 ml-2">Select the AI to use</span>
-                </label>
-                <Select value={selectedModel} onValueChange={setSelectedModel}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select AI model" />
+                <label className="block text-sm font-medium text-gray-700">Exam Board</label>
+                <Select value={examBoard} onValueChange={setExamBoard}>
+                  <SelectTrigger className="w-full focus:ring-2 focus:ring-blue-500">
+                    <SelectValue placeholder="Select exam board" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="google/gemini-2.5-pro-exp-03-25">Gemini Pro</SelectItem>
-                    <SelectItem value="deepseek/deepseek-r1:free">DeepSeek R1</SelectItem>
+                    {EXAM_BOARDS.map((board) => (
+                      <SelectItem key={board.value} value={board.value}>{board.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">User Type</label>
+                <Select value={userType} onValueChange={setUserType}>
+                  <SelectTrigger className="w-full focus:ring-2 focus:ring-blue-500">
+                    <SelectValue placeholder="Select user type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {USER_TYPES.map((type) => (
+                      <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
             </div>
-            
-            <div className="space-y-1">
-              <label className="block text-base font-medium text-gray-800 dark:text-gray-200 mb-2">Exam Board</label>
-              <Select value={examBoard} onValueChange={setExamBoard}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select board" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="aqa">AQA</SelectItem>
-                  <SelectItem value="edexcel">Edexcel</SelectItem>
-                  <SelectItem value="ocr">OCR</SelectItem>
-                  <SelectItem value="wjec">WJEC</SelectItem>
-                  <SelectItem value="cie">CIE</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          
-          <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-200 mt-8">Step 2: Enter Your Answer</h3>
-          <div className="space-y-6">
-            <div className="relative space-y-2">
-              <label className="block text-base font-medium text-gray-800 dark:text-gray-200">Question</label>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="absolute right-2 top-7 h-6 w-6 p-0"
-                onClick={async () => {
-                  try {
-                    const text = await navigator.clipboard.readText();
-                    setQuestion(text);
-                  } catch (err) {
-                    console.error('Failed to read clipboard:', err);
-                  }
-                }}
-              >
-                <ClipboardPaste className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="absolute right-2 top-7 h-6 w-6 p-0"
-                onClick={async () => {
-                  try {
-                    const text = await navigator.clipboard.readText();
-                    setMarkScheme(text);
-                  } catch (err) {
-                    console.error('Failed to read clipboard:', err);
-                  }
-                }}
-              >
-                <ClipboardPaste className="h-4 w-4" />
-              </Button>
-              <Textarea
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                placeholder="Type or paste the question here..."
-                className="min-h-20"
-              />
-            </div>
-            <div className="relative space-y-2">
-              <label className="block text-base font-medium text-gray-800 dark:text-gray-200">Your Answer</label>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="absolute right-2 top-7 h-6 w-6 p-0"
-                onClick={async () => {
-                  try {
-                    const text = await navigator.clipboard.readText();
-                    setAnswer(text);
-                  } catch (err) {
-                    console.error('Failed to read clipboard:', err);
-                  }
-                }}
-              >
-                <ClipboardPaste className="h-4 w-4" />
-              </Button>
-              <Textarea
-                value={answer}
-                onChange={(e) => setAnswer(e.target.value)}
-                placeholder="Type or paste your answer here..."
-                className="min-h-32"
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <label className="block text-base font-medium text-gray-800 dark:text-gray-200">
-                Upload Image (optional)
-                <span className="text-sm text-gray-500 ml-2">Clear, well-lit images work best</span>
-              </label>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => setImage(e.target.files[0])}
-                className="block w-full text-sm text-gray-500
-                  file:mr-4 file:py-2 file:px-4
-                  file:rounded-md file:border-0
-                  file:text-sm file:font-semibold
-                  file:bg-blue-50 file:text-blue-700
-                  hover:file:bg-blue-100"
-              />
-            </div>
-            
-            <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-200 mt-8">Step 3: Additional Options</h3>
-            <div className="grid grid-cols-2 gap-6">
+
+            {/* Additional Options */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="block text-base font-medium text-gray-800 dark:text-gray-200">
-                  Mark Scheme (optional)
-                  <span className="text-sm text-gray-500 ml-2">Paste or upload mark scheme for more accurate feedback</span>
-                </label>
-                <div className="flex gap-2 mb-2">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={async (e) => {
-                      if (!e.target.files?.[0]) return;
-                      const file = e.target.files[0];
-                      const reader = new FileReader();
-                      const imageBase64 = await new Promise((resolve) => {
-                        reader.onload = () => resolve(reader.result.split(',')[1]);
-                        reader.readAsDataURL(file);
-                      });
-                      
-                      const imageCompletion = await openai.chat.completions.create({
-                        model: 'google/gemini-2.0-flash-exp:free',
-                        messages: [{
-                          role: "user",
-                          content: [{
-                            type: "text",
-                            text: "Convert this mark scheme image to text with autocorrection. Return only the corrected text."
-                          }, {
-                            type: "image_url",
-                            image_url: { url: `data:image/jpeg;base64,${imageBase64}` }
-                          }]
-                        }],
-                        max_tokens: 2000
-                      });
-                      
-                      setMarkScheme(imageCompletion.choices[0].message.content);
-                    }}
-                    className="block w-full text-sm text-gray-500
-                      file:mr-4 file:py-2 file:px-4
-                      file:rounded-md file:border-0
-                      file:text-sm file:font-semibold
-                      file:bg-blue-50 file:text-blue-700
-                      hover:file:bg-blue-100"
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setMarkScheme("")}
-                  >
-                    Clear
-                  </Button>
-                </div>
-                <Textarea
-                  value={markScheme}
-                  onChange={(e) => setMarkScheme(e.target.value)}
-                  placeholder="Paste mark scheme or assessment criteria here..."
-                  className="min-h-24"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="block text-base font-medium text-gray-800 dark:text-gray-200">
-                  Marks Out Of (optional)
-                  <span className="text-sm text-gray-500 ml-2">e.g. 6, 8, 10</span>
-                </label>
+                <label className="block text-sm font-medium text-gray-700">Marks Out Of</label>
                 <input
                   type="number"
                   value={marksOutOf}
                   onChange={(e) => setMarksOutOf(e.target.value)}
+                  min="1"
+                  max="100"
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                   placeholder="e.g. 10"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Mark Scheme (optional)</label>
+                <input
+                  type="text"
+                  value={markScheme}
+                  onChange={(e) => setMarkScheme(e.target.value)}
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                  placeholder="Key marking points"
                 />
               </div>
             </div>
+
+            {/* Image Upload */}
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">Upload Handwritten Answer (optional)</label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleImageChange}
+                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+              />
+              {image && (
+                <p className="text-sm text-green-600 mt-1">
+                  Image loaded: {image.name} ({(image.size / 1024).toFixed(1)} KB)
+                </p>
+              )}
+            </div>
           </div>
+
+          {/* Action Buttons */}
+          <div className="flex flex-col sm:flex-row justify-center gap-4 pt-4">
+            <Button
+              onClick={resetForm}
+              type="button"
+              variant="outline"
+              className="w-full sm:w-1/3 border-blue-300 text-blue-700 hover:bg-blue-50"
+              disabled={loading}
+            >
+              Reset Form
+            </Button>
+            
+            <Button
+              onClick={handleSubmitForMarking}
+              disabled={loading || !answer}
+              className="w-full sm:w-1/2 bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                'Get Feedback'
+              )}
+            </Button>
+          </div>
+
+          {/* Status Messages */}
+          {error && (
+            <Alert variant="destructive" className="mt-4">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Error</AlertTitle>
+              <AlertDescription>{error.message}</AlertDescription>
+            </Alert>
+          )}
           
+          {success && !error && (
+            <Alert className="mt-4 bg-green-50 text-green-800 border-green-200">
+              <CheckCircle2 className="h-4 w-4" />
+              <AlertTitle>Success</AlertTitle>
+              <AlertDescription>{success.message}</AlertDescription>
+            </Alert>
+          )}
+
+          {/* Feedback Display */}
           {feedback && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-              className="mt-6 p-4 bg-gray-50 rounded-lg"
+              transition={{ duration: 0.5 }}
+              className="mt-6 p-6 bg-gray-50 rounded-lg border border-gray-200"
             >
-              <h3 className="font-semibold mb-2">AI Feedback:</h3>
-              <div className="prose max-w-none">
-                <ReactMarkdown>{feedback}</ReactMarkdown>
-              </div>
+              <h3 className="text-lg font-semibold mb-4">Feedback:</h3>
+              <ReactMarkdown className="prose max-w-none">
+                {feedback}
+              </ReactMarkdown>
               {grade && (
-                <div className="mt-4 p-3 bg-blue-50 rounded-md">
-                  <p className="font-medium">Estimated Grade: <span className="text-blue-700">{grade}</span></p>
+                <div className="mt-4 p-3 bg-blue-50 rounded-md flex items-center">
+                  <span className="font-medium mr-2">Predicted Grade:</span>
+                  <span className="text-xl font-bold text-blue-700">{grade}</span>
                 </div>
               )}
             </motion.div>
           )}
-          
-          <motion.div
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-          >
-            <Button
-              onClick={handleSubmitForMarking}
-              className="w-full py-6 text-lg font-semibold bg-blue-600 hover:bg-blue-700 transition-colors shadow-md"
-              disabled={!answer || loading}
-            >
-              {loading ? (
-                <div className="flex items-center justify-center space-x-2">
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  <span className="animate-pulse">
-                    {['Analyzing...', 'Thinking...', 'Evaluating...', 'Almost done...'][Math.floor(Math.random() * 4)]}
-                  </span>
-                </div>
-              ) : (
-                <div className="flex items-center justify-center gap-2">
-                  <span>Submit for Marking</span>
-                </div>
-              )}
-            </Button>
-            {!answer && (
-              <p className="text-sm text-gray-500 mt-2 text-center">
-                Please enter an answer to enable submission
-              </p>
-            )}
-          </motion.div>
         </CardContent>
         
-        {/* Error Display */}
-        {error && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="px-6 pb-4"
-          >
-            <Card className="bg-red-50 border-red-200">
-              <CardContent className="p-4">
-                <div className="flex items-start">
-                  <div className="flex-shrink-0">
-                    <svg className="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                    </svg>
-                  </div>
-                  <div className="ml-3 flex-1">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h3 className="text-sm font-medium text-red-800">
-                          {error.type === "network" ? "Connection Issue" :
-                           error.type === "rate_limit" ? "Too Many Requests" :
-                           error.type === "auth" ? "Authentication Error" :
-                           error.type === "validation" ? "Missing Information" :
-                           "Something Went Wrong"}
-                        </h3>
-                        <p className="text-sm text-red-700 mt-1">{error.message}</p>
-                      </div>
-                      <button
-                        onClick={() => setError(null)}
-                        className="text-red-500 hover:text-red-700 ml-4"
-                      >
-                        ×
-                      </button>
-                    </div>
-                    {error.type === 'config' && (
-                      <p className="text-xs text-red-600 mt-1">
-                        Please check your API settings or contact support.
-                      </p>
-                    )}
-                    {error.type === 'rate_limit' && (
-                      <p className="text-xs text-red-600 mt-1">
-                        Please wait a moment and try again.
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="mt-3 prose max-w-none">
-                  <ReactMarkdown>{feedback}</ReactMarkdown>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        )}
+        <CardFooter className="flex justify-center p-6 pt-0">
+          <p className="text-xs text-gray-500">
+            This AI marker provides guidance based on GCSE standards but is not a substitute for official marking.
+          </p>
+        </CardFooter>
       </Card>
     </motion.div>
   );
