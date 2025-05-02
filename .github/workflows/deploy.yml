@@ -27,17 +27,14 @@ jobs:
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       
-      - name: Create docs directory
-        run: mkdir -p docs
-      
       - name: Add .nojekyll file
-        run: touch docs/.nojekyll
+        run: touch out/.nojekyll
       
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./out
-          destination_dir: ./docs
+          publish_branch: gh-pages
           force_orphan: true
           full_commit_message: "Deploy to GitHub Pages"
