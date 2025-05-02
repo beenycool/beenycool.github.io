@@ -286,10 +286,10 @@ Example feedback for reference:
       transition={{ duration: 0.5 }}
       className="w-full max-w-4xl mx-auto p-4"
     >
-      <Card className="w-full shadow-lg">
-        <CardHeader>
-          <CardTitle className="text-2xl font-bold text-center">GCSE AI Marker</CardTitle>
-          <CardDescription className="text-center">Submit your answer for instant feedback</CardDescription>
+      <Card className="w-full shadow-lg rounded-xl">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-3xl font-bold text-center">GCSE AI Marker</CardTitle>
+          <CardDescription className="text-center text-base">Submit your answer for instant feedback</CardDescription>
           <div className="flex justify-center mt-2">
             <Button
               variant="link"
@@ -339,10 +339,11 @@ Example feedback for reference:
             </Card>
           </motion.div>
         )}
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">User Type</label>
+        <CardContent className="space-y-6">
+          <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-200">Step 1: Choose Details</h3>
+          <div className="grid grid-cols-3 gap-6">
+            <div className="space-y-1">
+              <label className="block text-base font-medium text-gray-800 dark:text-gray-200 mb-2">User Type</label>
               <Select value={userType} onValueChange={setUserType}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select user type" />
@@ -353,8 +354,8 @@ Example feedback for reference:
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Subject</label>
+            <div className="space-y-1">
+              <label className="block text-base font-medium text-gray-800 dark:text-gray-200 mb-2">Subject</label>
               <div className="relative">
                 <Select value={subject} onValueChange={(value) => {
                   setSubject(value);
@@ -379,8 +380,11 @@ Example feedback for reference:
                   </div>
                 )}
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">AI Model</label>
+              <div className="space-y-2">
+                <label className="block text-base font-medium text-gray-800 dark:text-gray-200">
+                  AI Model
+                  <span className="text-sm text-gray-500 ml-2">Select the AI to use</span>
+                </label>
                 <Select value={selectedModel} onValueChange={setSelectedModel}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select AI model" />
@@ -393,8 +397,8 @@ Example feedback for reference:
               </div>
             </div>
             
-            <div>
-              <label className="block text-sm font-medium mb-1">Exam Board</label>
+            <div className="space-y-1">
+              <label className="block text-base font-medium text-gray-800 dark:text-gray-200 mb-2">Exam Board</label>
               <Select value={examBoard} onValueChange={setExamBoard}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select board" />
@@ -410,9 +414,10 @@ Example feedback for reference:
             </div>
           </div>
           
-          <div className="space-y-4">
-            <div className="relative">
-              <label className="block text-sm font-medium mb-1">Question</label>
+          <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-200 mt-8">Step 2: Enter Your Answer</h3>
+          <div className="space-y-6">
+            <div className="relative space-y-2">
+              <label className="block text-base font-medium text-gray-800 dark:text-gray-200">Question</label>
               <Button
                 variant="ghost"
                 size="sm"
@@ -450,8 +455,8 @@ Example feedback for reference:
                 className="min-h-20"
               />
             </div>
-            <div className="relative">
-              <label className="block text-sm font-medium mb-1">Your Answer</label>
+            <div className="relative space-y-2">
+              <label className="block text-base font-medium text-gray-800 dark:text-gray-200">Your Answer</label>
               <Button
                 variant="ghost"
                 size="sm"
@@ -475,8 +480,11 @@ Example feedback for reference:
               />
             </div>
             
-            <div>
-              <label className="block text-sm font-medium mb-1">Upload Image (optional)</label>
+            <div className="space-y-2">
+              <label className="block text-base font-medium text-gray-800 dark:text-gray-200">
+                Upload Image (optional)
+                <span className="text-sm text-gray-500 ml-2">Clear, well-lit images work best</span>
+              </label>
               <input
                 type="file"
                 accept="image/*"
@@ -490,9 +498,13 @@ Example feedback for reference:
               />
             </div>
             
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Mark Scheme (optional)</label>
+            <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-200 mt-8">Step 3: Additional Options</h3>
+            <div className="grid grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label className="block text-base font-medium text-gray-800 dark:text-gray-200">
+                  Mark Scheme (optional)
+                  <span className="text-sm text-gray-500 ml-2">Paste or upload mark scheme for more accurate feedback</span>
+                </label>
                 <div className="flex gap-2 mb-2">
                   <input
                     type="file"
@@ -545,8 +557,11 @@ Example feedback for reference:
                   className="min-h-24"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Marks Out Of (optional)</label>
+              <div className="space-y-2">
+                <label className="block text-base font-medium text-gray-800 dark:text-gray-200">
+                  Marks Out Of (optional)
+                  <span className="text-sm text-gray-500 ml-2">e.g. 6, 8, 10</span>
+                </label>
                 <input
                   type="number"
                   value={marksOutOf}
@@ -581,20 +596,29 @@ Example feedback for reference:
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >
-            <Button 
-              onClick={handleSubmitForMarking} 
-              className="w-full" 
+            <Button
+              onClick={handleSubmitForMarking}
+              className="w-full py-6 text-lg font-semibold bg-blue-600 hover:bg-blue-700 transition-colors shadow-md"
               disabled={!answer || loading}
             >
               {loading ? (
                 <div className="flex items-center justify-center space-x-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="h-5 w-5 animate-spin" />
                   <span className="animate-pulse">
                     {['Analyzing...', 'Thinking...', 'Evaluating...', 'Almost done...'][Math.floor(Math.random() * 4)]}
                   </span>
                 </div>
-              ) : "Submit for Marking"}
+              ) : (
+                <div className="flex items-center justify-center gap-2">
+                  <span>Submit for Marking</span>
+                </div>
+              )}
             </Button>
+            {!answer && (
+              <p className="text-sm text-gray-500 mt-2 text-center">
+                Please enter an answer to enable submission
+              </p>
+            )}
           </motion.div>
         </CardContent>
         
@@ -614,15 +638,35 @@ Example feedback for reference:
                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                     </svg>
                   </div>
-                  <div className="ml-3">
-                    <h3 className="text-sm font-medium text-red-800">
-                      {error.type === "network" ? "Connection Issue" :
-                       error.type === "rate_limit" ? "Too Many Requests" :
-                       error.type === "auth" ? "Authentication Error" :
-                       error.type === "validation" ? "Missing Information" :
-                       "Something Went Wrong"}
-                    </h3>
-                    <p className="text-sm text-red-700 mt-1">{error.message}</p>
+                  <div className="ml-3 flex-1">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="text-sm font-medium text-red-800">
+                          {error.type === "network" ? "Connection Issue" :
+                           error.type === "rate_limit" ? "Too Many Requests" :
+                           error.type === "auth" ? "Authentication Error" :
+                           error.type === "validation" ? "Missing Information" :
+                           "Something Went Wrong"}
+                        </h3>
+                        <p className="text-sm text-red-700 mt-1">{error.message}</p>
+                      </div>
+                      <button
+                        onClick={() => setError(null)}
+                        className="text-red-500 hover:text-red-700 ml-4"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    {error.type === 'config' && (
+                      <p className="text-xs text-red-600 mt-1">
+                        Please check your API settings or contact support.
+                      </p>
+                    )}
+                    {error.type === 'rate_limit' && (
+                      <p className="text-xs text-red-600 mt-1">
+                        Please wait a moment and try again.
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="mt-3 prose max-w-none">
