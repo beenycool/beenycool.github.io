@@ -355,21 +355,21 @@ const AIMarker = () => {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.5 }}
-      className="w-full max-w-4xl mx-auto p-4 md:p-6"
+      className="w-full max-w-4xl mx-auto p-2 sm:p-4 md:p-6"
     >
-      <Card className="w-full shadow-lg rounded-xl bg-gradient-to-br from-blue-50/50 to-white">
+      <Card className="w-full shadow-lg rounded-xl bg-gradient-to-br from-blue-50/50 to-white dark:from-blue-900/20 dark:to-blue-950/50">
         <CardHeader className="pb-4">
-          <CardTitle className="text-3xl font-bold text-center bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent">
+          <CardTitle className="text-2xl sm:text-3xl font-bold text-center bg-gradient-to-r from-blue-600 to-blue-800 dark:from-blue-400 dark:to-blue-600 bg-clip-text text-transparent">
             GCSE AI Marker
           </CardTitle>
-          <CardDescription className="text-center text-base text-gray-600">
+          <CardDescription className="text-center text-sm sm:text-base text-gray-600 dark:text-gray-400">
             Submit your answer for instant feedback
           </CardDescription>
           <div className="flex justify-center mt-3">
             <Button
               variant="link"
               onClick={() => setShowHowTo(!showHowTo)}
-              className="text-sm text-blue-600 hover:text-blue-800 transition-colors"
+              className="text-xs sm:text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
             >
               {showHowTo ? 'Hide' : 'Show'} How to Use
             </Button>
@@ -410,14 +410,14 @@ const AIMarker = () => {
         <CardContent className="space-y-6 p-6">
           {/* Form Section */}
           <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 md:grid-cols-2">
               {/* Question Section */}
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">Question</label>
                 <Textarea
                   value={question}
                   onChange={(e) => setQuestion(e.target.value)}
-                  className="min-h-[100px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="min-h-[80px] sm:min-h-[100px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:focus:ring-blue-400 dark:focus:border-blue-400"
                   placeholder="Enter the question text"
                 />
               </div>
@@ -428,14 +428,14 @@ const AIMarker = () => {
                 <Textarea
                   value={answer}
                   onChange={(e) => setAnswer(e.target.value)}
-                  className="min-h-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="min-h-[120px] sm:min-h-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:focus:ring-blue-400 dark:focus:border-blue-400"
                   placeholder="Type or paste your answer here"
                 />
               </div>
             </div>
 
             {/* Configuration Section */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">
                   Subject
@@ -487,7 +487,39 @@ const AIMarker = () => {
             </div>
 
             {/* Additional Options */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Marks Out Of</label>
+                <input
+                  type="number"
+                  value={marksOutOf}
+                  onChange={(e) => setMarksOutOf(e.target.value)}
+                  min="1"
+                  max="100"
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800/50 dark:text-gray-200 text-sm px-3 py-2 h-10"
+                  placeholder="e.g. 10"
+                />
+              </div>
+              
+              <div className="space-y-2 flex flex-col">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Upload Handwritten Answer</label>
+                <label className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:bg-blue-500 dark:hover:bg-blue-600 h-10 cursor-pointer">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageChange}
+                    className="hidden"
+                  />
+                  <span className="flex items-center">
+                    {image ? 'Change Image' : 'Select Image'}
+                  </span>
+                </label>
+                {image && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {image.name} selected
+                  </span>
+                )}
+              </div>
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">Marks Out Of</label>
                 <input
@@ -496,7 +528,7 @@ const AIMarker = () => {
                   onChange={(e) => setMarksOutOf(e.target.value)}
                   min="1"
                   max="100"
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800/50 dark:text-gray-200 text-xs sm:text-sm px-3 py-2 h-10"
                   placeholder="e.g. 10"
                 />
               </div>
