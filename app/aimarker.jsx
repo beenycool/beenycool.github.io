@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import OpenAI from 'openai';
 import { getSubjectGuidance } from "@/lib/utils";
@@ -8,9 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, ClipboardPaste, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Loader2, Upload, AlertTriangle, CheckCircle2, RefreshCw, HelpCircle, ChevronDown } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
+// Constants moved to a separate section for easier management
 const SUBJECTS = [
   { value: "english", label: "English" },
   { value: "maths", label: "Maths" },
@@ -44,6 +48,7 @@ const subjectKeywords = {
 };
 
 const AIMarker = () => {
+  // ======== STATE MANAGEMENT ========
   // Form state
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
@@ -53,9 +58,10 @@ const AIMarker = () => {
   const [marksOutOf, setMarksOutOf] = useState("");
   const [markScheme, setMarkScheme] = useState("");
   const [image, setImage] = useState(null);
+  const [activeTab, setActiveTab] = useState("answer");
   
   // UI state
-  const [showHowTo, setShowHowTo] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [grade, setGrade] = useState("");
@@ -70,6 +76,7 @@ const AIMarker = () => {
   const [lastRequestDate, setLastRequestDate] = useState(new Date().toDateString());
   const selectedModel = "google/gemini-2.5-pro-exp-03-25"; // Could be made configurable
 
+  // ======== EFFECTS & INITIALIZATION ========
   // Initialize OpenAI client
   useEffect(() => {
     const apiKey = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY;
@@ -93,10 +100,6 @@ const AIMarker = () => {
         }
       });
       
-      if (!client.apiKey || client.baseURL !== 'https://openrouter.ai/api/v1') {
-        throw new Error('Client configuration failed');
-      }
-      
       setOpenai(client);
     } catch (error) {
       console.error('OpenAI client initialization failed:', error);
@@ -109,7 +112,7 @@ const AIMarker = () => {
 
   // Detect subject from answer text
   useEffect(() => {
-    if (!answer) return;
+    if (!answer || answer.length < 20) return;
     
     const detectSubjectFromText = () => {
       const answerLower = answer.toLowerCase();
@@ -123,12 +126,21 @@ const AIMarker = () => {
     };
     
     const detected = detectSubjectFromText();
-    if (detected) {
+    if (detected && detected !== subject) {
       setSubject(detected);
       setDetectedSubject(detected);
+      setSuccess({
+        message: `Subject automatically detected as ${SUBJECTS.find(s => s.value === detected)?.label}`
+      });
+      
+      // Auto-clear success message after 3 seconds
+      setTimeout(() => {
+        setSuccess(null);
+      }, 3000);
     }
-  }, [answer]);
+  }, [answer, subject]);
 
+  // ======== HELPER FUNCTIONS ========
   // Process image upload
   const processImageUpload = useCallback(async (imageFile) => {
     if (!imageFile || !openai) return null;
@@ -181,8 +193,11 @@ const AIMarker = () => {
     setGrade("");
     setError(null);
     setSuccess(null);
+    setImage(null);
+    setActiveTab("answer");
   };
 
+  // ======== MAIN FUNCTIONS ========
   // Submit handler
   const handleSubmitForMarking = async () => {
     // Clear previous feedback and errors
@@ -301,6 +316,9 @@ const AIMarker = () => {
         if (gradeMatch && gradeMatch[1]) {
           setGrade(gradeMatch[1]);
         }
+        
+        // Automatically switch to feedback tab
+        setActiveTab("feedback");
       }
       
       setSuccess({
@@ -345,10 +363,68 @@ const AIMarker = () => {
       }
       setImage(file);
       setSuccess({
-        message: `Image "${file.name}" loaded successfully. Click 'Get Feedback' to process.`
+        message: `Image "${file.name}" loaded successfully. Click 'Mark My Answer' to process.`
       });
     }
   };
+
+  // ======== JSX / UI COMPONENTS ========
+  // Quick guide dropdown content
+  const QuickGuide = () => (
+    <motion.div
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: 'auto' }}
+      exit={{ opacity: 0, height: 0 }}
+      transition={{ duration: 0.3 }}
+      className="mb-6"
+    >
+      <Card className="bg-blue-50 border-blue-200 shadow-sm">
+        <CardContent className="p-4">
+          <div className="space-y-3">
+            <div>
+              <h3 className="font-semibold text-blue-800">Quick Guide:</h3>
+              <ul className="mt-2 space-y-1 text-sm">
+                <li className="flex items-start">
+                  <span className="font-bold text-blue-700 mr-2">1.</span>
+                  <span>Enter your question and answer in the appropriate fields</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="font-bold text-blue-700 mr-2">2.</span>
+                  <span>Select your subject, exam board, and whether you're a student or teacher</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="font-bold text-blue-700 mr-2">3.</span>
+                  <span>Add marks available and optional mark scheme details</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="font-bold text-blue-700 mr-2">4.</span>
+                  <span>Click 'Mark My Answer' to receive detailed feedback</span>
+                </li>
+              </ul>
+            </div>
+            
+            <div>
+              <h3 className="font-semibold text-blue-800">Tips:</h3>
+              <ul className="mt-2 space-y-1 text-sm">
+                <li className="flex items-start">
+                  <span className="text-blue-700 mr-2">•</span>
+                  <span>For handwritten answers, upload a clear photo</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="text-blue-700 mr-2">•</span>
+                  <span>The subject may be auto-detected from keywords in your answer</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="text-blue-700 mr-2">•</span>
+                  <span>Feedback includes strengths, areas for improvement and an estimated grade</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
 
   return (
     <motion.div
@@ -358,67 +434,119 @@ const AIMarker = () => {
       className="w-full max-w-4xl mx-auto p-2 sm:p-4 md:p-6"
     >
       <Card className="w-full shadow-lg rounded-xl bg-gradient-to-br from-blue-50/50 to-white dark:from-blue-900/20 dark:to-blue-950/50">
-        <CardHeader className="pb-4">
-          <CardTitle className="text-2xl sm:text-3xl font-bold text-center bg-gradient-to-r from-blue-600 to-blue-800 dark:from-blue-400 dark:to-blue-600 bg-clip-text text-transparent">
-            GCSE AI Marker
-          </CardTitle>
-          <CardDescription className="text-center text-sm sm:text-base text-gray-600 dark:text-gray-400">
-            Submit your answer for instant feedback
-          </CardDescription>
-          <div className="flex justify-center mt-3">
-            <Button
-              variant="link"
-              onClick={() => setShowHowTo(!showHowTo)}
-              className="text-xs sm:text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
-            >
-              {showHowTo ? 'Hide' : 'Show'} How to Use
-            </Button>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 dark:from-blue-400 dark:to-blue-600 bg-clip-text text-transparent">
+                GCSE AI Marker
+              </CardTitle>
+              <CardDescription className="text-sm sm:text-base text-gray-600 dark:text-gray-400">
+                Instant feedback on your GCSE answers
+              </CardDescription>
+            </div>
+            
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => setShowGuide(!showGuide)}
+                    className="h-8 w-8 rounded-full p-0"
+                  >
+                    <HelpCircle size={18} className="text-blue-600 dark:text-blue-400" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>How to use this tool</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+          
+          {showGuide && <QuickGuide />}
+          
+          {/* Subject Selector Badges */}
+          <div className="flex flex-wrap gap-2 pt-2">
+            {SUBJECTS.map((s) => (
+              <Badge
+                key={s.value}
+                variant={subject === s.value ? "default" : "outline"}
+                className={`cursor-pointer ${
+                  subject === s.value 
+                    ? "bg-blue-600 hover:bg-blue-700" 
+                    : "hover:bg-blue-100 dark:hover:bg-blue-900/30"
+                }`}
+                onClick={() => setSubject(s.value)}
+              >
+                {s.label}
+              </Badge>
+            ))}
           </div>
         </CardHeader>
-        
-        <AnimatePresence>
-          {showHowTo && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.2 }}
-              className="px-6 pb-6"
-            >
-              <Card className="bg-blue-50/50 border-blue-200 shadow-sm">
-                <CardContent className="p-6">
-                  <h3 className="font-semibold mb-4 text-lg text-blue-800">How to Use the GCSE AI Marker:</h3>
-                  <ol className="list-decimal pl-5 space-y-3 text-base text-gray-700">
-                    <li>Enter the question in the "Question" field</li>
-                    <li>Type or paste your answer in the "Your Answer" text area</li>
-                    <li>Select appropriate subject, exam board, and user type</li>
-                    <li>For handwritten answers:
-                      <ul className="list-disc pl-5 mt-1">
-                        <li>Click "Upload Image"</li>
-                        <li>Select a clear photo of your answer</li>
-                        <li>The text will be automatically extracted and added to your answer</li>
-                      </ul>
-                    </li>
-                    <li>Click "Get Feedback" to receive a detailed assessment</li>
-                  </ol>
-                </CardContent>
-              </Card>
-            </motion.div>
-          )}
-        </AnimatePresence>
 
-        <CardContent className="space-y-6 p-6">
-          {/* Form Section */}
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 sm:gap-6 md:grid-cols-2">
+        <CardContent className="p-4">
+          {/* Status Messages */}
+          {error && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Error</AlertTitle>
+              <AlertDescription>{error.message}</AlertDescription>
+            </Alert>
+          )}
+          
+          {success && !error && (
+            <Alert className="mb-4 bg-green-50 text-green-800 border-green-200">
+              <CheckCircle2 className="h-4 w-4" />
+              <AlertDescription>{success.message}</AlertDescription>
+            </Alert>
+          )}
+
+          {/* Main Content Tabs */}
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid grid-cols-2 mb-4">
+              <TabsTrigger value="answer">Your Answer</TabsTrigger>
+              <TabsTrigger value="feedback" disabled={!feedback}>
+                Feedback
+                {grade && <span className="ml-2 py-0.5 px-2 text-xs bg-blue-100 text-blue-800 rounded-full">Grade: {grade}</span>}
+              </TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="answer" className="space-y-4 mt-0">
               {/* Question Section */}
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">Question</label>
+                <div className="flex justify-between items-center">
+                  <label className="block text-sm font-medium text-gray-700">Question</label>
+                  <div className="flex items-center space-x-2">
+                    <Select value={examBoard} onValueChange={setExamBoard}>
+                      <SelectTrigger className="h-8 w-[120px] text-xs">
+                        <SelectValue placeholder="Exam Board" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {EXAM_BOARDS.map((board) => (
+                          <SelectItem key={board.value} value={board.value}>{board.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    
+                    <Select value={userType} onValueChange={setUserType}>
+                      <SelectTrigger className="h-8 w-[100px] text-xs">
+                        <SelectValue placeholder="I am a..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {USER_TYPES.map((type) => (
+                          <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                
                 <Textarea
                   value={question}
                   onChange={(e) => setQuestion(e.target.value)}
-                  className="min-h-[80px] sm:min-h-[100px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:focus:ring-blue-400 dark:focus:border-blue-400"
-                  placeholder="Enter the question text"
+                  className="min-h-[80px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Enter the exam question here..."
                 />
               </div>
 
@@ -428,210 +556,157 @@ const AIMarker = () => {
                 <Textarea
                   value={answer}
                   onChange={(e) => setAnswer(e.target.value)}
-                  className="min-h-[120px] sm:min-h-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:focus:ring-blue-400 dark:focus:border-blue-400"
-                  placeholder="Type or paste your answer here"
+                  className="min-h-[200px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Type or paste your answer here..."
                 />
               </div>
-            </div>
 
-            {/* Configuration Section */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  Subject
-                  {detectedSubject && (
-                    <span className="ml-2 text-xs text-blue-600">
-                      (Auto-detected: {SUBJECTS.find(s => s.value === detectedSubject)?.label})
-                    </span>
+              {/* Advanced Options */}
+              <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                <div className="flex items-center mb-3">
+                  <h3 className="text-sm font-medium text-gray-700 flex items-center">
+                    <ChevronDown size={16} className="mr-1" />
+                    Advanced Options
+                  </h3>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="block text-xs font-medium text-gray-600">
+                      Marks Available
+                    </label>
+                    <input
+                      type="number"
+                      value={marksOutOf}
+                      onChange={(e) => setMarksOutOf(e.target.value)}
+                      min="1"
+                      max="100"
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 h-8 text-sm"
+                      placeholder="e.g. 10"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <label className="block text-xs font-medium text-gray-600">
+                      Mark Scheme (optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={markScheme}
+                      onChange={(e) => setMarkScheme(e.target.value)}
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 h-8 text-sm"
+                      placeholder="Key marking points"
+                    />
+                  </div>
+                </div>
+                
+                <div className="mt-4">
+                  <label className="block text-xs font-medium text-gray-600 mb-2">
+                    Upload Handwritten Answer
+                  </label>
+                  <label className="flex items-center justify-center w-full h-24 px-4 transition bg-white border-2 border-gray-300 border-dashed rounded-md appearance-none cursor-pointer hover:border-blue-500 focus:outline-none">
+                    <div className="flex flex-col items-center space-y-2">
+                      <Upload className="w-6 h-6 text-gray-400" />
+                      <span className="font-medium text-sm text-gray-600">
+                        {image ? image.name : "Drop files or click to upload"}
+                      </span>
+                      {image && (
+                        <span className="text-xs text-green-600">
+                          ({(image.size / 1024).toFixed(1)} KB)
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageChange}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row justify-end gap-3 pt-2">
+                <Button
+                  onClick={resetForm}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                  disabled={loading}
+                >
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Reset
+                </Button>
+                
+                <Button
+                  onClick={handleSubmitForMarking}
+                  disabled={loading || !answer}
+                  size="lg"
+                  className="bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Analyzing...
+                    </>
+                  ) : (
+                    'Mark My Answer'
                   )}
-                </label>
-                <Select value={subject} onValueChange={setSubject}>
-                  <SelectTrigger className="w-full focus:ring-2 focus:ring-blue-500">
-                    <SelectValue placeholder="Select subject" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SUBJECTS.map((subj) => (
-                      <SelectItem key={subj.value} value={subj.value}>{subj.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                </Button>
               </div>
-
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">Exam Board</label>
-                <Select value={examBoard} onValueChange={setExamBoard}>
-                  <SelectTrigger className="w-full focus:ring-2 focus:ring-blue-500">
-                    <SelectValue placeholder="Select exam board" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {EXAM_BOARDS.map((board) => (
-                      <SelectItem key={board.value} value={board.value}>{board.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">User Type</label>
-                <Select value={userType} onValueChange={setUserType}>
-                  <SelectTrigger className="w-full focus:ring-2 focus:ring-blue-500">
-                    <SelectValue placeholder="Select user type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {USER_TYPES.map((type) => (
-                      <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Additional Options */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Marks Out Of</label>
-                <input
-                  type="number"
-                  value={marksOutOf}
-                  onChange={(e) => setMarksOutOf(e.target.value)}
-                  min="1"
-                  max="100"
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800/50 dark:text-gray-200 text-sm px-3 py-2 h-10"
-                  placeholder="e.g. 10"
-                />
-              </div>
-              
-              <div className="space-y-2 flex flex-col">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Upload Handwritten Answer</label>
-                <label className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:bg-blue-500 dark:hover:bg-blue-600 h-10 cursor-pointer">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageChange}
-                    className="hidden"
-                  />
-                  <span className="flex items-center">
-                    {image ? 'Change Image' : 'Select Image'}
-                  </span>
-                </label>
-                {image && (
-                  <span className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    {image.name} selected
-                  </span>
-                )}
-              </div>
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">Marks Out Of</label>
-                <input
-                  type="number"
-                  value={marksOutOf}
-                  onChange={(e) => setMarksOutOf(e.target.value)}
-                  min="1"
-                  max="100"
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800/50 dark:text-gray-200 text-xs sm:text-sm px-3 py-2 h-10"
-                  placeholder="e.g. 10"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">Mark Scheme (optional)</label>
-                <input
-                  type="text"
-                  value={markScheme}
-                  onChange={(e) => setMarkScheme(e.target.value)}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                  placeholder="Key marking points"
-                />
-              </div>
-            </div>
-
-            {/* Image Upload */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">Upload Handwritten Answer (optional)</label>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleImageChange}
-                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-              />
-              {image && (
-                <p className="text-sm text-green-600 mt-1">
-                  Image loaded: {image.name} ({(image.size / 1024).toFixed(1)} KB)
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row justify-center gap-4 pt-4">
-            <Button
-              onClick={resetForm}
-              type="button"
-              variant="outline"
-              className="w-full sm:w-1/3 border-blue-300 text-blue-700 hover:bg-blue-50"
-              disabled={loading}
-            >
-              Reset Form
-            </Button>
+            </TabsContent>
             
-            <Button
-              onClick={handleSubmitForMarking}
-              disabled={loading || !answer}
-              className="w-full sm:w-1/2 bg-blue-600 hover:bg-blue-700 text-white transition-colors"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Analyzing...
-                </>
+            <TabsContent value="feedback" className="space-y-4 mt-0">
+              {feedback ? (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.5 }}
+                  className="p-4 bg-white rounded-lg border border-gray-200 shadow-sm"
+                >
+                  {grade && (
+                    <div className="mb-4 p-3 bg-blue-50 rounded-md border border-blue-200 flex items-center justify-between">
+                      <span className="font-medium text-gray-700">Grade:</span>
+                      <span className="text-2xl font-bold text-blue-700">{grade}</span>
+                    </div>
+                  )}
+                  
+                  <h3 className="text-lg font-semibold mb-4 text-gray-800">Your Feedback:</h3>
+                  <div className="prose prose-blue max-w-none">
+                    <ReactMarkdown>{feedback}</ReactMarkdown>
+                  </div>
+                  
+                  <div className="mt-6 pt-4 border-t border-gray-200">
+                    <Button 
+                      onClick={() => setActiveTab("answer")}
+                      variant="outline"
+                      className="w-full sm:w-auto"
+                    >
+                      Back to Answer
+                    </Button>
+                  </div>
+                </motion.div>
               ) : (
-                'Get Feedback'
-              )}
-            </Button>
-          </div>
-
-          {/* Status Messages */}
-          {error && (
-            <Alert variant="destructive" className="mt-4">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Error</AlertTitle>
-              <AlertDescription>{error.message}</AlertDescription>
-            </Alert>
-          )}
-          
-          {success && !error && (
-            <Alert className="mt-4 bg-green-50 text-green-800 border-green-200">
-              <CheckCircle2 className="h-4 w-4" />
-              <AlertTitle>Success</AlertTitle>
-              <AlertDescription>{success.message}</AlertDescription>
-            </Alert>
-          )}
-
-          {/* Feedback Display */}
-          {feedback && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-              className="mt-6 p-6 bg-gray-50 rounded-lg border border-gray-200"
-            >
-              <h3 className="text-lg font-semibold mb-4">Feedback:</h3>
-              <ReactMarkdown className="prose max-w-none">
-                {feedback}
-              </ReactMarkdown>
-              {grade && (
-                <div className="mt-4 p-3 bg-blue-50 rounded-md flex items-center">
-                  <span className="font-medium mr-2">Predicted Grade:</span>
-                  <span className="text-xl font-bold text-blue-700">{grade}</span>
+                <div className="flex flex-col items-center justify-center h-[400px] text-center p-6 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                  <h3 className="text-lg font-medium text-gray-600 mb-2">No Feedback Yet</h3>
+                  <p className="text-gray-500 mb-4">Submit your answer to receive detailed feedback</p>
+                  <Button 
+                    onClick={() => setActiveTab("answer")}
+                    variant="secondary"
+                  >
+                    Go to Answer Form
+                  </Button>
                 </div>
               )}
-            </motion.div>
-          )}
+            </TabsContent>
+          </Tabs>
         </CardContent>
         
-        <CardFooter className="flex justify-center p-6 pt-0">
+        <CardFooter className="flex justify-center p-4 text-center">
           <p className="text-xs text-gray-500">
-            This AI marker provides guidance based on GCSE standards but is not a substitute for official marking.
+            This AI marker provides guidance based on GCSE criteria but should not replace official marking.
           </p>
         </CardFooter>
       </Card>
