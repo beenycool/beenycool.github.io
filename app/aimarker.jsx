@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Upload, AlertTriangle, CheckCircle2, RefreshCw, HelpCircle, ChevronDown } from "lucide-react";
+import { Loader2, Upload, AlertTriangle, CheckCircle2, RefreshCw, HelpCircle, ChevronDown, Save, Share2, ExternalLink } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -645,21 +645,21 @@ const AIMarker = () => {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.5 }}
-                  className="p-4 bg-white rounded-lg border border-gray-200 shadow-sm"
+                  className="p-4 bg-white dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm"
                 >
                   {grade && (
-                    <div className="mb-4 p-3 bg-blue-50 rounded-md border border-blue-200 flex items-center justify-between">
-                      <span className="font-medium text-gray-700">Grade:</span>
-                      <span className="text-2xl font-bold text-blue-700">{grade}</span>
+                    <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-md border border-blue-200 dark:border-blue-800 flex items-center justify-between">
+                      <span className="font-medium text-gray-700 dark:text-gray-300">Grade:</span>
+                      <span className="text-2xl font-bold text-blue-700 dark:text-blue-400">{grade}</span>
                     </div>
                   )}
                   
-                  <h3 className="text-lg font-semibold mb-4 text-gray-800">Your Feedback:</h3>
-                  <div className="prose prose-blue max-w-none">
+                  <h3 className="text-lg font-semibold mb-4 text-gray-800 dark:text-gray-200">Your Feedback:</h3>
+                  <div className="prose prose-blue dark:prose-invert max-w-none">
                     <ReactMarkdown>{feedback}</ReactMarkdown>
                   </div>
                   
-                  <div className="mt-6 pt-4 border-t border-gray-200">
+                  <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-800 flex flex-wrap gap-2">
                     <Button 
                       onClick={() => setActiveTab("answer")}
                       variant="outline"
@@ -667,12 +667,30 @@ const AIMarker = () => {
                     >
                       Back to Answer
                     </Button>
+                    
+                    <Button
+                      onClick={saveFeedbackAsPdf}
+                      variant="secondary"
+                      className="w-full sm:w-auto"
+                    >
+                      <Save className="mr-2 h-4 w-4" />
+                      Save as PDF
+                    </Button>
+                    
+                    <Button
+                      onClick={copyFeedbackToClipboard}
+                      variant="secondary"
+                      className="w-full sm:w-auto"
+                    >
+                      <Share2 className="mr-2 h-4 w-4" />
+                      Copy to Clipboard
+                    </Button>
                   </div>
                 </motion.div>
               ) : (
-                <div className="flex flex-col items-center justify-center h-[400px] text-center p-6 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                  <h3 className="text-lg font-medium text-gray-600 mb-2">No Feedback Yet</h3>
-                  <p className="text-gray-500 mb-4">Submit your answer to receive detailed feedback</p>
+                <div className="flex flex-col items-center justify-center h-[400px] text-center p-6 bg-gray-50 dark:bg-gray-900/30 rounded-lg border border-dashed border-gray-300 dark:border-gray-700">
+                  <h3 className="text-lg font-medium text-gray-600 dark:text-gray-400 mb-2">No Feedback Yet</h3>
+                  <p className="text-gray-500 dark:text-gray-500 mb-4">Submit your answer to receive detailed feedback</p>
                   <Button 
                     onClick={() => setActiveTab("answer")}
                     variant="secondary"
@@ -685,10 +703,27 @@ const AIMarker = () => {
           </Tabs>
         </CardContent>
         
-        <CardFooter className="flex justify-center p-4 text-center">
-          <p className="text-xs text-gray-500">
+        <CardFooter className="flex flex-col gap-4 p-4 text-center">
+          <div className="flex flex-wrap gap-2 justify-center">
+            <Badge variant="outline" className="text-xs">GCSE</Badge>
+            <Badge variant="outline" className="text-xs">AI Assessment</Badge>
+            <Badge variant="outline" className="text-xs">Educational Tool</Badge>
+          </div>
+          
+          <p className="text-xs text-gray-500 dark:text-gray-400 max-w-lg mx-auto">
             This AI marker provides guidance based on GCSE criteria but should not replace official marking.
+            Selected model: <span className="font-medium">{AI_MODELS.find(m => m.value === selectedModel)?.label || selectedModel}</span>
           </p>
+          
+          <Button
+            variant="link"
+            size="sm"
+            className="text-xs text-blue-600 dark:text-blue-400"
+            onClick={() => window.open('https://www.gov.uk/government/publications/gcse-9-to-1-qualification-level-conditions', '_blank')}
+          >
+            <ExternalLink size={12} className="mr-1" />
+            GCSE Qualification Standards
+          </Button>
         </CardFooter>
       </Card>
     </motion.div>
