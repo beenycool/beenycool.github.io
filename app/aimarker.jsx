@@ -55,7 +55,6 @@ const AIMarker = () => {
   const [subject, setSubject] = useState("english");
   const [examBoard, setExamBoard] = useState("aqa");
   const [userType, setUserType] = useState("student");
-  const [marksOutOf, setMarksOutOf] = useState("");
   const [markScheme, setMarkScheme] = useState("");
   const [image, setImage] = useState(null);
   const [activeTab, setActiveTab] = useState("answer");
@@ -194,6 +193,7 @@ const AIMarker = () => {
     setError(null);
     setSuccess(null);
     setImage(null);
+    setMarkScheme("");
     setActiveTab("answer");
   };
 
@@ -261,7 +261,6 @@ const AIMarker = () => {
        
       // Build prompt for AI
       let content = `Please mark this ${examBoard.toUpperCase()} ${subject} GCSE response:\n\nQuestion: ${question}\n\nAnswer: ${answer}`;
-      if (marksOutOf) content += `\n\nThis question is out of ${marksOutOf} marks.`;
       if (markScheme) content += `\n\nMark Scheme: ${markScheme}`;
        
       // Get AI feedback
@@ -570,34 +569,16 @@ const AIMarker = () => {
                   </h3>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="block text-xs font-medium text-gray-600">
-                      Marks Available
-                    </label>
-                    <input
-                      type="number"
-                      value={marksOutOf}
-                      onChange={(e) => setMarksOutOf(e.target.value)}
-                      min="1"
-                      max="100"
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 h-8 text-sm"
-                      placeholder="e.g. 10"
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <label className="block text-xs font-medium text-gray-600">
-                      Mark Scheme (optional)
-                    </label>
-                    <input
-                      type="text"
-                      value={markScheme}
-                      onChange={(e) => setMarkScheme(e.target.value)}
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 h-8 text-sm"
-                      placeholder="Key marking points"
-                    />
-                  </div>
+                <div className="space-y-2">
+                  <label className="block text-xs font-medium text-gray-600">
+                    Mark Scheme (optional)
+                  </label>
+                  <Textarea
+                    value={markScheme}
+                    onChange={(e) => setMarkScheme(e.target.value)}
+                    className="min-h-[100px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Enter marking points or assessment criteria..."
+                  />
                 </div>
                 
                 <div className="mt-4">
