@@ -37,6 +37,13 @@ const USER_TYPES = [
   { value: "teacher", label: "Teacher" }
 ];
 
+const AI_MODELS = [
+  { value: "google/gemini-2.5-pro-exp-03-25", label: "Gemini 2.5 Pro (smartest)" },
+  { value: "google/gemini-2.0-flash-exp:free", label: "Gemini Flash" },
+  { value: "deepseek/deepseek-r1:free", label: "Thinking" },
+  { value: "deepseek/deepseek-v3:free", label: "Deepseek Non thinking" }
+];
+
 const subjectKeywords = {
   english: ['shakespeare', 'poem', 'poetry', 'novel', 'character', 'theme', 'literature'],
   maths: ['equation', 'solve', 'calculate', 'algebra', 'geometry', 'trigonometry', 'formula'],
