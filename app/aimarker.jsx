@@ -1,6 +1,6 @@
 "use client";
-import React, { useState, useEffect, useCallback } from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import OpenAI from 'openai';
 import { getSubjectGuidance } from "@/lib/utils";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Upload, AlertTriangle, CheckCircle2, RefreshCw, HelpCircle, ChevronDown, Save, Share2, ExternalLink } from "lucide-react";
+import { Loader2, Upload, AlertTriangle, CheckCircle2, RefreshCw, HelpCircle, ChevronDown, ChevronRight, Save, Share2, ExternalLink, Settings, FilePlus } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -38,10 +38,9 @@ const USER_TYPES = [
 ];
 
 const AI_MODELS = [
-  { value: "google/gemini-2.5-pro-exp-03-25", label: "Gemini 2.5 Pro (smartest)" },
-  { value: "google/gemini-2.0-flash-exp:free", label: "Gemini Flash" },
-  { value: "deepseek/deepseek-r1:free", label: "Thinking" },
-  { value: "deepseek/deepseek-v3:free", label: "Deepseek Non thinking" }
+  { value: "google/gemini-2.5-pro-exp-03-25", label: "Gemini 2.5 Pro (smartest, 1rpm limit)", description: "Best quality but limited to 1 request per minute" },
+  { value: "deepseek/deepseek-r1:free", label: "Thinking Model (takes longer)", description: "More thorough reasoning process" },
+  { value: "deepseek/deepseek-v3:free", label: "Good All-Rounder", description: "Balanced speed and quality" }
 ];
 
 const subjectKeywords = {
@@ -52,6 +51,19 @@ const subjectKeywords = {
   geography: ['map', 'climate', 'population', 'country', 'city', 'river', 'mountain', 'ecosystem'],
   computerScience: ['programming', 'algorithm', 'code', 'computer', 'software', 'hardware'],
   businessStudies: ['business', 'market', 'finance', 'profit', 'enterprise', 'economy']
+};
+
+// Helper function to save feedback as PDF - placeholder for actual implementation
+const saveFeedbackAsPdf = () => {
+  alert("PDF download feature will be added in the next update!");
+};
+
+// Helper function to copy feedback to clipboard
+const copyFeedbackToClipboard = (feedback) => {
+  if (feedback) {
+    navigator.clipboard.writeText(feedback);
+    alert("Feedback copied to clipboard!");
+  }
 };
 
 const AIMarker = () => {
@@ -65,9 +77,15 @@ const AIMarker = () => {
   const [markScheme, setMarkScheme] = useState("");
   const [image, setImage] = useState(null);
   const [activeTab, setActiveTab] = useState("answer");
+  const [customSubject, setCustomSubject] = useState("");
+  const [isAddingSubject, setIsAddingSubject] = useState(false);
+  const [customSubjects, setCustomSubjects] = useState([]);
+  const [allSubjects, setAllSubjects] = useState(SUBJECTS);
+  const customSubjectInputRef = useRef(null);
   
   // UI state
   const [showGuide, setShowGuide] = useState(false);
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [grade, setGrade] = useState("");
@@ -80,7 +98,7 @@ const AIMarker = () => {
   const [lastRequestTime, setLastRequestTime] = useState(0);
   const [dailyRequests, setDailyRequests] = useState(0);
   const [lastRequestDate, setLastRequestDate] = useState(new Date().toDateString());
-  const selectedModel = "google/gemini-2.5-pro-exp-03-25"; // Could be made configurable
+  const [selectedModel, setSelectedModel] = useState("google/gemini-2.5-pro-exp-03-25");
 
   // ======== EFFECTS & INITIALIZATION ========
   // Initialize OpenAI client
@@ -116,6 +134,13 @@ const AIMarker = () => {
     }
   }, []);
 
+  // Focus custom subject input when adding a new subject
+  useEffect(() => {
+    if (isAddingSubject && customSubjectInputRef.current) {
+      customSubjectInputRef.current.focus();
+    }
+  }, [isAddingSubject]);
+
   // Detect subject from answer text
   useEffect(() => {
     if (!answer || answer.length < 20) return;
@@ -136,7 +161,7 @@ const AIMarker = () => {
       setSubject(detected);
       setDetectedSubject(detected);
       setSuccess({
-        message: `Subject automatically detected as ${SUBJECTS.find(s => s.value === detected)?.label}`
+        message: `Subject automatically detected as ${allSubjects.find(s => s.value === detected)?.label}`
       });
       
       // Auto-clear success message after 3 seconds
@@ -144,7 +169,7 @@ const AIMarker = () => {
         setSuccess(null);
       }, 3000);
     }
-  }, [answer, subject]);
+  }, [answer, subject, allSubjects]);
 
   // ======== HELPER FUNCTIONS ========
   // Process image upload
@@ -158,8 +183,13 @@ const AIMarker = () => {
         reader.readAsDataURL(imageFile);
       });
       
+      setLoading(true);
+      setSuccess({
+        message: "Processing your image... Please wait."
+      });
+      
       const imageCompletion = await openai.chat.completions.create({
-        model: 'google/gemini-2.0-flash-exp:free',
+        model: 'google/gemini-2.0-flash-exp:free', // Always use Gemini Flash for image processing
         messages: [
           {
             role: "user",
@@ -180,7 +210,20 @@ const AIMarker = () => {
         max_tokens: 2000
       });
       
-      return imageCompletion.choices[0].message.content;
+      const extractedText = imageCompletion.choices[0].message.content;
+      
+      // Auto-fill the answer field with the extracted text
+      setAnswer(prev => prev ? `${prev}\n${extractedText}` : extractedText);
+      
+      setSuccess({
+        message: "Image processed successfully! Text has been added to your answer."
+      });
+      
+      setTimeout(() => {
+        setSuccess(null);
+      }, 3000);
+      
+      return extractedText;
     } catch (error) {
       console.error("Error processing image:", error);
       setError({
@@ -188,6 +231,9 @@ const AIMarker = () => {
         message: "Failed to process the image. Please try again or enter text manually."
       });
       return null;
+    } finally {
+      setLoading(false);
+      setImage(null); // Clear the image after processing
     }
   }, [openai]);
 
@@ -202,6 +248,30 @@ const AIMarker = () => {
     setImage(null);
     setMarkScheme("");
     setActiveTab("answer");
+  };
+  
+  // Add custom subject
+  const addCustomSubject = () => {
+    if (customSubject.trim() === "") return;
+    
+    const newSubject = {
+      value: customSubject.toLowerCase().replace(/\s+/g, ''),
+      label: customSubject.trim()
+    };
+    
+    setCustomSubjects([...customSubjects, newSubject]);
+    setAllSubjects([...allSubjects, newSubject]);
+    setSubject(newSubject.value);
+    setCustomSubject("");
+    setIsAddingSubject(false);
+    
+    setSuccess({
+      message: `Added new subject: ${newSubject.label}`
+    });
+    
+    setTimeout(() => {
+      setSuccess(null);
+    }, 3000);
   };
 
   // ======== MAIN FUNCTIONS ========
@@ -231,10 +301,17 @@ const AIMarker = () => {
       setLastRequestDate(today);
     }
     
-    if (now - lastRequestTime < 60000) {
+    // Special rate limit for Gemini 2.5 Pro
+    if (selectedModel === "google/gemini-2.5-pro-exp-03-25" && now - lastRequestTime < 60000) {
       setError({
         type: "rate_limit",
-        message: "Please wait at least 1 minute between requests"
+        message: "Gemini 2.5 Pro is limited to 1 request per minute. Please wait or select a different model."
+      });
+      return;
+    } else if (selectedModel !== "google/gemini-2.5-pro-exp-03-25" && now - lastRequestTime < 10000) {
+      setError({
+        type: "rate_limit",
+        message: "Please wait at least 10 seconds between requests"
       });
       return;
     }
@@ -369,8 +446,15 @@ const AIMarker = () => {
       }
       setImage(file);
       setSuccess({
-        message: `Image "${file.name}" loaded successfully. Click 'Mark My Answer' to process.`
+        message: `Image "${file.name}" loaded. Click 'Process Image' to extract text.`
       });
+    }
+  };
+
+  // Process uploaded image immediately
+  const handleProcessImage = () => {
+    if (image) {
+      processImageUpload(image);
     }
   };
 
@@ -384,44 +468,52 @@ const AIMarker = () => {
       transition={{ duration: 0.3 }}
       className="mb-6"
     >
-      <Card className="bg-blue-50 border-blue-200 shadow-sm">
+      <Card className="bg-gray-50 border-gray-200 shadow-sm">
         <CardContent className="p-4">
           <div className="space-y-3">
             <div>
-              <h3 className="font-semibold text-blue-800">Quick Guide:</h3>
+              <h3 className="font-semibold text-gray-800">Quick Guide:</h3>
               <ul className="mt-2 space-y-1 text-sm">
                 <li className="flex items-start">
-                  <span className="font-bold text-blue-700 mr-2">1.</span>
+                  <span className="font-bold text-gray-700 mr-2">1.</span>
                   <span>Enter your question and answer in the appropriate fields</span>
                 </li>
                 <li className="flex items-start">
-                  <span className="font-bold text-blue-700 mr-2">2.</span>
+                  <span className="font-bold text-gray-700 mr-2">2.</span>
                   <span>Select your subject, exam board, and whether you're a student or teacher</span>
                 </li>
                 <li className="flex items-start">
-                  <span className="font-bold text-blue-700 mr-2">3.</span>
+                  <span className="font-bold text-gray-700 mr-2">3.</span>
                   <span>Add marks available and optional mark scheme details</span>
                 </li>
                 <li className="flex items-start">
-                  <span className="font-bold text-blue-700 mr-2">4.</span>
+                  <span className="font-bold text-gray-700 mr-2">4.</span>
+                  <span>Choose your preferred AI model (each has different strengths)</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="font-bold text-gray-700 mr-2">5.</span>
                   <span>Click 'Mark My Answer' to receive detailed feedback</span>
                 </li>
               </ul>
             </div>
             
             <div>
-              <h3 className="font-semibold text-blue-800">Tips:</h3>
+              <h3 className="font-semibold text-gray-800">Tips:</h3>
               <ul className="mt-2 space-y-1 text-sm">
                 <li className="flex items-start">
-                  <span className="text-blue-700 mr-2">•</span>
-                  <span>For handwritten answers, upload a clear photo</span>
+                  <span className="text-gray-700 mr-2">•</span>
+                  <span>For handwritten answers, upload a clear photo and click 'Process Image'</span>
                 </li>
                 <li className="flex items-start">
-                  <span className="text-blue-700 mr-2">•</span>
+                  <span className="text-gray-700 mr-2">•</span>
                   <span>The subject may be auto-detected from keywords in your answer</span>
                 </li>
                 <li className="flex items-start">
-                  <span className="text-blue-700 mr-2">•</span>
+                  <span className="text-gray-700 mr-2">•</span>
+                  <span>Try different AI models to see which gives you the best feedback</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="text-gray-700 mr-2">•</span>
                   <span>Feedback includes strengths, areas for improvement and an estimated grade</span>
                 </li>
               </ul>
@@ -439,11 +531,11 @@ const AIMarker = () => {
       transition={{ duration: 0.5 }}
       className="w-full max-w-4xl mx-auto p-2 sm:p-4 md:p-6"
     >
-      <Card className="w-full shadow-lg rounded-xl bg-gradient-to-br from-blue-50/50 to-white dark:from-blue-900/20 dark:to-blue-950/50">
+      <Card className="w-full shadow-lg rounded-xl bg-gradient-to-br from-gray-50/50 to-white dark:from-gray-900/20 dark:to-gray-950/50">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 dark:from-blue-400 dark:to-blue-600 bg-clip-text text-transparent">
+              <CardTitle className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-gray-600 to-gray-800 dark:from-gray-400 dark:to-gray-600 bg-clip-text text-transparent">
                 GCSE AI Marker
               </CardTitle>
               <CardDescription className="text-sm sm:text-base text-gray-600 dark:text-gray-400">
@@ -460,7 +552,7 @@ const AIMarker = () => {
                     onClick={() => setShowGuide(!showGuide)}
                     className="h-8 w-8 rounded-full p-0"
                   >
-                    <HelpCircle size={18} className="text-blue-600 dark:text-blue-400" />
+                    <HelpCircle size={18} className="text-gray-600 dark:text-gray-400" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
@@ -472,22 +564,94 @@ const AIMarker = () => {
           
           {showGuide && <QuickGuide />}
           
-          {/* Subject Selector Badges */}
+          {/* Subject Selector as Dropdown with Add Custom Option */}
           <div className="flex flex-wrap gap-2 pt-2">
-            {SUBJECTS.map((s) => (
-              <Badge
-                key={s.value}
-                variant={subject === s.value ? "default" : "outline"}
-                className={`cursor-pointer ${
-                  subject === s.value 
-                    ? "bg-blue-600 hover:bg-blue-700" 
-                    : "hover:bg-blue-100 dark:hover:bg-blue-900/30"
-                }`}
-                onClick={() => setSubject(s.value)}
-              >
-                {s.label}
-              </Badge>
-            ))}
+            {!isAddingSubject ? (
+              <>
+                <Select value={subject} onValueChange={setSubject}>
+                  <SelectTrigger className="w-[180px] bg-white dark:bg-gray-900">
+                    <SelectValue placeholder="Select a subject" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <div className="max-h-[300px] overflow-y-auto">
+                      {allSubjects.map((s) => (
+                        <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                      ))}
+                      <div className="border-t border-gray-200 dark:border-gray-800 my-1"></div>
+                      <button
+                        className="w-full py-1.5 px-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center gap-1.5"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setIsAddingSubject(true);
+                        }}
+                      >
+                        <FilePlus className="h-4 w-4" /> Add custom subject
+                      </button>
+                    </div>
+                  </SelectContent>
+                </Select>
+                
+                {/* Model Selector */}
+                <Select value={selectedModel} onValueChange={setSelectedModel}>
+                  <SelectTrigger className="w-[230px] bg-white dark:bg-gray-900">
+                    <div className="flex items-center">
+                      <Settings className="h-3.5 w-3.5 mr-1.5 opacity-70" />
+                      <SelectValue placeholder="Select AI model" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {AI_MODELS.map((model) => (
+                      <SelectItem key={model.value} value={model.value}>
+                        <div>
+                          <div className="font-medium">{model.label}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">{model.description}</div>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  ref={customSubjectInputRef}
+                  type="text"
+                  value={customSubject}
+                  onChange={(e) => setCustomSubject(e.target.value)}
+                  placeholder="Enter subject name"
+                  className="px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      addCustomSubject();
+                    } else if (e.key === 'Escape') {
+                      setIsAddingSubject(false);
+                      setCustomSubject("");
+                    }
+                  }}
+                />
+                <Button 
+                  size="sm" 
+                  onClick={addCustomSubject}
+                  disabled={!customSubject.trim()}
+                >
+                  Add
+                </Button>
+                <Button 
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setIsAddingSubject(false);
+                    setCustomSubject("");
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            )}
+          </div>
+          
+          <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            Try different models to see which works best for you!
           </div>
         </CardHeader>
 
@@ -511,10 +675,10 @@ const AIMarker = () => {
           {/* Main Content Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid grid-cols-2 mb-4">
-              <TabsTrigger value="answer">Your Answer</TabsTrigger>
+              <TabsTrigger value="answer">Answer Sheet</TabsTrigger>
               <TabsTrigger value="feedback" disabled={!feedback}>
-                Feedback
-                {grade && <span className="ml-2 py-0.5 px-2 text-xs bg-blue-100 text-blue-800 rounded-full">Grade: {grade}</span>}
+                Assessment
+                {grade && <span className="ml-2 py-0.5 px-2 text-xs bg-gray-100 text-gray-800 rounded-full">Grade: {grade}</span>}
               </TabsTrigger>
             </TabsList>
             
@@ -551,67 +715,105 @@ const AIMarker = () => {
                 <Textarea
                   value={question}
                   onChange={(e) => setQuestion(e.target.value)}
-                  className="min-h-[80px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="min-h-[80px] focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
                   placeholder="Enter the exam question here..."
                 />
               </div>
 
               {/* Answer Section */}
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">Your Answer</label>
+                <label className="block text-sm font-medium text-gray-700">Student Answer</label>
                 <Textarea
                   value={answer}
                   onChange={(e) => setAnswer(e.target.value)}
-                  className="min-h-[200px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="min-h-[200px] focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
                   placeholder="Type or paste your answer here..."
                 />
               </div>
 
-              {/* Advanced Options */}
+              {/* Advanced Options - Now properly collapsible */}
               <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                <div className="flex items-center mb-3">
-                  <h3 className="text-sm font-medium text-gray-700 flex items-center">
-                    <ChevronDown size={16} className="mr-1" />
+                <button 
+                  onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
+                  className="w-full flex items-center justify-between mb-3 text-sm font-medium text-gray-700"
+                >
+                  <span className="flex items-center">
+                    {showAdvancedOptions ? <ChevronDown size={16} className="mr-1" /> : <ChevronRight size={16} className="mr-1" />}
                     Advanced Options
-                  </h3>
-                </div>
+                  </span>
+                  <Badge variant="outline" className="text-xs">
+                    {showAdvancedOptions ? "Hide" : "Show"}
+                  </Badge>
+                </button>
                 
-                <div className="space-y-2">
-                  <label className="block text-xs font-medium text-gray-600">
-                    Mark Scheme (optional)
-                  </label>
-                  <Textarea
-                    value={markScheme}
-                    onChange={(e) => setMarkScheme(e.target.value)}
-                    className="min-h-[100px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Enter marking points or assessment criteria..."
-                  />
-                </div>
-                
-                <div className="mt-4">
-                  <label className="block text-xs font-medium text-gray-600 mb-2">
-                    Upload Handwritten Answer
-                  </label>
-                  <label className="flex items-center justify-center w-full h-24 px-4 transition bg-white border-2 border-gray-300 border-dashed rounded-md appearance-none cursor-pointer hover:border-blue-500 focus:outline-none">
-                    <div className="flex flex-col items-center space-y-2">
-                      <Upload className="w-6 h-6 text-gray-400" />
-                      <span className="font-medium text-sm text-gray-600">
-                        {image ? image.name : "Drop files or click to upload"}
-                      </span>
-                      {image && (
-                        <span className="text-xs text-green-600">
-                          ({(image.size / 1024).toFixed(1)} KB)
-                        </span>
-                      )}
-                    </div>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageChange}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
+                <AnimatePresence>
+                  {showAdvancedOptions && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="space-y-4"
+                    >
+                      <div className="space-y-2">
+                        <label className="block text-xs font-medium text-gray-600">
+                          Mark Scheme (optional)
+                        </label>
+                        <Textarea
+                          value={markScheme}
+                          onChange={(e) => setMarkScheme(e.target.value)}
+                          className="min-h-[100px] focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
+                          placeholder="Enter marking points or assessment criteria..."
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-2">
+                          Upload Handwritten Answer
+                        </label>
+                        <div className="space-y-2">
+                          <label className="flex items-center justify-center w-full h-24 px-4 transition bg-white border-2 border-gray-300 border-dashed rounded-md appearance-none cursor-pointer hover:border-gray-500 focus:outline-none">
+                            <div className="flex flex-col items-center space-y-2">
+                              <Upload className="w-6 h-6 text-gray-400" />
+                              <span className="font-medium text-sm text-gray-600">
+                                {image ? image.name : "Drop files or click to upload"}
+                              </span>
+                              {image && (
+                                <span className="text-xs text-green-600">
+                                  ({(image.size / 1024).toFixed(1)} KB)
+                                </span>
+                              )}
+                            </div>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={handleImageChange}
+                              className="hidden"
+                            />
+                          </label>
+                          
+                          {image && (
+                            <Button 
+                              onClick={handleProcessImage}
+                              variant="secondary"
+                              className="w-full"
+                              disabled={loading}
+                            >
+                              {loading ? (
+                                <>
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  Converting Image...
+                                </>
+                              ) : (
+                                <>Process Image</>
+                              )}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
               {/* Action Buttons */}
@@ -621,7 +823,7 @@ const AIMarker = () => {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                  className="border-gray-300 text-gray-700 hover:bg-gray-50"
                   disabled={loading}
                 >
                   <RefreshCw className="mr-2 h-4 w-4" />
@@ -632,7 +834,7 @@ const AIMarker = () => {
                   onClick={handleSubmitForMarking}
                   disabled={loading || !answer}
                   size="lg"
-                  className="bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+                  className="bg-gray-600 hover:bg-gray-700 text-white transition-colors"
                 >
                   {loading ? (
                     <>
@@ -655,14 +857,14 @@ const AIMarker = () => {
                   className="p-4 bg-white dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm"
                 >
                   {grade && (
-                    <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-md border border-blue-200 dark:border-blue-800 flex items-center justify-between">
+                    <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-900/30 rounded-md border border-gray-200 dark:border-gray-800 flex items-center justify-between">
                       <span className="font-medium text-gray-700 dark:text-gray-300">Grade:</span>
-                      <span className="text-2xl font-bold text-blue-700 dark:text-blue-400">{grade}</span>
+                      <span className="text-2xl font-bold text-gray-700 dark:text-gray-400">{grade}</span>
                     </div>
                   )}
                   
                   <h3 className="text-lg font-semibold mb-4 text-gray-800 dark:text-gray-200">Your Feedback:</h3>
-                  <div className="prose prose-blue dark:prose-invert max-w-none">
+                  <div className="prose prose-gray dark:prose-invert max-w-none">
                     <ReactMarkdown>{feedback}</ReactMarkdown>
                   </div>
                   
@@ -676,7 +878,7 @@ const AIMarker = () => {
                     </Button>
                     
                     <Button
-                      onClick={saveFeedbackAsPdf}
+                      onClick={() => saveFeedbackAsPdf(feedback)}
                       variant="secondary"
                       className="w-full sm:w-auto"
                     >
@@ -685,7 +887,7 @@ const AIMarker = () => {
                     </Button>
                     
                     <Button
-                      onClick={copyFeedbackToClipboard}
+                      onClick={() => copyFeedbackToClipboard(feedback)}
                       variant="secondary"
                       className="w-full sm:w-auto"
                     >
@@ -711,12 +913,6 @@ const AIMarker = () => {
         </CardContent>
         
         <CardFooter className="flex flex-col gap-4 p-4 text-center">
-          <div className="flex flex-wrap gap-2 justify-center">
-            <Badge variant="outline" className="text-xs">GCSE</Badge>
-            <Badge variant="outline" className="text-xs">AI Assessment</Badge>
-            <Badge variant="outline" className="text-xs">Educational Tool</Badge>
-          </div>
-          
           <p className="text-xs text-gray-500 dark:text-gray-400 max-w-lg mx-auto">
             This AI marker provides guidance based on GCSE criteria but should not replace official marking.
             Selected model: <span className="font-medium">{AI_MODELS.find(m => m.value === selectedModel)?.label || selectedModel}</span>
@@ -725,7 +921,7 @@ const AIMarker = () => {
           <Button
             variant="link"
             size="sm"
-            className="text-xs text-blue-600 dark:text-blue-400"
+            className="text-xs text-gray-600 dark:text-gray-400"
             onClick={() => window.open('https://www.gov.uk/government/publications/gcse-9-to-1-qualification-level-conditions', '_blank')}
           >
             <ExternalLink size={12} className="mr-1" />
