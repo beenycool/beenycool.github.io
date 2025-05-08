@@ -82,6 +82,7 @@ const AIMarker = () => {
   const [customSubjects, setCustomSubjects] = useState([]);
   const [allSubjects, setAllSubjects] = useState(SUBJECTS);
   const customSubjectInputRef = useRef(null);
+  const [totalMarks, setTotalMarks] = useState("");
   
   // UI state
   const [showGuide, setShowGuide] = useState(false);
@@ -92,6 +93,7 @@ const AIMarker = () => {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [detectedSubject, setDetectedSubject] = useState(null);
+  const [shortcutFeedback, setShortcutFeedback] = useState(null);
   
   // API and rate limiting
   const [openai, setOpenai] = useState(null);
@@ -133,6 +135,106 @@ const AIMarker = () => {
       });
     }
   }, []);
+  
+  // Load saved form data from session storage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const savedForm = sessionStorage.getItem('aiMarkerFormData');
+        if (savedForm) {
+          const formData = JSON.parse(savedForm);
+          setQuestion(formData.question || "");
+          setAnswer(formData.answer || "");
+          setSubject(formData.subject || "english");
+          setExamBoard(formData.examBoard || "aqa");
+          setUserType(formData.userType || "student");
+          setMarkScheme(formData.markScheme || "");
+          setTotalMarks(formData.totalMarks || "");
+          // Don't restore selected model to prevent rate limit issues
+          
+          // Check if we have saved subjects
+          if (formData.customSubjects && formData.customSubjects.length > 0) {
+            setCustomSubjects(formData.customSubjects);
+            setAllSubjects([...SUBJECTS, ...formData.customSubjects]);
+          }
+          
+          setSuccess({
+            message: "Previous work restored from your last session"
+          });
+          setTimeout(() => {
+            setSuccess(null);
+          }, 3000);
+        }
+      } catch (error) {
+        console.error("Error loading saved form data:", error);
+      }
+    }
+  }, []);
+  
+  // Save form data to session storage when it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const formData = {
+        question,
+        answer,
+        subject,
+        examBoard,
+        userType,
+        markScheme,
+        totalMarks,
+        customSubjects
+      };
+      
+      try {
+        sessionStorage.setItem('aiMarkerFormData', JSON.stringify(formData));
+      } catch (error) {
+        console.error("Error saving form data:", error);
+      }
+    }
+  }, [question, answer, subject, examBoard, userType, markScheme, totalMarks, customSubjects]);
+
+  // Add keyboard shortcuts for common actions
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ctrl/Cmd + Enter to submit
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        if (!loading && answer) {
+          handleSubmitForMarking();
+          setShortcutFeedback("Submitted for marking");
+        }
+        e.preventDefault();
+      }
+      
+      // Ctrl/Cmd + Shift + R to reset form
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'r') {
+        resetForm();
+        setShortcutFeedback("Form reset");
+        e.preventDefault();
+      }
+      
+      // Ctrl/Cmd + . to toggle advanced options
+      if ((e.ctrlKey || e.metaKey) && e.key === '.') {
+        setShowAdvancedOptions(prev => !prev);
+        setShortcutFeedback("Toggled advanced options");
+        e.preventDefault();
+      }
+      
+      // Ctrl/Cmd + / to toggle help guide
+      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+        setShowGuide(prev => !prev);
+        setShortcutFeedback("Toggled help guide");
+        e.preventDefault();
+      }
+      
+      // Clear shortcut feedback after 2 seconds
+      setTimeout(() => {
+        setShortcutFeedback(null);
+      }, 2000);
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [loading, answer, handleSubmitForMarking, resetForm]);
 
   // Focus custom subject input when adding a new subject
   useEffect(() => {
@@ -248,6 +350,7 @@ const AIMarker = () => {
     setImage(null);
     setMarkScheme("");
     setActiveTab("answer");
+    setTotalMarks("");
   };
   
   // Add custom subject
@@ -346,6 +449,7 @@ const AIMarker = () => {
       // Build prompt for AI
       let content = `Please mark this ${examBoard.toUpperCase()} ${subject} GCSE response:\n\nQuestion: ${question}\n\nAnswer: ${answer}`;
       if (markScheme) content += `\n\nMark Scheme: ${markScheme}`;
+      if (totalMarks) content += `\n\nMarks Available: ${totalMarks}`;
        
       // Get AI feedback
       const completion = await openai.chat.completions.create({
@@ -460,69 +564,93 @@ const AIMarker = () => {
 
   // ======== JSX / UI COMPONENTS ========
   // Quick guide dropdown content
-  const QuickGuide = () => (
-    <motion.div
-      initial={{ opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height: 'auto' }}
-      exit={{ opacity: 0, height: 0 }}
-      transition={{ duration: 0.3 }}
-      className="mb-6"
-    >
-      <Card className="bg-gray-50 border-gray-200 shadow-sm">
-        <CardContent className="p-4">
-          <div className="space-y-3">
-            <div>
-              <h3 className="font-semibold text-gray-800">Quick Guide:</h3>
-              <ul className="mt-2 space-y-1 text-sm">
-                <li className="flex items-start">
-                  <span className="font-bold text-gray-700 mr-2">1.</span>
-                  <span>Enter your question and answer in the appropriate fields</span>
-                </li>
-                <li className="flex items-start">
-                  <span className="font-bold text-gray-700 mr-2">2.</span>
-                  <span>Select your subject, exam board, and whether you're a student or teacher</span>
-                </li>
-                <li className="flex items-start">
-                  <span className="font-bold text-gray-700 mr-2">3.</span>
-                  <span>Add marks available and optional mark scheme details</span>
-                </li>
-                <li className="flex items-start">
-                  <span className="font-bold text-gray-700 mr-2">4.</span>
-                  <span>Choose your preferred AI model (each has different strengths)</span>
-                </li>
-                <li className="flex items-start">
-                  <span className="font-bold text-gray-700 mr-2">5.</span>
-                  <span>Click 'Mark My Answer' to receive detailed feedback</span>
-                </li>
-              </ul>
+  const QuickGuide = () => {
+    return (
+      <motion.div
+        initial={{ opacity: 0, height: 0 }}
+        animate={{ opacity: 1, height: 'auto' }}
+        exit={{ opacity: 0, height: 0 }}
+        transition={{ duration: 0.3 }}
+        className="mb-6"
+      >
+        <Card className="bg-gray-50 border-gray-200 shadow-sm dark:bg-gray-900 dark:border-gray-800">
+          <CardContent className="p-4">
+            <div className="space-y-3">
+              <div>
+                <h3 className="font-semibold text-gray-800 dark:text-gray-200">Quick Guide:</h3>
+                <ul className="mt-2 space-y-1 text-sm">
+                  <li className="flex items-start">
+                    <span className="font-bold text-gray-700 dark:text-gray-300 mr-2">1.</span>
+                    <span className="text-gray-700 dark:text-gray-300">Enter your question and answer in the appropriate fields</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="font-bold text-gray-700 dark:text-gray-300 mr-2">2.</span>
+                    <span className="text-gray-700 dark:text-gray-300">Select your subject, exam board, and whether you're a student or teacher</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="font-bold text-gray-700 dark:text-gray-300 mr-2">3.</span>
+                    <span className="text-gray-700 dark:text-gray-300">Add marks available and optional mark scheme details</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="font-bold text-gray-700 dark:text-gray-300 mr-2">4.</span>
+                    <span className="text-gray-700 dark:text-gray-300">Choose your preferred AI model (each has different strengths)</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="font-bold text-gray-700 dark:text-gray-300 mr-2">5.</span>
+                    <span className="text-gray-700 dark:text-gray-300">Click 'Mark My Answer' to receive detailed feedback</span>
+                  </li>
+                </ul>
+              </div>
+              
+              <div>
+                <h3 className="font-semibold text-gray-800 dark:text-gray-200">Tips:</h3>
+                <ul className="mt-2 space-y-1 text-sm">
+                  <li className="flex items-start">
+                    <span className="text-gray-700 dark:text-gray-300 mr-2">•</span>
+                    <span className="text-gray-700 dark:text-gray-300">For handwritten answers, upload a clear photo and click 'Process Image'</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="text-gray-700 dark:text-gray-300 mr-2">•</span>
+                    <span className="text-gray-700 dark:text-gray-300">The subject may be auto-detected from keywords in your answer</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="text-gray-700 dark:text-gray-300 mr-2">•</span>
+                    <span className="text-gray-700 dark:text-gray-300">Try different AI models to see which gives you the best feedback</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="text-gray-700 dark:text-gray-300 mr-2">•</span>
+                    <span className="text-gray-700 dark:text-gray-300">Feedback includes strengths, areas for improvement and an estimated grade</span>
+                  </li>
+                </ul>
+              </div>
+              
+              <div>
+                <h3 className="font-semibold text-gray-800 dark:text-gray-200">Keyboard Shortcuts:</h3>
+                <div className="mt-2 grid grid-cols-2 gap-y-1 gap-x-4 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-700 dark:text-gray-300">Submit for marking:</span>
+                    <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded text-xs">Ctrl+Enter</kbd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-700 dark:text-gray-300">Reset form:</span>
+                    <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded text-xs">Ctrl+Shift+R</kbd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-700 dark:text-gray-300">Toggle advanced options:</span>
+                    <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded text-xs">Ctrl+.</kbd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-700 dark:text-gray-300">Toggle help guide:</span>
+                    <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded text-xs">Ctrl+/</kbd>
+                  </div>
+                </div>
+              </div>
             </div>
-            
-            <div>
-              <h3 className="font-semibold text-gray-800">Tips:</h3>
-              <ul className="mt-2 space-y-1 text-sm">
-                <li className="flex items-start">
-                  <span className="text-gray-700 mr-2">•</span>
-                  <span>For handwritten answers, upload a clear photo and click 'Process Image'</span>
-                </li>
-                <li className="flex items-start">
-                  <span className="text-gray-700 mr-2">•</span>
-                  <span>The subject may be auto-detected from keywords in your answer</span>
-                </li>
-                <li className="flex items-start">
-                  <span className="text-gray-700 mr-2">•</span>
-                  <span>Try different AI models to see which gives you the best feedback</span>
-                </li>
-                <li className="flex items-start">
-                  <span className="text-gray-700 mr-2">•</span>
-                  <span>Feedback includes strengths, areas for improvement and an estimated grade</span>
-                </li>
-              </ul>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </motion.div>
-  );
+          </CardContent>
+        </Card>
+      </motion.div>
+    );
+  };
 
   return (
     <motion.div
@@ -531,6 +659,22 @@ const AIMarker = () => {
       transition={{ duration: 0.5 }}
       className="w-full max-w-4xl mx-auto p-2 sm:p-4 md:p-6"
     >
+      {/* Keyboard shortcut feedback indicator */}
+      <AnimatePresence>
+        {shortcutFeedback && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50"
+          >
+            <div className="bg-black/80 text-white px-4 py-2 rounded-md shadow-lg text-sm">
+              {shortcutFeedback}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <Card className="w-full shadow-lg rounded-xl bg-gradient-to-br from-gray-50/50 to-white dark:from-gray-900/20 dark:to-gray-950/50">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
@@ -651,7 +795,7 @@ const AIMarker = () => {
           </div>
           
           <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-            Try different models to see which works best for you!
+            Try to juggle the models to see what suits you best!
           </div>
         </CardHeader>
 
@@ -666,7 +810,7 @@ const AIMarker = () => {
           )}
           
           {success && !error && (
-            <Alert className="mb-4 bg-green-50 text-green-800 border-green-200">
+            <Alert className="mb-4 bg-green-50 text-green-800 border-green-200 dark:bg-green-900/20 dark:border-green-900 dark:text-green-300">
               <CheckCircle2 className="h-4 w-4" />
               <AlertDescription>{success.message}</AlertDescription>
             </Alert>
@@ -678,7 +822,7 @@ const AIMarker = () => {
               <TabsTrigger value="answer">Answer Sheet</TabsTrigger>
               <TabsTrigger value="feedback" disabled={!feedback}>
                 Assessment
-                {grade && <span className="ml-2 py-0.5 px-2 text-xs bg-gray-100 text-gray-800 rounded-full">Grade: {grade}</span>}
+                {grade && <span className="ml-2 py-0.5 px-2 text-xs bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200 rounded-full">Grade: {grade}</span>}
               </TabsTrigger>
             </TabsList>
             
@@ -686,8 +830,21 @@ const AIMarker = () => {
               {/* Question Section */}
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <label className="block text-sm font-medium text-gray-700">Question</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Question</label>
                   <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-1">
+                      <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Marks:</label>
+                      <input
+                        type="number"
+                        value={totalMarks}
+                        onChange={(e) => setTotalMarks(e.target.value)}
+                        placeholder="#"
+                        min="1"
+                        max="100"
+                        className="w-16 h-8 px-2 border border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
+                      />
+                    </div>
+                    
                     <Select value={examBoard} onValueChange={setExamBoard}>
                       <SelectTrigger className="h-8 w-[120px] text-xs">
                         <SelectValue placeholder="Exam Board" />
@@ -722,7 +879,7 @@ const AIMarker = () => {
 
               {/* Answer Section */}
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">Student Answer</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Student Answer</label>
                 <Textarea
                   value={answer}
                   onChange={(e) => setAnswer(e.target.value)}
@@ -732,10 +889,10 @@ const AIMarker = () => {
               </div>
 
               {/* Advanced Options - Now properly collapsible */}
-              <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+              <div className="bg-gray-50 dark:bg-gray-900/30 p-4 rounded-lg border border-gray-200 dark:border-gray-800">
                 <button 
                   onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
-                  className="w-full flex items-center justify-between mb-3 text-sm font-medium text-gray-700"
+                  className="w-full flex items-center justify-between mb-3 text-sm font-medium text-gray-700 dark:text-gray-300"
                 >
                   <span className="flex items-center">
                     {showAdvancedOptions ? <ChevronDown size={16} className="mr-1" /> : <ChevronRight size={16} className="mr-1" />}
@@ -756,7 +913,7 @@ const AIMarker = () => {
                       className="space-y-4"
                     >
                       <div className="space-y-2">
-                        <label className="block text-xs font-medium text-gray-600">
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
                           Mark Scheme (optional)
                         </label>
                         <Textarea
@@ -768,18 +925,18 @@ const AIMarker = () => {
                       </div>
                       
                       <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-2">
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
                           Upload Handwritten Answer
                         </label>
                         <div className="space-y-2">
-                          <label className="flex items-center justify-center w-full h-24 px-4 transition bg-white border-2 border-gray-300 border-dashed rounded-md appearance-none cursor-pointer hover:border-gray-500 focus:outline-none">
+                          <label className="flex items-center justify-center w-full h-24 px-4 transition bg-white border-2 border-gray-300 border-dashed rounded-md appearance-none cursor-pointer hover:border-gray-500 focus:outline-none dark:bg-gray-800 dark:border-gray-700 dark:hover:border-gray-600">
                             <div className="flex flex-col items-center space-y-2">
                               <Upload className="w-6 h-6 text-gray-400" />
-                              <span className="font-medium text-sm text-gray-600">
+                              <span className="font-medium text-sm text-gray-600 dark:text-gray-400">
                                 {image ? image.name : "Drop files or click to upload"}
                               </span>
                               {image && (
-                                <span className="text-xs text-green-600">
+                                <span className="text-xs text-green-600 dark:text-green-400">
                                   ({(image.size / 1024).toFixed(1)} KB)
                                 </span>
                               )}
@@ -823,7 +980,7 @@ const AIMarker = () => {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                  className="border-gray-300 text-gray-700 dark:border-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-900"
                   disabled={loading}
                 >
                   <RefreshCw className="mr-2 h-4 w-4" />
@@ -856,12 +1013,20 @@ const AIMarker = () => {
                   transition={{ duration: 0.5 }}
                   className="p-4 bg-white dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm"
                 >
-                  {grade && (
-                    <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-900/30 rounded-md border border-gray-200 dark:border-gray-800 flex items-center justify-between">
-                      <span className="font-medium text-gray-700 dark:text-gray-300">Grade:</span>
-                      <span className="text-2xl font-bold text-gray-700 dark:text-gray-400">{grade}</span>
+                  <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-900/30 rounded-md border border-gray-200 dark:border-gray-800 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div>
+                        <span className="font-medium text-gray-700 dark:text-gray-300">Grade:</span>
+                        <span className="text-2xl font-bold text-gray-700 dark:text-gray-400 ml-2">{grade}</span>
+                      </div>
+                      {totalMarks && (
+                        <div className="border-l border-gray-300 dark:border-gray-700 pl-4">
+                          <span className="font-medium text-gray-700 dark:text-gray-300">Total Marks:</span>
+                          <span className="text-xl font-bold text-gray-700 dark:text-gray-400 ml-2">{totalMarks}</span>
+                        </div>
+                      )}
                     </div>
-                  )}
+                  </div>
                   
                   <h3 className="text-lg font-semibold mb-4 text-gray-800 dark:text-gray-200">Your Feedback:</h3>
                   <div className="prose prose-gray dark:prose-invert max-w-none">
@@ -934,3 +1099,4 @@ const AIMarker = () => {
 };
 
 export default AIMarker;
+
