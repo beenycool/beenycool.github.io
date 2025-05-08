@@ -83,6 +83,8 @@ const AIMarker = () => {
   const [allSubjects, setAllSubjects] = useState(SUBJECTS);
   const customSubjectInputRef = useRef(null);
   const [totalMarks, setTotalMarks] = useState("");
+  const [textExtract, setTextExtract] = useState("");
+  const [relevantMaterial, setRelevantMaterial] = useState("");
   
   // UI state
   const [showGuide, setShowGuide] = useState(false);
@@ -100,180 +102,25 @@ const AIMarker = () => {
   const [lastRequestTime, setLastRequestTime] = useState(0);
   const [dailyRequests, setDailyRequests] = useState(0);
   const [lastRequestDate, setLastRequestDate] = useState(new Date().toDateString());
-  const [selectedModel, setSelectedModel] = useState("google/gemini-2.5-pro-exp-03-25");
-
-  // ======== EFFECTS & INITIALIZATION ========
-  // Initialize OpenAI client
-  useEffect(() => {
-    const apiKey = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY;
-    if (!apiKey) {
-      console.error('OpenRouter API key not configured');
-      setError({
-        type: 'config',
-        message: 'API key not configured. Please contact support.'
-      });
-      return;
-    }
-
-    try {
-      const client = new OpenAI({
-        apiKey: apiKey,
-        baseURL: 'https://openrouter.ai/api/v1',
-        dangerouslyAllowBrowser: true,
-        defaultHeaders: {
-          'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : '',
-          'X-Title': 'GCSE AI Marker'
-        }
-      });
-      
-      setOpenai(client);
-    } catch (error) {
-      console.error('OpenAI client initialization failed:', error);
-      setError({
-        type: 'initialization',
-        message: 'AI service initialization failed. Please refresh the page.'
-      });
-    }
-  }, []);
-  
-  // Load saved form data from session storage
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const savedForm = sessionStorage.getItem('aiMarkerFormData');
-        if (savedForm) {
-          const formData = JSON.parse(savedForm);
-          setQuestion(formData.question || "");
-          setAnswer(formData.answer || "");
-          setSubject(formData.subject || "english");
-          setExamBoard(formData.examBoard || "aqa");
-          setUserType(formData.userType || "student");
-          setMarkScheme(formData.markScheme || "");
-          setTotalMarks(formData.totalMarks || "");
-          // Don't restore selected model to prevent rate limit issues
-          
-          // Check if we have saved subjects
-          if (formData.customSubjects && formData.customSubjects.length > 0) {
-            setCustomSubjects(formData.customSubjects);
-            setAllSubjects([...SUBJECTS, ...formData.customSubjects]);
-          }
-          
-          setSuccess({
-            message: "Previous work restored from your last session"
-          });
-          setTimeout(() => {
-            setSuccess(null);
-          }, 3000);
-        }
-      } catch (error) {
-        console.error("Error loading saved form data:", error);
-      }
-    }
-  }, []);
-  
-  // Save form data to session storage when it changes
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const formData = {
-        question,
-        answer,
-        subject,
-        examBoard,
-        userType,
-        markScheme,
-        totalMarks,
-        customSubjects
-      };
-      
-      try {
-        sessionStorage.setItem('aiMarkerFormData', JSON.stringify(formData));
-      } catch (error) {
-        console.error("Error saving form data:", error);
-      }
-    }
-  }, [question, answer, subject, examBoard, userType, markScheme, totalMarks, customSubjects]);
-
-  // Add keyboard shortcuts for common actions
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      // Ctrl/Cmd + Enter to submit
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        if (!loading && answer) {
-          handleSubmitForMarking();
-          setShortcutFeedback("Submitted for marking");
-        }
-        e.preventDefault();
-      }
-      
-      // Ctrl/Cmd + Shift + R to reset form
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'r') {
-        resetForm();
-        setShortcutFeedback("Form reset");
-        e.preventDefault();
-      }
-      
-      // Ctrl/Cmd + . to toggle advanced options
-      if ((e.ctrlKey || e.metaKey) && e.key === '.') {
-        setShowAdvancedOptions(prev => !prev);
-        setShortcutFeedback("Toggled advanced options");
-        e.preventDefault();
-      }
-      
-      // Ctrl/Cmd + / to toggle help guide
-      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
-        setShowGuide(prev => !prev);
-        setShortcutFeedback("Toggled help guide");
-        e.preventDefault();
-      }
-      
-      // Clear shortcut feedback after 2 seconds
-      setTimeout(() => {
-        setShortcutFeedback(null);
-      }, 2000);
-    };
-    
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [loading, answer, handleSubmitForMarking, resetForm]);
-
-  // Focus custom subject input when adding a new subject
-  useEffect(() => {
-    if (isAddingSubject && customSubjectInputRef.current) {
-      customSubjectInputRef.current.focus();
-    }
-  }, [isAddingSubject]);
-
-  // Detect subject from answer text
-  useEffect(() => {
-    if (!answer || answer.length < 20) return;
-    
-    const detectSubjectFromText = () => {
-      const answerLower = answer.toLowerCase();
-      
-      for (const [subj, keywords] of Object.entries(subjectKeywords)) {
-        if (keywords.some(keyword => answerLower.includes(keyword))) {
-          return subj;
-        }
-      }
-      return null;
-    };
-    
-    const detected = detectSubjectFromText();
-    if (detected && detected !== subject) {
-      setSubject(detected);
-      setDetectedSubject(detected);
-      setSuccess({
-        message: `Subject automatically detected as ${allSubjects.find(s => s.value === detected)?.label}`
-      });
-      
-      // Auto-clear success message after 3 seconds
-      setTimeout(() => {
-        setSuccess(null);
-      }, 3000);
-    }
-  }, [answer, subject, allSubjects]);
+  const [selectedModel, setSelectedModel] = useState("google/gemini-2.5-pro-exp-03-25");y7=
 
   // ======== HELPER FUNCTIONS ========
+  // Reset form
+  const resetForm = () => {
+    setQuestion("");
+    setAnswer("");
+    setFeedback("");
+    setGrade("");
+    setError(null);
+    setSuccess(null);
+    setImage(null);
+    setMarkScheme("");
+    setActiveTab("answer");
+    setTotalMarks("");
+    setTextExtract("");
+    setRelevantMaterial("");
+  };
+  
   // Process image upload
   const processImageUpload = useCallback(async (imageFile) => {
     if (!imageFile || !openai) return null;
@@ -339,47 +186,9 @@ const AIMarker = () => {
     }
   }, [openai]);
 
-  // Reset form
-  const resetForm = () => {
-    setQuestion("");
-    setAnswer("");
-    setFeedback("");
-    setGrade("");
-    setError(null);
-    setSuccess(null);
-    setImage(null);
-    setMarkScheme("");
-    setActiveTab("answer");
-    setTotalMarks("");
-  };
-  
-  // Add custom subject
-  const addCustomSubject = () => {
-    if (customSubject.trim() === "") return;
-    
-    const newSubject = {
-      value: customSubject.toLowerCase().replace(/\s+/g, ''),
-      label: customSubject.trim()
-    };
-    
-    setCustomSubjects([...customSubjects, newSubject]);
-    setAllSubjects([...allSubjects, newSubject]);
-    setSubject(newSubject.value);
-    setCustomSubject("");
-    setIsAddingSubject(false);
-    
-    setSuccess({
-      message: `Added new subject: ${newSubject.label}`
-    });
-    
-    setTimeout(() => {
-      setSuccess(null);
-    }, 3000);
-  };
-
   // ======== MAIN FUNCTIONS ========
   // Submit handler
-  const handleSubmitForMarking = async () => {
+  const handleSubmitForMarking = useCallback(async () => {
     // Clear previous feedback and errors
     setFeedback("");
     setGrade("");
@@ -450,6 +259,8 @@ const AIMarker = () => {
       let content = `Please mark this ${examBoard.toUpperCase()} ${subject} GCSE response:\n\nQuestion: ${question}\n\nAnswer: ${answer}`;
       if (markScheme) content += `\n\nMark Scheme: ${markScheme}`;
       if (totalMarks) content += `\n\nMarks Available: ${totalMarks}`;
+      if (textExtract) content += `\n\nText Extract: ${textExtract}`;
+      if (relevantMaterial) content += `\n\nRelevant Material: ${relevantMaterial}`;
        
       // Get AI feedback
       const completion = await openai.chat.completions.create({
@@ -535,6 +346,206 @@ const AIMarker = () => {
     } finally {
       setLoading(false);
     }
+  }, [answer, examBoard, image, lastRequestDate, lastRequestTime, dailyRequests, markScheme, openai, processImageUpload, question, selectedModel, subject, textExtract, relevantMaterial, totalMarks, userType]);
+
+  // ======== EFFECTS & INITIALIZATION ========
+  // Initialize OpenAI client
+  useEffect(() => {
+    const apiKey = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY;
+    if (!apiKey) {
+      console.error('OpenRouter API key not configured');
+      setError({
+        type: 'config',
+        message: 'API key not configured. Please contact support.'
+      });
+      return;
+    }
+
+    try {
+      const client = new OpenAI({
+        apiKey: apiKey,
+        baseURL: 'https://openrouter.ai/api/v1',
+        dangerouslyAllowBrowser: true,
+        defaultHeaders: {
+          'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : '',
+          'X-Title': 'GCSE AI Marker'
+        }
+      });
+      
+      setOpenai(client);
+    } catch (error) {
+      console.error('OpenAI client initialization failed:', error);
+      setError({
+        type: 'initialization',
+        message: 'AI service initialization failed. Please refresh the page.'
+      });
+    }
+  }, []);
+  
+  // Load saved form data from session storage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const savedForm = sessionStorage.getItem('aiMarkerFormData');
+        if (savedForm) {
+          const formData = JSON.parse(savedForm);
+          setQuestion(formData.question || "");
+          setAnswer(formData.answer || "");
+          setSubject(formData.subject || "english");
+          setExamBoard(formData.examBoard || "aqa");
+          setUserType(formData.userType || "student");
+          setMarkScheme(formData.markScheme || "");
+          setTotalMarks(formData.totalMarks || "");
+          setTextExtract(formData.textExtract || "");
+          setRelevantMaterial(formData.relevantMaterial || "");
+          // Don't restore selected model to prevent rate limit issues
+          
+          // Check if we have saved subjects
+          if (formData.customSubjects && formData.customSubjects.length > 0) {
+            setCustomSubjects(formData.customSubjects);
+            setAllSubjects([...SUBJECTS, ...formData.customSubjects]);
+          }
+          
+          setSuccess({
+            message: "Previous work restored from your last session"
+          });
+          setTimeout(() => {
+            setSuccess(null);
+          }, 3000);
+        }
+      } catch (error) {
+        console.error("Error loading saved form data:", error);
+      }
+    }
+  }, []);
+  
+  // Save form data to session storage when it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const formData = {
+        question,
+        answer,
+        subject,
+        examBoard,
+        userType,
+        markScheme,
+        totalMarks,
+        textExtract,
+        relevantMaterial,
+        customSubjects
+      };
+      
+      try {
+        sessionStorage.setItem('aiMarkerFormData', JSON.stringify(formData));
+      } catch (error) {
+        console.error("Error saving form data:", error);
+      }
+    }
+  }, [question, answer, subject, examBoard, userType, markScheme, totalMarks, textExtract, relevantMaterial, customSubjects]);
+
+  // Add keyboard shortcuts for common actions
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ctrl/Cmd + Enter to submit
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        if (!loading && answer) {
+          handleSubmitForMarking();
+          setShortcutFeedback("Submitted for marking");
+        }
+        e.preventDefault();
+      }
+      
+      // Ctrl/Cmd + Shift + R to reset form
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'r') {
+        resetForm();
+        setShortcutFeedback("Form reset");
+        e.preventDefault();
+      }
+      
+      // Ctrl/Cmd + . to toggle advanced options
+      if ((e.ctrlKey || e.metaKey) && e.key === '.') {
+        setShowAdvancedOptions(prev => !prev);
+        setShortcutFeedback("Toggled advanced options");
+        e.preventDefault();
+      }
+      
+      // Ctrl/Cmd + / to toggle help guide
+      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+        setShowGuide(prev => !prev);
+        setShortcutFeedback("Toggled help guide");
+        e.preventDefault();
+      }
+      
+      // Clear shortcut feedback after 2 seconds
+      setTimeout(() => {
+        setShortcutFeedback(null);
+      }, 2000);
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [loading, answer, handleSubmitForMarking, resetForm]);
+
+  // Focus custom subject input when adding a new subject
+  useEffect(() => {
+    if (isAddingSubject && customSubjectInputRef.current) {
+      customSubjectInputRef.current.focus();
+    }
+  }, [isAddingSubject]);
+
+  // Detect subject from answer text
+  useEffect(() => {
+    if (!answer || answer.length < 20) return;
+    
+    const detectSubjectFromText = () => {
+      const answerLower = answer.toLowerCase();
+      
+      for (const [subj, keywords] of Object.entries(subjectKeywords)) {
+        if (keywords.some(keyword => answerLower.includes(keyword))) {
+          return subj;
+        }
+      }
+      return null;
+    };
+    
+    const detected = detectSubjectFromText();
+    if (detected && detected !== subject) {
+      setSubject(detected);
+      setDetectedSubject(detected);
+      setSuccess({
+        message: `Subject automatically detected as ${allSubjects.find(s => s.value === detected)?.label}`
+      });
+      
+      // Auto-clear success message after 3 seconds
+      setTimeout(() => {
+        setSuccess(null);
+      }, 3000);
+    }
+  }, [answer, subject, allSubjects]);
+
+  // ======== HELPER FUNCTIONS ========
+  // Add custom subject
+  const addCustomSubject = () => {
+    if (customSubject.trim() === "") return;
+    
+    const newSubject = {
+      value: customSubject.toLowerCase().replace(/\s+/g, ''),
+      label: customSubject.trim()
+    };
+    
+    setCustomSubjects([...customSubjects, newSubject]);
+    setAllSubjects([...allSubjects, newSubject]);
+    setSubject(newSubject.value);
+    setCustomSubject("");
+    setIsAddingSubject(false);
+    
+    setSuccess({
+      message: `Added new subject: ${newSubject.label}`
+    });
+    
+    setTimeout(() => {
+      setSuccess(null);
+    }, 3000);
   };
 
   // Handle image file selection
@@ -881,39 +892,39 @@ const AIMarker = () => {
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Student Answer</label>
                 <Textarea
-                  value={answer}
+                  onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
+                  value={answer}t-sm font-medium text-gray-700 dark:text-gray-300"
                   onChange={(e) => setAnswer(e.target.value)}
-                  className="min-h-[200px] focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
-                  placeholder="Type or paste your answer here..."
+                  className="min-h-[200px] focus:ring-2 focus:ring-gray-500 focus:border-gray-500" <span className="flex items-center">
+                  placeholder="Type or paste your answer here..."n size={16} className="mr-1" /> : <ChevronRight size={16} className="mr-1" />}
                 />
               </div>
-
+variant="outline" className="text-xs">
               {/* Advanced Options - Now properly collapsible */}
               <div className="bg-gray-50 dark:bg-gray-900/30 p-4 rounded-lg border border-gray-200 dark:border-gray-800">
                 <button 
                   onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
-                  className="w-full flex items-center justify-between mb-3 text-sm font-medium text-gray-700 dark:text-gray-300"
-                >
+                  className="w-full flex items-center justify-between mb-3 text-sm font-medium text-gray-700 dark:text-gray-300"<AnimatePresence>
+                >tions && (
                   <span className="flex items-center">
-                    {showAdvancedOptions ? <ChevronDown size={16} className="mr-1" /> : <ChevronRight size={16} className="mr-1" />}
-                    Advanced Options
+                    {showAdvancedOptions ? <ChevronDown size={16} className="mr-1" /> : <ChevronRight size={16} className="mr-1" />}{ opacity: 0, height: 0 }}
+                    Advanced Optionso" }}
                   </span>
                   <Badge variant="outline" className="text-xs">
                     {showAdvancedOptions ? "Hide" : "Show"}
                   </Badge>
-                </button>
-                
+                </button> <div className="space-y-2">
+                ext-xs font-medium text-gray-600 dark:text-gray-400">
                 <AnimatePresence>
                   {showAdvancedOptions && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
+                    <motion.diva
+                      initial={{ opacity: 0, height: 0 }}markScheme}
+                      animate={{ opacity: 1, height: "auto" }}etMarkScheme(e.target.value)}
+                      exit={{ opacity: 0, height: 0 }}g-gray-500 focus:border-gray-500"
                       transition={{ duration: 0.2 }}
                       className="space-y-4"
-                    >
-                      <div className="space-y-2">
-                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    >v>
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400"><div className="space-y-2">
                           Mark Scheme (optional)
                         </label>
                         <Textarea
@@ -921,6 +932,30 @@ const AIMarker = () => {
                           onChange={(e) => setMarkScheme(e.target.value)}
                           className="min-h-[100px] focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
                           placeholder="Enter marking points or assessment criteria..."
+                        />
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
+                          Text Extract (optional)
+                        </label>
+                        <Textarea
+                          value={textExtract}
+                          onChange={(e) => setTextExtract(e.target.value)}
+                          className="min-h-[100px] focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
+                          placeholder="Paste relevant text extract here..."
+                        />
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
+                          Relevant Material (optional)
+                        </label>
+                        <Textarea
+                          value={relevantMaterial}
+                          onChange={(e) => setRelevantMaterial(e.target.value)}
+                          className="min-h-[100px] focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
+                          placeholder="Enter any relevant material or notes here..."
                         />
                       </div>
                       
@@ -1088,7 +1123,7 @@ const AIMarker = () => {
             size="sm"
             className="text-xs text-gray-600 dark:text-gray-400"
             onClick={() => window.open('https://www.gov.uk/government/publications/gcse-9-to-1-qualification-level-conditions', '_blank')}
-          >
+          ></Button>
             <ExternalLink size={12} className="mr-1" />
             GCSE Qualification Standards
           </Button>
