@@ -1,7 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { BookOpen, Github, HelpCircle, Home } from "lucide-react";
-import { ThemeToggle } from "./theme-toggle";
-import { Button } from "./ui/button";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
+
+export function Header() {
+  return (
+    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="container flex h-14 items-center">
+        <div className="mr-4 flex">
+          <Link href="/" className="mr-6 flex items-center space-x-2">
+            <span className="font-bold">GCSE AI Marker</span>
+          </Link>
+        </div>
+      </div>
+    </header>
+  );
+}
