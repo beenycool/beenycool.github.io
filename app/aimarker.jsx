@@ -102,7 +102,7 @@ const AIMarker = () => {
   const [lastRequestTime, setLastRequestTime] = useState(0);
   const [dailyRequests, setDailyRequests] = useState(0);
   const [lastRequestDate, setLastRequestDate] = useState(new Date().toDateString());
-  const [selectedModel, setSelectedModel] = useState("google/gemini-2.5-pro-exp-03-25");y7=
+  const [selectedModel, setSelectedModel] = useState("google/gemini-2.5-pro-exp-03-25");
 
   // ======== HELPER FUNCTIONS ========
   // Reset form
@@ -893,119 +893,107 @@ const AIMarker = () => {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Student Answer</label>
                 <Textarea
                   onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
-                  value={answer}t-sm font-medium text-gray-700 dark:text-gray-300"
+                  value={answer}
                   onChange={(e) => setAnswer(e.target.value)}
-                  className="min-h-[200px] focus:ring-2 focus:ring-gray-500 focus:border-gray-500" <span className="flex items-center">
-                  placeholder="Type or paste your answer here..."n size={16} className="mr-1" /> : <ChevronRight size={16} className="mr-1" />}
+                  className="min-h-[200px] focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
+                  placeholder="Type or paste your answer here..."
                 />
               </div>
-variant="outline" className="text-xs">
+
               {/* Advanced Options - Now properly collapsible */}
               <div className="bg-gray-50 dark:bg-gray-900/30 p-4 rounded-lg border border-gray-200 dark:border-gray-800">
                 <button 
                   onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
-                  className="w-full flex items-center justify-between mb-3 text-sm font-medium text-gray-700 dark:text-gray-300"<AnimatePresence>
-                >tions && (
+                  className="w-full flex items-center justify-between mb-3 text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
                   <span className="flex items-center">
-                    {showAdvancedOptions ? <ChevronDown size={16} className="mr-1" /> : <ChevronRight size={16} className="mr-1" />}{ opacity: 0, height: 0 }}
-                    Advanced Optionso" }}
+                    {showAdvancedOptions ? <ChevronDown size={16} className="mr-1" /> : <ChevronRight size={16} className="mr-1" />}
+                    Advanced Options
                   </span>
                   <Badge variant="outline" className="text-xs">
                     {showAdvancedOptions ? "Hide" : "Show"}
                   </Badge>
-                </button> <div className="space-y-2">
-                ext-xs font-medium text-gray-600 dark:text-gray-400">
-                <AnimatePresence>
-                  {showAdvancedOptions && (
-                    <motion.diva
-                      initial={{ opacity: 0, height: 0 }}markScheme}
-                      animate={{ opacity: 1, height: "auto" }}etMarkScheme(e.target.value)}
-                      exit={{ opacity: 0, height: 0 }}g-gray-500 focus:border-gray-500"
-                      transition={{ duration: 0.2 }}
-                      className="space-y-4"
-                    >v>
-                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400"><div className="space-y-2">
-                          Mark Scheme (optional)
-                        </label>
-                        <Textarea
-                          value={markScheme}
-                          onChange={(e) => setMarkScheme(e.target.value)}
-                          className="min-h-[100px] focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
-                          placeholder="Enter marking points or assessment criteria..."
-                        />
+                </button>
+                <div className="space-y-2">
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    Mark Scheme (optional)
+                  </label>
+                  <Textarea
+                    value={markScheme}
+                    onChange={(e) => setMarkScheme(e.target.value)}
+                    className="min-h-[100px] focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
+                    placeholder="Enter marking points or assessment criteria..."
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    Text Extract (optional)
+                  </label>
+                  <Textarea
+                    value={textExtract}
+                    onChange={(e) => setTextExtract(e.target.value)}
+                    className="min-h-[100px] focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
+                    placeholder="Paste relevant text extract here..."
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    Relevant Material (optional)
+                  </label>
+                  <Textarea
+                    value={relevantMaterial}
+                    onChange={(e) => setRelevantMaterial(e.target.value)}
+                    className="min-h-[100px] focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
+                    placeholder="Enter any relevant material or notes here..."
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+                    Upload Handwritten Answer
+                  </label>
+                  <div className="space-y-2">
+                    <label className="flex items-center justify-center w-full h-24 px-4 transition bg-white border-2 border-gray-300 border-dashed rounded-md appearance-none cursor-pointer hover:border-gray-500 focus:outline-none dark:bg-gray-800 dark:border-gray-700 dark:hover:border-gray-600">
+                      <div className="flex flex-col items-center space-y-2">
+                        <Upload className="w-6 h-6 text-gray-400" />
+                        <span className="font-medium text-sm text-gray-600 dark:text-gray-400">
+                          {image ? image.name : "Drop files or click to upload"}
+                        </span>
+                        {image && (
+                          <span className="text-xs text-green-600 dark:text-green-400">
+                            ({(image.size / 1024).toFixed(1)} KB)
+                          </span>
+                        )}
                       </div>
-                      
-                      <div className="space-y-2">
-                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
-                          Text Extract (optional)
-                        </label>
-                        <Textarea
-                          value={textExtract}
-                          onChange={(e) => setTextExtract(e.target.value)}
-                          className="min-h-[100px] focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
-                          placeholder="Paste relevant text extract here..."
-                        />
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
-                          Relevant Material (optional)
-                        </label>
-                        <Textarea
-                          value={relevantMaterial}
-                          onChange={(e) => setRelevantMaterial(e.target.value)}
-                          className="min-h-[100px] focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
-                          placeholder="Enter any relevant material or notes here..."
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
-                          Upload Handwritten Answer
-                        </label>
-                        <div className="space-y-2">
-                          <label className="flex items-center justify-center w-full h-24 px-4 transition bg-white border-2 border-gray-300 border-dashed rounded-md appearance-none cursor-pointer hover:border-gray-500 focus:outline-none dark:bg-gray-800 dark:border-gray-700 dark:hover:border-gray-600">
-                            <div className="flex flex-col items-center space-y-2">
-                              <Upload className="w-6 h-6 text-gray-400" />
-                              <span className="font-medium text-sm text-gray-600 dark:text-gray-400">
-                                {image ? image.name : "Drop files or click to upload"}
-                              </span>
-                              {image && (
-                                <span className="text-xs text-green-600 dark:text-green-400">
-                                  ({(image.size / 1024).toFixed(1)} KB)
-                                </span>
-                              )}
-                            </div>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              onChange={handleImageChange}
-                              className="hidden"
-                            />
-                          </label>
-                          
-                          {image && (
-                            <Button 
-                              onClick={handleProcessImage}
-                              variant="secondary"
-                              className="w-full"
-                              disabled={loading}
-                            >
-                              {loading ? (
-                                <>
-                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                  Converting Image...
-                                </>
-                              ) : (
-                                <>Process Image</>
-                              )}
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageChange}
+                        className="hidden"
+                      />
+                    </label>
+                    
+                    {image && (
+                      <Button 
+                        onClick={handleProcessImage}
+                        variant="secondary"
+                        className="w-full"
+                        disabled={loading}
+                      >
+                        {loading ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Converting Image...
+                          </>
+                        ) : (
+                          <>Process Image</>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {/* Action Buttons */}
@@ -1123,7 +1111,7 @@ variant="outline" className="text-xs">
             size="sm"
             className="text-xs text-gray-600 dark:text-gray-400"
             onClick={() => window.open('https://www.gov.uk/government/publications/gcse-9-to-1-qualification-level-conditions', '_blank')}
-          ></Button>
+          >
             <ExternalLink size={12} className="mr-1" />
             GCSE Qualification Standards
           </Button>
