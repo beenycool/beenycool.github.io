@@ -16,7 +16,6 @@ export default function Home() {
         >
           View on GitHub
         </a>
-        <ThemeToggle />
       </footer>
     </>
   );

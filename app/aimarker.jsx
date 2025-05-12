@@ -85,6 +85,9 @@ const AIMarker = () => {
   const [totalMarks, setTotalMarks] = useState("");
   const [textExtract, setTextExtract] = useState("");
   const [relevantMaterial, setRelevantMaterial] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
+  const [modelThinking, setModelThinking] = useState("");
   
   // UI state
   const [showGuide, setShowGuide] = useState(false);
@@ -194,6 +197,7 @@ const AIMarker = () => {
     setGrade("");
     setError(null);
     setSuccess(null);
+    setModelThinking("");
     
     // Validate inputs
     if (!answer) {
@@ -302,22 +306,47 @@ const AIMarker = () => {
         max_tokens: 4000,
         top_p: 1,
         frequency_penalty: 0,
-        presence_penalty: 0
+        presence_penalty: 0,
+        stream: selectedModel === "deepseek/deepseek-r1:free" // Only stream for thinking model
       });
 
-      // Process response
-      if (completion.choices && completion.choices[0].message.content) {
-        const content = completion.choices[0].message.content;
-        setFeedback(content);
+      // Process response based on whether it's streamed or not
+      if (selectedModel === "deepseek/deepseek-r1:free") {
+        let fullResponse = "";
+        let thinking = "";
         
-        const gradeMatch = content.match(/grade\s*:?\s*([1-9])/i);
+        for await (const chunk of completion) {
+          const content = chunk.choices[0]?.delta?.content || "";
+          fullResponse += content;
+          
+          // Show thinking in real-time for the thinking model
+          if (content) {
+            thinking += content;
+            setModelThinking(thinking);
+          }
+        }
+        
+        setFeedback(fullResponse);
+          
+        const gradeMatch = fullResponse.match(/grade\s*:?\s*([1-9])/i);
         if (gradeMatch && gradeMatch[1]) {
           setGrade(gradeMatch[1]);
         }
-        
-        // Automatically switch to feedback tab
-        setActiveTab("feedback");
+      } else {
+        // Regular non-streaming response handling
+        if (completion.choices && completion.choices[0].message.content) {
+          const content = completion.choices[0].message.content;
+          setFeedback(content);
+          
+          const gradeMatch = content.match(/grade\s*:?\s*([1-9])/i);
+          if (gradeMatch && gradeMatch[1]) {
+            setGrade(gradeMatch[1]);
+          }
+        }
       }
+      
+      // Automatically switch to feedback tab
+      setActiveTab("feedback");
       
       setSuccess({
         message: "Answer marked successfully!"
@@ -351,19 +380,28 @@ const AIMarker = () => {
   // ======== EFFECTS & INITIALIZATION ========
   // Initialize OpenAI client
   useEffect(() => {
-    const apiKey = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY;
-    if (!apiKey) {
+    // Try to load stored API key from localStorage
+    const storedApiKey = localStorage.getItem('openrouter_api_key');
+    if (storedApiKey) {
+      setApiKey(storedApiKey);
+    }
+    
+    // Use the stored or environment API key
+    const keyToUse = storedApiKey || process.env.NEXT_PUBLIC_OPENROUTER_API_KEY;
+    
+    if (!keyToUse) {
       console.error('OpenRouter API key not configured');
       setError({
         type: 'config',
-        message: 'API key not configured. Please contact support.'
+        message: 'API key not configured. Please set your OpenRouter API key.'
       });
+      setShowApiKeyInput(true);
       return;
     }
 
     try {
       const client = new OpenAI({
-        apiKey: apiKey,
+        apiKey: keyToUse,
         baseURL: 'https://openrouter.ai/api/v1',
         dangerouslyAllowBrowser: true,
         defaultHeaders: {
@@ -380,7 +418,7 @@ const AIMarker = () => {
         message: 'AI service initialization failed. Please refresh the page.'
       });
     }
-  }, []);
+  }, [apiKey]);
   
   // Load saved form data from session storage
   useEffect(() => {
@@ -573,6 +611,45 @@ const AIMarker = () => {
     }
   };
 
+  // Function to save API key
+  const saveApiKey = () => {
+    if (apiKey.trim()) {
+      localStorage.setItem('openrouter_api_key', apiKey);
+      setShowApiKeyInput(false);
+      setSuccess({
+        message: "API key saved successfully! The page will now use your API key."
+      });
+      setTimeout(() => {
+        setSuccess(null);
+      }, 3000);
+    } else {
+      setError({
+        type: 'validation',
+        message: 'Please enter a valid API key'
+      });
+    }
+  };
+
+  // Toggle advanced options
+  const toggleAdvancedOptions = () => {
+    setShowAdvancedOptions(!showAdvancedOptions);
+  };
+
+  // Hide guide when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      // Hide the guide when clicking anywhere outside the guide card
+      if (showGuide && !event.target.closest('.guide-card')) {
+        setShowGuide(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showGuide]);
+
   // ======== JSX / UI COMPONENTS ========
   // Quick guide dropdown content
   const QuickGuide = () => {
@@ -717,7 +794,11 @@ const AIMarker = () => {
             </TooltipProvider>
           </div>
           
-          {showGuide && <QuickGuide />}
+          {showGuide && (
+            <div className="guide-card">
+              <QuickGuide />
+            </div>
+          )}
           
           {/* Subject Selector as Dropdown with Add Custom Option */}
           <div className="flex flex-wrap gap-2 pt-2">
@@ -748,7 +829,7 @@ const AIMarker = () => {
                 
                 {/* Model Selector */}
                 <Select value={selectedModel} onValueChange={setSelectedModel}>
-                  <SelectTrigger className="w-[230px] bg-white dark:bg-gray-900">
+                  <SelectTrigger className="w-[280px] bg-white dark:bg-gray-900">
                     <div className="flex items-center">
                       <Settings className="h-3.5 w-3.5 mr-1.5 opacity-70" />
                       <SelectValue placeholder="Select AI model" />
@@ -765,6 +846,25 @@ const AIMarker = () => {
                     ))}
                   </SelectContent>
                 </Select>
+
+                {/* Settings Button for API Key */}
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button 
+                        variant="outline" 
+                        size="icon"
+                        onClick={() => setShowApiKeyInput(!showApiKeyInput)}
+                        className="h-9 w-9 rounded-full p-0 ml-1"
+                      >
+                        <Settings size={16} className="text-gray-600 dark:text-gray-400" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Set OpenRouter API Key</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </>
             ) : (
               <div className="flex gap-2">
@@ -805,9 +905,33 @@ const AIMarker = () => {
             )}
           </div>
           
-          <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-            Try to juggle the models to see what suits you best!
-          </div>
+          {/* API Key Input Modal */}
+          <AnimatePresence>
+            {showApiKeyInput && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="mt-4 p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-md"
+              >
+                <h3 className="text-sm font-medium mb-2">Set Your OpenRouter API Key</h3>
+                <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+                  You can get a free API key from <a href="https://openrouter.ai" target="_blank" rel="noopener noreferrer" className="underline">OpenRouter</a>.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder="Enter your OpenRouter API key"
+                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
+                  />
+                  <Button onClick={saveApiKey}>Save</Button>
+                  <Button variant="outline" onClick={() => setShowApiKeyInput(false)}>Cancel</Button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </CardHeader>
 
         <CardContent className="p-4">
@@ -892,7 +1016,6 @@ const AIMarker = () => {
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Student Answer</label>
                 <Textarea
-                  onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
                   value={answer}
                   onChange={(e) => setAnswer(e.target.value)}
                   className="min-h-[200px] focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
@@ -914,86 +1037,101 @@ const AIMarker = () => {
                     {showAdvancedOptions ? "Hide" : "Show"}
                   </Badge>
                 </button>
-                <div className="space-y-2">
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
-                    Mark Scheme (optional)
-                  </label>
-                  <Textarea
-                    value={markScheme}
-                    onChange={(e) => setMarkScheme(e.target.value)}
-                    className="min-h-[100px] focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
-                    placeholder="Enter marking points or assessment criteria..."
-                  />
-                </div>
                 
-                <div className="space-y-2">
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
-                    Text Extract (optional)
-                  </label>
-                  <Textarea
-                    value={textExtract}
-                    onChange={(e) => setTextExtract(e.target.value)}
-                    className="min-h-[100px] focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
-                    placeholder="Paste relevant text extract here..."
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
-                    Relevant Material (optional)
-                  </label>
-                  <Textarea
-                    value={relevantMaterial}
-                    onChange={(e) => setRelevantMaterial(e.target.value)}
-                    className="min-h-[100px] focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
-                    placeholder="Enter any relevant material or notes here..."
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
-                    Upload Handwritten Answer
-                  </label>
-                  <div className="space-y-2">
-                    <label className="flex items-center justify-center w-full h-24 px-4 transition bg-white border-2 border-gray-300 border-dashed rounded-md appearance-none cursor-pointer hover:border-gray-500 focus:outline-none dark:bg-gray-800 dark:border-gray-700 dark:hover:border-gray-600">
-                      <div className="flex flex-col items-center space-y-2">
-                        <Upload className="w-6 h-6 text-gray-400" />
-                        <span className="font-medium text-sm text-gray-600 dark:text-gray-400">
-                          {image ? image.name : "Drop files or click to upload"}
-                        </span>
-                        {image && (
-                          <span className="text-xs text-green-600 dark:text-green-400">
-                            ({(image.size / 1024).toFixed(1)} KB)
-                          </span>
-                        )}
+                <AnimatePresence>
+                  {showAdvancedOptions && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
+                            Mark Scheme (optional)
+                          </label>
+                          <Textarea
+                            value={markScheme}
+                            onChange={(e) => setMarkScheme(e.target.value)}
+                            className="min-h-[100px] focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
+                            placeholder="Enter marking points or assessment criteria..."
+                          />
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
+                            Text Extract (optional)
+                          </label>
+                          <Textarea
+                            value={textExtract}
+                            onChange={(e) => setTextExtract(e.target.value)}
+                            className="min-h-[100px] focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
+                            placeholder="Paste relevant text extract here..."
+                          />
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
+                            Relevant Material (optional)
+                          </label>
+                          <Textarea
+                            value={relevantMaterial}
+                            onChange={(e) => setRelevantMaterial(e.target.value)}
+                            className="min-h-[100px] focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
+                            placeholder="Enter any relevant material or notes here..."
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+                            Upload Handwritten Answer
+                          </label>
+                          <div className="space-y-2">
+                            <label className="flex items-center justify-center w-full h-24 px-4 transition bg-white border-2 border-gray-300 border-dashed rounded-md appearance-none cursor-pointer hover:border-gray-500 focus:outline-none dark:bg-gray-800 dark:border-gray-700 dark:hover:border-gray-600">
+                              <div className="flex flex-col items-center space-y-2">
+                                <Upload className="w-6 h-6 text-gray-400" />
+                                <span className="font-medium text-sm text-gray-600 dark:text-gray-400">
+                                  {image ? image.name : "Drop files or click to upload"}
+                                </span>
+                                {image && (
+                                  <span className="text-xs text-green-600 dark:text-green-400">
+                                    ({(image.size / 1024).toFixed(1)} KB)
+                                  </span>
+                                )}
+                              </div>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={handleImageChange}
+                                className="hidden"
+                              />
+                            </label>
+                            
+                            {image && (
+                              <Button 
+                                onClick={handleProcessImage}
+                                variant="secondary"
+                                className="w-full"
+                                disabled={loading}
+                              >
+                                {loading ? (
+                                  <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Converting Image...
+                                  </>
+                                ) : (
+                                  <>Process Image</>
+                                )}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleImageChange}
-                        className="hidden"
-                      />
-                    </label>
-                    
-                    {image && (
-                      <Button 
-                        onClick={handleProcessImage}
-                        variant="secondary"
-                        className="w-full"
-                        disabled={loading}
-                      >
-                        {loading ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Converting Image...
-                          </>
-                        ) : (
-                          <>Process Image</>
-                        )}
-                      </Button>
-                    )}
-                  </div>
-                </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
               {/* Action Buttons */}
@@ -1029,71 +1167,95 @@ const AIMarker = () => {
             </TabsContent>
             
             <TabsContent value="feedback" className="space-y-4 mt-0">
-              {feedback ? (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.5 }}
-                  className="p-4 bg-white dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm"
-                >
-                  <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-900/30 rounded-md border border-gray-200 dark:border-gray-800 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div>
-                        <span className="font-medium text-gray-700 dark:text-gray-300">Grade:</span>
-                        <span className="text-2xl font-bold text-gray-700 dark:text-gray-400 ml-2">{grade}</span>
+              {loading ? (
+                <div className="flex items-center justify-center p-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
+                  <span className="ml-3 text-lg text-gray-600 dark:text-gray-400">
+                    Marking your answer...
+                  </span>
+                </div>
+              ) : feedback ? (
+                <>
+                  {/* Model Thinking Box */}
+                  {selectedModel === "deepseek/deepseek-r1:free" && modelThinking && (
+                    <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-md">
+                      <div className="flex items-center mb-2">
+                        <div className="text-sm font-medium text-gray-700 dark:text-gray-300">Model Thinking Process</div>
+                        <Badge variant="outline" className="ml-2 px-1.5 py-0 text-xs">Reasoning</Badge>
                       </div>
-                      {totalMarks && (
-                        <div className="border-l border-gray-300 dark:border-gray-700 pl-4">
-                          <span className="font-medium text-gray-700 dark:text-gray-300">Total Marks:</span>
-                          <span className="text-xl font-bold text-gray-700 dark:text-gray-400 ml-2">{totalMarks}</span>
-                        </div>
-                      )}
+                      <div className="max-h-48 overflow-y-auto text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap">
+                        {modelThinking}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="relative">
+                    <div className="flex justify-between items-center mb-3">
+                      <div className="flex items-center gap-2">
+                        {grade && (
+                          <div className="inline-flex items-center justify-center h-10 w-10 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-bold rounded-full">
+                            {grade}
+                          </div>
+                        )}
+                        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
+                          Feedback
+                        </h3>
+                      </div>
+                      
+                      <div className="flex items-center gap-1.5">
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => copyFeedbackToClipboard(feedback)}
+                                className="h-8 w-8 p-0 rounded-full"
+                              >
+                                <Share2 className="h-4 w-4 text-gray-600 dark:text-gray-400" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Copy to clipboard</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={saveFeedbackAsPdf}
+                                className="h-8 w-8 p-0 rounded-full"
+                              >
+                                <Save className="h-4 w-4 text-gray-600 dark:text-gray-400" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Save as PDF</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                    </div>
+                    
+                    <div className="prose prose-sm dark:prose-invert prose-p:my-2 prose-h1:text-xl prose-h1:my-3 prose-h2:text-lg prose-h2:my-3 prose-h3:text-base prose-h3:font-semibold prose-h3:my-2.5 max-w-none">
+                      <ReactMarkdown>{feedback}</ReactMarkdown>
                     </div>
                   </div>
-                  
-                  <h3 className="text-lg font-semibold mb-4 text-gray-800 dark:text-gray-200">Your Feedback:</h3>
-                  <div className="prose prose-gray dark:prose-invert max-w-none">
-                    <ReactMarkdown>{feedback}</ReactMarkdown>
-                  </div>
-                  
-                  <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-800 flex flex-wrap gap-2">
-                    <Button 
-                      onClick={() => setActiveTab("answer")}
-                      variant="outline"
-                      className="w-full sm:w-auto"
-                    >
-                      Back to Answer
-                    </Button>
-                    
-                    <Button
-                      onClick={() => saveFeedbackAsPdf(feedback)}
-                      variant="secondary"
-                      className="w-full sm:w-auto"
-                    >
-                      <Save className="mr-2 h-4 w-4" />
-                      Save as PDF
-                    </Button>
-                    
-                    <Button
-                      onClick={() => copyFeedbackToClipboard(feedback)}
-                      variant="secondary"
-                      className="w-full sm:w-auto"
-                    >
-                      <Share2 className="mr-2 h-4 w-4" />
-                      Copy to Clipboard
-                    </Button>
-                  </div>
-                </motion.div>
+                </>
               ) : (
-                <div className="flex flex-col items-center justify-center h-[400px] text-center p-6 bg-gray-50 dark:bg-gray-900/30 rounded-lg border border-dashed border-gray-300 dark:border-gray-700">
-                  <h3 className="text-lg font-medium text-gray-600 dark:text-gray-400 mb-2">No Feedback Yet</h3>
-                  <p className="text-gray-500 dark:text-gray-500 mb-4">Submit your answer to receive detailed feedback</p>
-                  <Button 
-                    onClick={() => setActiveTab("answer")}
-                    variant="secondary"
-                  >
-                    Go to Answer Form
-                  </Button>
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="bg-gray-100 dark:bg-gray-800 rounded-full p-3 mb-4">
+                    <CheckCircle2 className="h-8 w-8 text-gray-400 dark:text-gray-500" />
+                  </div>
+                  <h3 className="text-lg font-medium text-gray-700 dark:text-gray-300 mb-1">No Feedback Yet</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-500 max-w-md">
+                    Submit your answer for marking to see detailed feedback here. 
+                    Your feedback will include strengths, areas for improvement, and an estimated grade.
+                  </p>
                 </div>
               )}
             </TabsContent>
