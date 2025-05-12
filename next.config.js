@@ -4,8 +4,9 @@ const nextConfig = {
   images: {
     unoptimized: true
   },
-  basePath: process.env.NODE_ENV === 'production' ? '/beenycool.github.io' : '',
-  assetPrefix: process.env.NODE_ENV === 'production' ? '/beenycool.github.io/' : ''
+  // GitHub Pages with username.github.io should be served from root, not a subfolder
+  basePath: '',
+  assetPrefix: ''
 }
 
 module.exports = nextConfig 
