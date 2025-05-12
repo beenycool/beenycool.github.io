@@ -85,8 +85,6 @@ const AIMarker = () => {
   const [totalMarks, setTotalMarks] = useState("");
   const [textExtract, setTextExtract] = useState("");
   const [relevantMaterial, setRelevantMaterial] = useState("");
-  const [apiKey, setApiKey] = useState("");
-  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
   const [modelThinking, setModelThinking] = useState("");
   
   // UI state
@@ -109,7 +107,7 @@ const AIMarker = () => {
 
   // ======== HELPER FUNCTIONS ========
   // Reset form
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setQuestion("");
     setAnswer("");
     setFeedback("");
@@ -122,7 +120,7 @@ const AIMarker = () => {
     setTotalMarks("");
     setTextExtract("");
     setRelevantMaterial("");
-  };
+  }, []);
   
   // Process image upload
   const processImageUpload = useCallback(async (imageFile) => {
@@ -380,22 +378,15 @@ const AIMarker = () => {
   // ======== EFFECTS & INITIALIZATION ========
   // Initialize OpenAI client
   useEffect(() => {
-    // Try to load stored API key from localStorage
-    const storedApiKey = localStorage.getItem('openrouter_api_key');
-    if (storedApiKey) {
-      setApiKey(storedApiKey);
-    }
-    
-    // Use the stored or environment API key
-    const keyToUse = storedApiKey || process.env.NEXT_PUBLIC_OPENROUTER_API_KEY;
+    // Use the environment API key
+    const keyToUse = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY;
     
     if (!keyToUse) {
       console.error('OpenRouter API key not configured');
       setError({
         type: 'config',
-        message: 'API key not configured. Please set your OpenRouter API key.'
+        message: 'API key not configured. Please set your OpenRouter API key as an environment variable.'
       });
-      setShowApiKeyInput(true);
       return;
     }
 
@@ -418,7 +409,7 @@ const AIMarker = () => {
         message: 'AI service initialization failed. Please refresh the page.'
       });
     }
-  }, [apiKey]);
+  }, []);
   
   // Load saved form data from session storage
   useEffect(() => {
@@ -563,7 +554,7 @@ const AIMarker = () => {
 
   // ======== HELPER FUNCTIONS ========
   // Add custom subject
-  const addCustomSubject = () => {
+  const addCustomSubject = useCallback(() => {
     if (customSubject.trim() === "") return;
     
     const newSubject = {
@@ -584,7 +575,7 @@ const AIMarker = () => {
     setTimeout(() => {
       setSuccess(null);
     }, 3000);
-  };
+  }, [customSubject, customSubjects, allSubjects, setCustomSubjects, setAllSubjects, setSubject, setCustomSubject, setIsAddingSubject, setSuccess]);
 
   // Handle image file selection
   const handleImageChange = (e) => {
@@ -611,29 +602,10 @@ const AIMarker = () => {
     }
   };
 
-  // Function to save API key
-  const saveApiKey = () => {
-    if (apiKey.trim()) {
-      localStorage.setItem('openrouter_api_key', apiKey);
-      setShowApiKeyInput(false);
-      setSuccess({
-        message: "API key saved successfully! The page will now use your API key."
-      });
-      setTimeout(() => {
-        setSuccess(null);
-      }, 3000);
-    } else {
-      setError({
-        type: 'validation',
-        message: 'Please enter a valid API key'
-      });
-    }
-  };
-
   // Toggle advanced options
-  const toggleAdvancedOptions = () => {
+  const toggleAdvancedOptions = useCallback(() => {
     setShowAdvancedOptions(!showAdvancedOptions);
-  };
+  }, [showAdvancedOptions]);
 
   // Hide guide when clicking outside
   useEffect(() => {
@@ -846,25 +818,6 @@ const AIMarker = () => {
                     ))}
                   </SelectContent>
                 </Select>
-
-                {/* Settings Button for API Key */}
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button 
-                        variant="outline" 
-                        size="icon"
-                        onClick={() => setShowApiKeyInput(!showApiKeyInput)}
-                        className="h-9 w-9 rounded-full p-0 ml-1"
-                      >
-                        <Settings size={16} className="text-gray-600 dark:text-gray-400" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Set OpenRouter API Key</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
               </>
             ) : (
               <div className="flex gap-2">
@@ -904,34 +857,6 @@ const AIMarker = () => {
               </div>
             )}
           </div>
-          
-          {/* API Key Input Modal */}
-          <AnimatePresence>
-            {showApiKeyInput && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="mt-4 p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-md"
-              >
-                <h3 className="text-sm font-medium mb-2">Set Your OpenRouter API Key</h3>
-                <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
-                  You can get a free API key from <a href="https://openrouter.ai" target="_blank" rel="noopener noreferrer" className="underline">OpenRouter</a>.
-                </p>
-                <div className="flex gap-2">
-                  <input
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="Enter your OpenRouter API key"
-                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
-                  />
-                  <Button onClick={saveApiKey}>Save</Button>
-                  <Button variant="outline" onClick={() => setShowApiKeyInput(false)}>Cancel</Button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
         </CardHeader>
 
         <CardContent className="p-4">
