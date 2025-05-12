@@ -13,6 +13,10 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import debounce from 'lodash.debounce';
+
+// API URL for our backend
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
 
 // Constants moved to a separate section for easier management
 const SUBJECTS = [
@@ -104,6 +108,7 @@ const AIMarker = () => {
   const [dailyRequests, setDailyRequests] = useState(0);
   const [lastRequestDate, setLastRequestDate] = useState(new Date().toDateString());
   const [selectedModel, setSelectedModel] = useState("google/gemini-2.5-pro-exp-03-25");
+  const [imageLoading, setImageLoading] = useState(false);
 
   // ======== HELPER FUNCTIONS ========
   // Reset form
@@ -124,7 +129,8 @@ const AIMarker = () => {
   
   // Process image upload
   const processImageUpload = useCallback(async (imageFile) => {
-    if (!imageFile || !openai) return null;
+    setImageLoading(true);
+    if (!imageFile) return null;
     
     try {
       const reader = new FileReader();
@@ -133,34 +139,25 @@ const AIMarker = () => {
         reader.readAsDataURL(imageFile);
       });
       
-      setLoading(true);
       setSuccess({
         message: "Processing your image... Please wait."
       });
       
-      const imageCompletion = await openai.chat.completions.create({
-        model: 'google/gemini-2.0-flash-exp:free', // Always use Gemini Flash for image processing
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: "Convert this image to text with autocorrection for spelling and grammar. Return only the corrected text."
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:image/jpeg;base64,${imageBase64}`
-                }
-              }
-            ]
-          }
-        ],
-        max_tokens: 2000
+      // Use our backend API directly instead of OpenAI client
+      const response = await fetch(`${API_BASE_URL}/api/image/extract`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ image_base64: imageBase64 })
       });
       
-      const extractedText = imageCompletion.choices[0].message.content;
+      if (!response.ok) {
+        throw new Error(`Image processing failed: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      const extractedText = data.text;
       
       // Auto-fill the answer field with the extracted text
       setAnswer(prev => prev ? `${prev}\n${extractedText}` : extractedText);
@@ -182,10 +179,10 @@ const AIMarker = () => {
       });
       return null;
     } finally {
-      setLoading(false);
+      setImageLoading(false);
       setImage(null); // Clear the image after processing
     }
-  }, [openai]);
+  }, [API_BASE_URL]);
 
   // ======== MAIN FUNCTIONS ========
   // Submit handler
@@ -213,6 +210,8 @@ const AIMarker = () => {
     if (today !== lastRequestDate) {
       setDailyRequests(0);
       setLastRequestDate(today);
+      localStorage.setItem('lastRequestDate', today);
+      localStorage.setItem('dailyRequests', '0');
     }
     
     // Special rate limit for Gemini 2.5 Pro
@@ -230,175 +229,256 @@ const AIMarker = () => {
       return;
     }
     
-    if (dailyRequests >= 500) {
-      setError({
-        type: "rate_limit",
-        message: "Daily request limit reached (500/day)"
-      });
+    const getRequestTokens = () => {
+      const stored = localStorage.getItem('requestTokens');
+      const now = new Date().toDateString();
+      let tokens = stored ? JSON.parse(stored) : { count: 500, lastReset: now };
+      if (tokens.lastReset !== now) {
+        tokens = { count: 500, lastReset: now };
+      }
+      localStorage.setItem('requestTokens', JSON.stringify(tokens));
+      return tokens;
+    };
+
+    const consumeToken = () => {
+      const tokens = getRequestTokens();
+      if (tokens.count <= 0) return false;
+      tokens.count -= 1;
+      localStorage.setItem('requestTokens', JSON.stringify(tokens));
+      return true;
+    };
+
+    if (!consumeToken()) {
+      setError({ type: "rate_limit", message: "Daily request limit reached (500/day)" });
       return;
     }
 
     // Set loading state
     setLoading(true);
     setLastRequestTime(now);
-    setDailyRequests(prev => prev + 1);
-    
+    setDailyRequests((prev) => {
+      const newCount = prev + 1;
+      localStorage.setItem('dailyRequests', newCount.toString());
+      return newCount;
+    });
+
+    let answerToMark = answer;
+
+    // Process image if uploaded
+    if (image) {
+      const imageText = await processImageUpload(image);
+      if (imageText) {
+        answerToMark = answer ? `${answer}\n${imageText}` : imageText;
+        setAnswer(answerToMark); // UI sync
+      }
+    }
+
+    // Build prompt for AI
+    let content = `Please mark this ${examBoard.toUpperCase()} ${subject} GCSE response:\n\nQuestion: ${question}\n\nAnswer: ${answerToMark}`;
+    if (markScheme) content += `\n\nMark Scheme: ${markScheme}`;
+    if (totalMarks) content += `\n\nMarks Available: ${totalMarks}`;
+    if (textExtract) content += `\n\nText Extract: ${textExtract}`;
+    if (relevantMaterial) content += `\n\nRelevant Material: ${relevantMaterial}`;
+     
+    // Get AI feedback
+    let completion;
     try {
-      // Check if OpenAI client is initialized
-      if (!openai) {
-        throw new Error("AI service not initialized");
-      }
-      
-      // Process image if uploaded
-      if (image) {
-        const imageText = await processImageUpload(image);
-        if (imageText) {
-          setAnswer(prev => prev ? `${prev}\n${imageText}` : imageText);
-        }
-      }
-       
-      // Build prompt for AI
-      let content = `Please mark this ${examBoard.toUpperCase()} ${subject} GCSE response:\n\nQuestion: ${question}\n\nAnswer: ${answer}`;
-      if (markScheme) content += `\n\nMark Scheme: ${markScheme}`;
-      if (totalMarks) content += `\n\nMarks Available: ${totalMarks}`;
-      if (textExtract) content += `\n\nText Extract: ${textExtract}`;
-      if (relevantMaterial) content += `\n\nRelevant Material: ${relevantMaterial}`;
-       
-      // Get AI feedback
-      const completion = await openai.chat.completions.create({
-        model: selectedModel,
-        messages: [
-          {
-            role: "system",
-            content: `You are an experienced GCSE ${subject} examiner. Your task is to provide detailed, constructive feedback for ${userType === 'teacher' ? 'assessment purposes' : 'student learning'} following these guidelines:
+      if (selectedModel === "deepseek/deepseek-r1:free") {
+        // Streaming request requires special handling
+        const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: selectedModel,
+            messages: [
+              {
+                role: "system",
+                content: `You are an experienced GCSE ${subject} examiner. Your task is to provide detailed, constructive feedback for ${userType === 'teacher' ? 'assessment purposes' : 'student learning'} following these guidelines:
 
 1. ASSESSMENT CRITERIA:
-   - Accuracy of content (subject knowledge)
-   - Clarity and structure of response
-   - Use of evidence/examples
-   - Depth of analysis (where applicable)
-   - Technical accuracy (spelling, grammar, terminology)
+  - Accuracy of content (subject knowledge)
+  - Clarity and structure of response
+  - Use of evidence/examples
+  - Depth of analysis (where applicable)
+  - Technical accuracy (spelling, grammar, terminology)
 
 2. FEEDBACK STRUCTURE:
-   a) Summary of performance (1-2 sentences)
-   b) 2-3 specific strengths with examples
-   c) 2-3 areas for improvement with ${userType === 'teacher' ? 'marking criteria' : 'actionable suggestions'}
-   d) One specific ${userType === 'teacher' ? 'assessment note' : '"next step" for the student'}
-   e) GCSE grade (9-1) with brief justification
+  a) Summary of performance (1-2 sentences)
+  b) 2-3 specific strengths with examples
+  c) 2-3 areas for improvement with ${userType === 'teacher' ? 'marking criteria' : 'actionable suggestions'}
+  d) One specific ${userType === 'teacher' ? 'assessment note' : '"next step" for the student'}
+  e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number
 
 3. TONE & STYLE:
-   - ${userType === 'teacher' ? 'Professional and assessment-focused' : 'Approachable and encouraging'}
-   - Specific praise ("Excellent use of terminology when...")
-   - Constructive criticism ${userType === 'teacher' ? '("This meets level 3 criteria because...")' : '("Consider expanding on...")'}
-   - Avoid vague statements - always reference the answer
+  - ${userType === 'teacher' ? 'Professional and assessment-focused' : 'Approachable and encouraging'}
+  - Specific praise ("Excellent use of terminology when...")
+  - Constructive criticism ${userType === 'teacher' ? '("This meets level 3 criteria because...")' : '("Consider expanding on...")'}
+  - Avoid vague statements - always reference the answer
 
 4. SUBJECT-SPECIFIC GUIDANCE:
-   ${getSubjectGuidance(subject, examBoard)}`
-          },
-          {
-            role: "user",
-            content: content
-          }
-        ],
-        temperature: 0.7,
-        max_tokens: 4000,
-        top_p: 1,
-        frequency_penalty: 0,
-        presence_penalty: 0,
-        stream: selectedModel === "deepseek/deepseek-r1:free" // Only stream for thinking model
-      });
+  ${getSubjectGuidance(subject, examBoard)}`
+              },
+              {
+                role: "user",
+                content: content
+              }
+            ],
+            temperature: 0.7,
+            max_tokens: 4000,
+            top_p: 1,
+            frequency_penalty: 0,
+            presence_penalty: 0,
+            stream: true
+          })
+        });
 
-      // Process response based on whether it's streamed or not
-      if (selectedModel === "deepseek/deepseek-r1:free") {
+        if (!response.ok) {
+          throw new Error(`API request failed: ${response.statusText}`);
+        }
+
+        // Process the streaming response
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
         let fullResponse = "";
         let thinking = "";
-        
-        for await (const chunk of completion) {
-          const content = chunk.choices[0]?.delta?.content || "";
-          fullResponse += content;
-          
-          // Show thinking in real-time for the thinking model
-          if (content) {
-            thinking += content;
-            setModelThinking(thinking);
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n\n');
+            
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const data = line.substring(6);
+                if (data === '[DONE]') continue;
+                
+                try {
+                  const parsedData = JSON.parse(data);
+                  const content = parsedData.choices[0]?.delta?.content || "";
+                  fullResponse += content;
+                  
+                  if (content) {
+                    thinking += content;
+                    setModelThinking(thinking);
+                  }
+                } catch (e) {
+                  console.error('Error parsing stream data:', e);
+                }
+              }
+            }
           }
-        }
-        
-        setFeedback(fullResponse);
           
-        const gradeMatch = fullResponse.match(/grade\s*:?\s*([1-9])/i);
-        if (gradeMatch && gradeMatch[1]) {
-          setGrade(gradeMatch[1]);
+          setFeedback(fullResponse);
+          
+          const gradeMatch = fullResponse.match(/\[GRADE:(\d)\]/);
+          if (gradeMatch && gradeMatch[1]) {
+            setGrade(gradeMatch[1]);
+          }
+        } catch (error) {
+          console.error("Streaming error:", error);
+          setFeedback(fullResponse || "Partial feedback received due to streaming error.");
+          setError({ type: "streaming", message: "Feedback stream interrupted. Displaying partial response." });
         }
       } else {
-        // Regular non-streaming response handling
+        // Regular non-streaming request
+        const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: selectedModel,
+            messages: [
+              {
+                role: "system",
+                content: `You are an experienced GCSE ${subject} examiner. Your task is to provide detailed, constructive feedback for ${userType === 'teacher' ? 'assessment purposes' : 'student learning'} following these guidelines:
+
+1. ASSESSMENT CRITERIA:
+  - Accuracy of content (subject knowledge)
+  - Clarity and structure of response
+  - Use of evidence/examples
+  - Depth of analysis (where applicable)
+  - Technical accuracy (spelling, grammar, terminology)
+
+2. FEEDBACK STRUCTURE:
+  a) Summary of performance (1-2 sentences)
+  b) 2-3 specific strengths with examples
+  c) 2-3 areas for improvement with ${userType === 'teacher' ? 'marking criteria' : 'actionable suggestions'}
+  d) One specific ${userType === 'teacher' ? 'assessment note' : '"next step" for the student'}
+  e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number
+
+3. TONE & STYLE:
+  - ${userType === 'teacher' ? 'Professional and assessment-focused' : 'Approachable and encouraging'}
+  - Specific praise ("Excellent use of terminology when...")
+  - Constructive criticism ${userType === 'teacher' ? '("This meets level 3 criteria because...")' : '("Consider expanding on...")'}
+  - Avoid vague statements - always reference the answer
+
+4. SUBJECT-SPECIFIC GUIDANCE:
+  ${getSubjectGuidance(subject, examBoard)}`
+              },
+              {
+                role: "user",
+                content: content
+              }
+            ],
+            temperature: 0.7,
+            max_tokens: 4000,
+            top_p: 1,
+            frequency_penalty: 0,
+            presence_penalty: 0,
+            stream: false
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`API request failed: ${response.statusText}`);
+        }
+
+        completion = await response.json();
+        
         if (completion.choices && completion.choices[0].message.content) {
           const content = completion.choices[0].message.content;
           setFeedback(content);
           
-          const gradeMatch = content.match(/grade\s*:?\s*([1-9])/i);
+          const gradeMatch = content.match(/\[GRADE:(\d)\]/);
           if (gradeMatch && gradeMatch[1]) {
             setGrade(gradeMatch[1]);
           }
         }
       }
-      
-      // Automatically switch to feedback tab
-      setActiveTab("feedback");
-      
-      setSuccess({
-        message: "Answer marked successfully!"
-      });
     } catch (error) {
-      console.error("Error marking work:", error);
-      
-      let errorMessage = "Sorry, there was an error processing your request.";
-      let errorType = "api";
-      
-      if (error.message.includes("Network Error")) {
-        errorMessage = "Network error. Please check your internet connection and try again.";
-        errorType = "network";
-      } else if (error.message.includes("rate limit")) {
-        errorMessage = "We're getting too many requests. Please wait a moment and try again.";
-        errorType = "rate_limit";
-      } else if (error.message.includes("authentication")) {
-        errorMessage = "Authentication error. Please contact support if this continues.";
-        errorType = "auth";
-      }
-      
+      console.error("Error submitting for marking:", error);
       setError({
-        type: errorType,
-        message: errorMessage
+        type: "api_error",
+        message: `Failed to get feedback: ${error.message}`
       });
-    } finally {
       setLoading(false);
+      return;
     }
+    
+    // Automatically switch to feedback tab
+    setActiveTab("feedback");
+    
+    setSuccess({
+      message: "Answer marked successfully!"
+    });
   }, [answer, examBoard, image, lastRequestDate, lastRequestTime, dailyRequests, markScheme, openai, processImageUpload, question, selectedModel, subject, textExtract, relevantMaterial, totalMarks, userType]);
 
   // ======== EFFECTS & INITIALIZATION ========
   // Initialize OpenAI client
   useEffect(() => {
-    // Use the environment API key
-    const keyToUse = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY;
-    
-    if (!keyToUse) {
-      console.error('OpenRouter API key not configured');
-      setError({
-        type: 'config',
-        message: 'API key not configured. Please set your OpenRouter API key as an environment variable.'
-      });
-      return;
-    }
-
+    // No need to use an API key anymore since the backend handles that
     try {
+      // Initialize with empty key since we're using our backend
       const client = new OpenAI({
-        apiKey: keyToUse,
-        baseURL: 'https://openrouter.ai/api/v1',
-        dangerouslyAllowBrowser: true,
-        defaultHeaders: {
-          'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : '',
-          'X-Title': 'GCSE AI Marker'
-        }
+        apiKey: 'sk-not-needed',
+        baseURL: `${API_BASE_URL}/api`,
+        dangerouslyAllowBrowser: true
       });
       
       setOpenai(client);
@@ -522,35 +602,30 @@ const AIMarker = () => {
     }
   }, [isAddingSubject]);
 
-  // Detect subject from answer text
-  useEffect(() => {
-    if (!answer || answer.length < 20) return;
-    
-    const detectSubjectFromText = () => {
-      const answerLower = answer.toLowerCase();
-      
-      for (const [subj, keywords] of Object.entries(subjectKeywords)) {
-        if (keywords.some(keyword => answerLower.includes(keyword))) {
-          return subj;
-        }
+  // At the top of your component
+  const hasManuallySetSubject = useRef(false);
+
+  // Debounced classify function
+  const debouncedClassifySubject = useCallback(
+    debounce(async (text) => {
+      const detected = await classifySubjectAI(text);
+      if (detected && detected !== subject && !hasManuallySetSubject.current) {
+        setSubject(detected);
+        setDetectedSubject(detected);
+        setSuccess({
+          message: `Subject automatically detected as ${allSubjects.find(s => s.value === detected)?.label}`,
+        });
+        setTimeout(() => setSuccess(null), 3000);
       }
-      return null;
-    };
-    
-    const detected = detectSubjectFromText();
-    if (detected && detected !== subject) {
-      setSubject(detected);
-      setDetectedSubject(detected);
-      setSuccess({
-        message: `Subject automatically detected as ${allSubjects.find(s => s.value === detected)?.label}`
-      });
-      
-      // Auto-clear success message after 3 seconds
-      setTimeout(() => {
-        setSuccess(null);
-      }, 3000);
-    }
-  }, [answer, subject, allSubjects]);
+    }, 1000),
+    [classifySubjectAI, subject, allSubjects]
+  );
+
+  useEffect(() => {
+    if (!answer || answer.length < 20 || hasManuallySetSubject.current) return;
+    debouncedClassifySubject(answer);
+    return () => debouncedClassifySubject.cancel();
+  }, [answer, debouncedClassifySubject]);
 
   // ======== HELPER FUNCTIONS ========
   // Add custom subject
@@ -709,6 +784,74 @@ const AIMarker = () => {
     );
   };
 
+  // Replace all onValueChange={setSubject} with:
+  const handleSubjectChange = (value) => {
+    hasManuallySetSubject.current = true;
+    setSubject(value);
+  };
+
+  // On mount, sync from localStorage
+  useEffect(() => {
+    const storedDate = localStorage.getItem('lastRequestDate');
+    const storedRequests = parseInt(localStorage.getItem('dailyRequests') || '0', 10);
+    const today = new Date().toDateString();
+    if (storedDate !== today) {
+      localStorage.setItem('lastRequestDate', today);
+      localStorage.setItem('dailyRequests', '0');
+      setDailyRequests(0);
+      setLastRequestDate(today);
+    } else {
+      setDailyRequests(storedRequests);
+      setLastRequestDate(storedDate);
+    }
+  }, []);
+
+  // When updating
+  useEffect(() => {
+    setDailyRequests(prev => {
+      const newCount = prev + 1;
+      localStorage.setItem('dailyRequests', newCount.toString());
+      return newCount;
+    });
+  }, []);
+
+  const classifySubjectAI = useCallback(async (answerText) => {
+    if (!openai || !answerText) return null;
+    try {
+      const completion = await openai.chat.completions.create({
+        model: "google/gemini-2.0-flash-exp:free", // or any fast/cheap model
+        messages: [
+          {
+            role: "system",
+            content: "You are a GCSE subject classifier. Given a student's answer, return only the subject from this list: English, Maths, Science, History, Geography, Computer Science, Business Studies. If none match, return 'Other'."
+          },
+          {
+            role: "user",
+            content: answerText
+          }
+        ],
+        max_tokens: 10,
+        temperature: 0
+      });
+      const subjectRaw = completion.choices[0].message.content.trim().toLowerCase();
+      // Map AI output to your subject values
+      const mapping = {
+        "english": "english",
+        "maths": "maths",
+        "science": "science",
+        "history": "history",
+        "geography": "geography",
+        "computer science": "computerScience",
+        "business studies": "businessStudies",
+        "other": null
+      };
+      return mapping[subjectRaw] || null;
+    } catch (err) {
+      // fallback to keyword detection if AI fails
+      return null;
+    }
+  }, [openai]);
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -773,7 +916,7 @@ const AIMarker = () => {
           <div className="flex flex-wrap gap-2 pt-2">
             {!isAddingSubject ? (
               <>
-                <Select value={subject} onValueChange={setSubject}>
+                <Select value={subject} onValueChange={handleSubjectChange}>
                   <SelectTrigger className="w-[180px] bg-white dark:bg-gray-900">
                     <SelectValue placeholder="Select a subject" />
                   </SelectTrigger>
@@ -821,6 +964,7 @@ const AIMarker = () => {
                 <input
                   ref={customSubjectInputRef}
                   type="text"
+                  aria-label="Add custom subject"
                   value={customSubject}
                   onChange={(e) => setCustomSubject(e.target.value)}
                   placeholder="Enter subject name"
@@ -862,7 +1006,21 @@ const AIMarker = () => {
             <Alert variant="destructive" className="mb-4">
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>Error</AlertTitle>
-              <AlertDescription>{error.message}</AlertDescription>
+              <AlertDescription>
+                {error.message}
+                {error.type === "network" && (
+                  <div className="mt-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleSubmitForMarking}
+                      disabled={loading}
+                    >
+                      Retry
+                    </Button>
+                  </div>
+                )}
+              </AlertDescription>
             </Alert>
           )}
           
@@ -1036,9 +1194,9 @@ const AIMarker = () => {
                                 onClick={handleProcessImage}
                                 variant="secondary"
                                 className="w-full"
-                                disabled={loading}
+                                disabled={imageLoading || loading}
                               >
-                                {loading ? (
+                                {imageLoading ? (
                                   <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                     Converting Image...
