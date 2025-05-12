@@ -607,21 +607,6 @@ const AIMarker = () => {
     setShowAdvancedOptions(!showAdvancedOptions);
   }, [showAdvancedOptions]);
 
-  // Hide guide when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      // Hide the guide when clicking anywhere outside the guide card
-      if (showGuide && !event.target.closest('.guide-card')) {
-        setShowGuide(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showGuide]);
-
   // ======== JSX / UI COMPONENTS ========
   // Quick guide dropdown content
   const QuickGuide = () => {
@@ -633,7 +618,19 @@ const AIMarker = () => {
         transition={{ duration: 0.3 }}
         className="mb-6"
       >
-        <Card className="bg-gray-50 border-gray-200 shadow-sm dark:bg-gray-900 dark:border-gray-800">
+        <Card className="bg-gray-50 border-gray-200 shadow-sm dark:bg-gray-900 dark:border-gray-800 relative">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => setShowGuide(false)}
+            className="absolute right-2 top-2 h-7 w-7 rounded-full p-0"
+            aria-label="Close guide"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </Button>
           <CardContent className="p-4">
             <div className="space-y-3">
               <div>
