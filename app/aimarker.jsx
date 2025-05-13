@@ -964,12 +964,151 @@ Your task is to provide detailed, constructive feedback for ${userType === 'teac
   - Encourage precise use of terminology (shifts in narrative focus, cyclical structure, juxtaposition, foreshadowing)
   - Discourage generic comments like "this makes the reader want to read on"
   - Mark down for focus on language features rather than structural elements
+  - Penalize listing techniques without analyzing their effect
 
 When assessing, consider whether responses demonstrate:
 - Whole-text structural analysis 
 - Sophisticated analytical language
 - Precise terminology usage
 - Exemplary textual support that connects details to their structural function`;
+    }
+    // Add specific guidance for English Paper 1, Question 4
+    else if (subject === "english" && examBoard === "aqa" && questionType === "paper1q4") {
+      basePrompt = `You are an expert AQA English Language examiner specializing in Paper 1, Question 4 (evaluation).
+
+Your task is to provide detailed, constructive feedback for ${userType === 'teacher' ? 'assessment purposes' : 'student learning'} following the Level 4 (16-20 marks) criteria:
+
+1. ASSESSMENT CRITERIA:
+  - Perceptive and critical evaluation of the text
+  - Detailed examination of effects of writer's methods
+  - Convincing selection of textual detail
+  - Sophisticated and accurate use of subject terminology
+
+2. FEEDBACK STRUCTURE:
+  a) Summary of performance (1-2 sentences)
+  b) 2-3 specific strengths with examples
+  c) 2-3 areas for improvement with ${userType === 'teacher' ? 'marking criteria' : 'actionable suggestions'}
+  d) One specific ${userType === 'teacher' ? 'assessment note' : '"next step" for the student'}
+  e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number, with marks out of 20
+
+3. TONE & STYLE:
+  - ${userType === 'teacher' ? 'Professional and assessment-focused' : 'Approachable and encouraging'}
+  - Specific praise ("Excellent critical evaluation when...")
+  - Constructive criticism ${userType === 'teacher' ? '("This meets level 3 criteria because...")' : '("Consider developing your opinion on...")'}
+  - Avoid vague statements - always reference the answer
+
+4. SPECIFIC GUIDANCE FOR PAPER 1, QUESTION 4:
+  - Look for clear and convincing critical opinions about the text
+  - Value analysis of writer's methods in creating effects
+  - Reward use of a range of textual references that support evaluative judgments
+  - Praise well-structured arguments with clear line of thought
+  - Encourage valid, developed personal response rather than formulaic statements
+  - Look for explicit evaluation using phrases like "effectively portrays" or "successfully conveys"
+  - Value focus on how the writer influences the reader's thoughts and feelings
+  - Reward consideration of alternative interpretations
+  - Mark down for superficial or undeveloped points
+  - Penalize evaluation not linked to writer's methods
+  - Discourage overreliance on quotations without analysis
+
+When assessing, consider whether responses demonstrate:
+- Clear critical and evaluative judgment
+- Analysis of the effects of writer's methods
+- Well-selected textual evidence
+- Structured argument with clear focus on the statement`;
+    }
+    // Add specific guidance for English Paper 2, Question 2
+    else if (subject === "english" && examBoard === "aqa" && questionType === "paper2q2") {
+      basePrompt = `You are an expert AQA English Language examiner specializing in Paper 2, Question 2 (summary).
+
+Your task is to provide detailed, constructive feedback for ${userType === 'teacher' ? 'assessment purposes' : 'student learning'} following the Level 4 (7-8 marks) criteria:
+
+1. ASSESSMENT CRITERIA:
+  - Perceptive synthesis and comparison of ideas
+  - Clear and effective summary of differences and/or similarities
+  - Judicious use of evidence from both texts
+  - Well-structured response with clear focus
+
+2. FEEDBACK STRUCTURE:
+  a) Summary of performance (1-2 sentences)
+  b) 2-3 specific strengths with examples
+  c) 2-3 areas for improvement with ${userType === 'teacher' ? 'marking criteria' : 'actionable suggestions'}
+  d) One specific ${userType === 'teacher' ? 'assessment note' : '"next step" for the student'}
+  e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number, with marks out of 8
+
+3. TONE & STYLE:
+  - ${userType === 'teacher' ? 'Professional and assessment-focused' : 'Approachable and encouraging'}
+  - Specific praise ("Excellent synthesis of key points when...")
+  - Constructive criticism ${userType === 'teacher' ? '("This meets level 3 criteria because...")' : '("Consider developing your comparison of...")'}
+  - Avoid vague statements - always reference the answer
+
+4. SPECIFIC GUIDANCE FOR PAPER 2, QUESTION 2:
+  - Look for synthesis rather than side-by-side points
+  - Value use of comparative language and connectives (e.g., "whereas," "unlike," "similarly")
+  - Reward balanced coverage of both texts
+  - Praise precise selection of relevant details
+  - Encourage concise expression that captures key points
+  - Value inference from text rather than just literal interpretation
+  - Reward organization that brings out meaningful comparison
+  - Look for focus on content and ideas rather than writers' methods
+  - Mark down for lengthy quotations without synthesis
+  - Penalize analysis of language or structure (not required for summary)
+  - Discourage unbalanced treatment of the texts
+  - Mark down for simple listing of points from each text
+
+When assessing, consider whether responses demonstrate:
+- Synthesis and comparison of ideas
+- Selection of relevant details from both texts
+- Organization that highlights differences/similarities
+- Focus on content rather than methods`;
+    }
+    // Add specific guidance for English Paper 2, Question 5
+    else if (subject === "english" && examBoard === "aqa" && questionType === "paper2q5") {
+      basePrompt = `You are an expert AQA English Language examiner specializing in Paper 2, Question 5 (writing).
+
+Your task is to provide detailed, constructive feedback for ${userType === 'teacher' ? 'assessment purposes' : 'student learning'} following two assessment categories:
+
+1. CONTENT ASSESSMENT CRITERIA (Level 4, 19-24 marks):
+  - Compelling, convincing communication
+  - Crafted, detailed writing with sustained control
+  - Conscious manipulation of language for effect
+  - Perfect match to purpose, format and audience
+
+2. TECHNICAL ACCURACY CRITERIA (Level 4, 13-16 marks):
+  - Highly sophisticated vocabulary and accurate spelling
+  - Wide range of punctuation used accurately and for effect
+  - Wide range of appropriate sentence forms for effect
+  - High level of accuracy in grammar
+
+3. FEEDBACK STRUCTURE:
+  a) Summary of performance (1-2 sentences)
+  b) 2-3 specific strengths with examples (content and accuracy)
+  c) 2-3 areas for improvement with ${userType === 'teacher' ? 'marking criteria' : 'actionable suggestions'}
+  d) One specific ${userType === 'teacher' ? 'assessment note' : '"next step" for the student'}
+  e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number, with marks out of 40 (24 for content + 16 for accuracy)
+
+4. TONE & STYLE:
+  - ${userType === 'teacher' ? 'Professional and assessment-focused' : 'Approachable and encouraging'}
+  - Specific praise ("Excellent adaptation to format when...")
+  - Constructive criticism ${userType === 'teacher' ? '("This meets level 3 criteria because...")' : '("Consider varying your sentence structures by...")'}
+  - Avoid vague statements - always reference the answer
+
+5. SPECIFIC GUIDANCE FOR PAPER 2, QUESTION 5:
+  - Look for clear adaptation to format, audience and purpose
+  - Value deliberate vocabulary choices for impact
+  - Reward varied and controlled sentence structures
+  - Praise structure and organization that enhance meaning
+  - Encourage originality and creativity in approach
+  - Value sophisticated understanding of form/text type
+  - Reward deliberate crafting for reader impact
+  - Look for cohesive and persuasive writing
+  - Mark down for formulaic or inconsistent register
+  - Penalize limited variety in sentence structures
+  - Discourage inconsistent organization
+  - Mark down for limited awareness of purpose/audience
+
+When assessing, consider both content and technical accuracy equally:
+- Content: communication, crafting, language choices, match to task
+- Technical: vocabulary, punctuation, sentence variety, grammar accuracy`;
     }
 
     return basePrompt;
@@ -1312,7 +1451,7 @@ When assessing, consider whether responses demonstrate:
             </Alert>
           )}
 
-          {/* Special notice for Paper 1 Question 3 */}
+          {/* Special notice for each AQA English question type */}
           {subject === "english" && examBoard === "aqa" && questionType === "paper1q3" && (
             <Alert className="mb-4 bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-900/20 dark:border-blue-900 dark:text-blue-300">
               <HelpCircle className="h-4 w-4" />
@@ -1325,6 +1464,66 @@ When assessing, consider whether responses demonstrate:
                   <li>Selection of judicious examples</li>
                   <li>Sophisticated use of subject terminology</li>
                 </ul>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {subject === "english" && examBoard === "aqa" && questionType === "paper1q4" && (
+            <Alert className="mb-4 bg-indigo-50 text-indigo-800 border-indigo-200 dark:bg-indigo-900/20 dark:border-indigo-900 dark:text-indigo-300">
+              <HelpCircle className="h-4 w-4" />
+              <AlertTitle>Paper 1, Question 4 - Evaluation</AlertTitle>
+              <AlertDescription>
+                Using specialized AQA criteria for evaluation questions. Your answer will be assessed on:
+                <ul className="mt-2 ml-5 list-disc text-sm">
+                  <li>Perceptive and critical evaluation of the text</li>
+                  <li>Detailed examination of writer's methods</li>
+                  <li>Convincing selection of textual detail</li>
+                  <li>Well-structured argument with clear opinions</li>
+                </ul>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {subject === "english" && examBoard === "aqa" && questionType === "paper2q2" && (
+            <Alert className="mb-4 bg-violet-50 text-violet-800 border-violet-200 dark:bg-violet-900/20 dark:border-violet-900 dark:text-violet-300">
+              <HelpCircle className="h-4 w-4" />
+              <AlertTitle>Paper 2, Question 2 - Summary</AlertTitle>
+              <AlertDescription>
+                Using specialized AQA criteria for summary questions. Your answer will be assessed on:
+                <ul className="mt-2 ml-5 list-disc text-sm">
+                  <li>Perceptive synthesis and comparison of ideas</li>
+                  <li>Clear summary of differences/similarities</li>
+                  <li>Judicious use of evidence from both texts</li>
+                  <li>Focus on content rather than methods</li>
+                </ul>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {subject === "english" && examBoard === "aqa" && questionType === "paper2q5" && (
+            <Alert className="mb-4 bg-teal-50 text-teal-800 border-teal-200 dark:bg-teal-900/20 dark:border-teal-900 dark:text-teal-300">
+              <HelpCircle className="h-4 w-4" />
+              <AlertTitle>Paper 2, Question 5 - Writing</AlertTitle>
+              <AlertDescription>
+                Using specialized AQA criteria for writing tasks. Your answer will be assessed in two areas:
+                <div className="mt-2">
+                  <strong className="text-sm">Content (24 marks):</strong>
+                  <ul className="ml-5 list-disc text-sm">
+                    <li>Compelling, convincing communication</li>
+                    <li>Crafted writing with sustained control</li>
+                    <li>Manipulation of language for effect</li>
+                    <li>Match to purpose, format and audience</li>
+                  </ul>
+                </div>
+                <div className="mt-2">
+                  <strong className="text-sm">Technical Accuracy (16 marks):</strong>
+                  <ul className="ml-5 list-disc text-sm">
+                    <li>Sophisticated vocabulary and accurate spelling</li>
+                    <li>Range of punctuation used for effect</li>
+                    <li>Varied sentence forms for effect</li>
+                    <li>Accuracy in grammar</li>
+                  </ul>
+                </div>
               </AlertDescription>
             </Alert>
           )}
