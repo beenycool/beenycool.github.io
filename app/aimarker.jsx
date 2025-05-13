@@ -7,12 +7,12 @@ import { getSubjectGuidance } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
 import { Loader2, Upload, AlertTriangle, CheckCircle2, RefreshCw, HelpCircle, ChevronDown, ChevronRight, Save, Share2, ExternalLink, Settings, FilePlus } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Badge } from "@/components/ui/badge";
 import debounce from 'lodash.debounce';
 
 // API URL for our backend
@@ -469,6 +469,14 @@ const AIMarker = () => {
     if (totalMarks) content += `\n\nMarks Available: ${totalMarks}`;
     if (textExtract) content += `\n\nText Extract: ${textExtract}`;
     if (relevantMaterial) content += `\n\nRelevant Material: ${relevantMaterial}`;
+    
+    // Add specific question type information
+    if (subject === "english" && examBoard === "aqa" && questionType !== "general") {
+      content += `\n\nQuestion Type: AQA English ${questionType === "paper1q3" ? "Paper 1, Question 3 (Structure Analysis)" : 
+      questionType === "paper1q4" ? "Paper 1, Question 4 (Evaluation)" :
+      questionType === "paper2q2" ? "Paper 2, Question 2 (Summary)" : 
+      "Paper 2, Question 5 (Writing)"}`;
+    }
      
     // Get AI feedback
     let completion;
@@ -649,7 +657,27 @@ const AIMarker = () => {
     setSuccess({
       message: "Answer marked successfully!"
     });
-  }, [answer, examBoard, image, lastRequestDate, lastRequestTime, dailyRequests, markScheme, openai, processImageUpload, question, selectedModel, subject, textExtract, relevantMaterial, totalMarks, userType]);
+  }, [
+    answer, 
+    examBoard, 
+    image, 
+    lastRequestDate, 
+    lastRequestTime, 
+    dailyRequests, 
+    markScheme, 
+    openai, 
+    processImageUpload, 
+    question, 
+    selectedModel, 
+    subject, 
+    textExtract, 
+    relevantMaterial, 
+    totalMarks, 
+    userType,
+    questionType,
+    getSystemPrompt,
+    API_BASE_URL
+  ]);
 
   // ======== EFFECTS & INITIALIZATION ========
   // Initialize OpenAI client
@@ -1347,16 +1375,66 @@ When assessing, consider both content and technical accuracy equally:
                 
                 {/* Question Type selector - only show for English AQA */}
                 {subject === "english" && examBoard === "aqa" && (
-                  <Select value={questionType} onValueChange={setQuestionType}>
-                    <SelectTrigger className="w-[240px] bg-white dark:bg-gray-900">
-                      <SelectValue placeholder="Question Type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {QUESTION_TYPES.english.aqa.map((type) => (
-                        <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="mb-4">
+                    <label htmlFor="questionType" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center">
+                      Question Type 
+                      <span className="ml-2 inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">AQA English</span>
+                    </label>
+                    <Select 
+                      value={questionType} 
+                      onValueChange={(value) => {
+                        setQuestionType(value);
+                        
+                        // Show a success message when a specialized question type is selected
+                        if (value !== "general") {
+                          setSuccess({
+                            message: `Selected ${
+                              value === "paper1q3" ? "Paper 1, Question 3 (Structure Analysis)" : 
+                              value === "paper1q4" ? "Paper 1, Question 4 (Evaluation)" :
+                              value === "paper2q2" ? "Paper 2, Question 2 (Summary)" : 
+                              "Paper 2, Question 5 (Writing)"
+                            } criteria`
+                          });
+                          setTimeout(() => {
+                            setSuccess(null);
+                          }, 3000);
+                        }
+                      }}
+                    >
+                      <SelectTrigger id="questionType" 
+                        className={`w-full ${
+                          questionType === "paper1q3" ? "bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800" :
+                          questionType === "paper1q4" ? "bg-indigo-50 border-indigo-200 dark:bg-indigo-900/20 dark:border-indigo-800" :
+                          questionType === "paper2q2" ? "bg-violet-50 border-violet-200 dark:bg-violet-900/20 dark:border-violet-800" :
+                          questionType === "paper2q5" ? "bg-teal-50 border-teal-200 dark:bg-teal-900/20 dark:border-teal-800" :
+                          ""
+                        }`}
+                      >
+                        <SelectValue placeholder="Select question type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="general">General Assessment</SelectItem>
+                        <SelectGroup>
+                          <SelectLabel>Paper 1</SelectLabel>
+                          <SelectItem value="paper1q3" className="bg-blue-50 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
+                            Paper 1, Question 3 (Structure)
+                          </SelectItem>
+                          <SelectItem value="paper1q4" className="bg-indigo-50 text-indigo-800 dark:bg-indigo-900/20 dark:text-indigo-300">
+                            Paper 1, Question 4 (Evaluation)
+                          </SelectItem>
+                        </SelectGroup>
+                        <SelectGroup>
+                          <SelectLabel>Paper 2</SelectLabel>
+                          <SelectItem value="paper2q2" className="bg-violet-50 text-violet-800 dark:bg-violet-900/20 dark:text-violet-300">
+                            Paper 2, Question 2 (Summary)
+                          </SelectItem>
+                          <SelectItem value="paper2q5" className="bg-teal-50 text-teal-800 dark:bg-teal-900/20 dark:text-teal-300">
+                            Paper 2, Question 5 (Writing)
+                          </SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 )}
                 
                 {/* Model Selector */}
@@ -1526,6 +1604,16 @@ When assessing, consider both content and technical accuracy equally:
                 </div>
               </AlertDescription>
             </Alert>
+          )}
+
+          {/* Debug information */}
+          {process.env.NODE_ENV === 'development' && (
+            <div className="mb-4 p-3 bg-gray-100 dark:bg-gray-800 text-xs rounded-md">
+              <div>Subject: {subject}</div>
+              <div>Exam Board: {examBoard}</div>
+              <div>Question Type: {questionType}</div>
+              <div>Condition: {subject === "english" && examBoard === "aqa" ? "true" : "false"}</div>
+            </div>
           )}
 
           {/* Main Content Tabs */}
