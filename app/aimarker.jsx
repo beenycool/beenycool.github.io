@@ -20,7 +20,10 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ||
   (typeof window !== 'undefined' && 
     (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
       ? 'http://localhost:3003'  // Local development 
-      : 'https://beenycool-github-io.onrender.com'); // Replace with your Render backend URL
+      : 'https://beenycool-github-io.onrender.com'); // Production fallback
+
+// Log the API URL for debugging
+console.log('Using API URL:', API_BASE_URL);
 
 // Constants moved to a separate section for easier management
 const SUBJECTS = [
@@ -947,6 +950,22 @@ When assessing, consider whether responses demonstrate:
     }
   }, [question, answer, subject, examBoard, userType, markScheme, totalMarks, textExtract, relevantMaterial, customSubjects, questionType]);
 
+  // Reset form - moved up to fix ReferenceError
+  const resetForm = useCallback(() => {
+    setQuestion("");
+    setAnswer("");
+    setFeedback("");
+    setGrade("");
+    setError(null);
+    setSuccess(null);
+    setImage(null);
+    setMarkScheme("");
+    setActiveTab("answer");
+    setTotalMarks("");
+    setTextExtract("");
+    setRelevantMaterial("");
+  }, []);
+
   // Add keyboard shortcuts for common actions
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -1061,22 +1080,6 @@ When assessing, consider whether responses demonstrate:
   }, [answer, debouncedClassifySubject]);
 
   // ======== HELPER FUNCTIONS ========
-  // Reset form
-  const resetForm = useCallback(() => {
-    setQuestion("");
-    setAnswer("");
-    setFeedback("");
-    setGrade("");
-    setError(null);
-    setSuccess(null);
-    setImage(null);
-    setMarkScheme("");
-    setActiveTab("answer");
-    setTotalMarks("");
-    setTextExtract("");
-    setRelevantMaterial("");
-  }, []);
-  
   // Process image upload
   const processImageUpload = useCallback(async (imageFile) => {
     setImageLoading(true);
@@ -1683,15 +1686,7 @@ When assessing, consider whether responses demonstrate:
             </Alert>
           )}
 
-          {/* Debug information */}
-          {process.env.NODE_ENV === 'development' && (
-            <div className="mb-4 p-3 bg-gray-100 dark:bg-gray-800 text-xs rounded-md">
-              <div>Subject: {subject}</div>
-              <div>Exam Board: {examBoard}</div>
-              <div>Question Type: {questionType}</div>
-              <div>Condition: {subject === "english" && examBoard === "aqa" ? "true" : "false"}</div>
-            </div>
-          )}
+          {/* Debug information - REMOVED */}
 
           {/* Main Content Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -1790,6 +1785,82 @@ When assessing, consider whether responses demonstrate:
                       className="overflow-hidden"
                     >
                       <div className="space-y-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center space-x-2">
+                            <button 
+                              onClick={async () => {
+                                if (!question) {
+                                  setError({
+                                    type: "validation",
+                                    message: "Please enter a question first to generate a mark scheme"
+                                  });
+                                  return;
+                                }
+                                
+                                setLoading(true);
+                                setSuccess({
+                                  message: "Generating mark scheme with relevant Assessment Objectives..."
+                                });
+                                
+                                try {
+                                  const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
+                                    method: 'POST',
+                                    headers: {
+                                      'Content-Type': 'application/json',
+                                    },
+                                    body: JSON.stringify({
+                                      model: "google/gemini-2.0-flash-exp:free",
+                                      messages: [
+                                        {
+                                          role: "system",
+                                          content: `You are an expert in GCSE ${subject} for the ${examBoard.toUpperCase()} exam board. Generate a concise mark scheme with relevant Assessment Objectives (AOs) for the following question. Format using bullet points and include key marking criteria.`
+                                        },
+                                        {
+                                          role: "user",
+                                          content: question
+                                        }
+                                      ],
+                                      temperature: 0.3,
+                                      max_tokens: 800
+                                    })
+                                  });
+                                  
+                                  if (!response.ok) {
+                                    throw new Error(`API request failed: ${response.status}`);
+                                  }
+                                  
+                                  const data = await response.json();
+                                  const generatedMarkScheme = data.choices[0].message.content;
+                                  
+                                  setMarkScheme(generatedMarkScheme);
+                                  setSuccess({
+                                    message: "Mark scheme generated successfully!"
+                                  });
+                                  
+                                  setTimeout(() => {
+                                    setSuccess(null);
+                                  }, 3000);
+                                } catch (error) {
+                                  console.error("Error generating mark scheme:", error);
+                                  setError({
+                                    type: "ai_error",
+                                    message: `Failed to generate mark scheme: ${error.message}`
+                                  });
+                                } finally {
+                                  setLoading(false);
+                                }
+                              }}
+                              className="flex items-center text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors"
+                              type="button"
+                              disabled={loading}
+                            >
+                              <RefreshCw className="h-3 w-3 mr-1" />
+                              Generate Mark Scheme with AOs
+                            </button>
+                            {loading && <Loader2 className="h-3 w-3 animate-spin text-gray-400" />}
+                          </div>
+                        </div>
+                        
                         <div className="space-y-2">
                           <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
                             Mark Scheme (optional)
@@ -2055,10 +2126,7 @@ When assessing, consider whether responses demonstrate:
             GCSE Qualification Standards
           </Button>
           
-          {/* Add CORS tester in development or if there's a CORS error */}
-          {(process.env.NODE_ENV === 'development' || error?.type === 'network') && (
-            <CORSTester />
-          )}
+          {/* CORS tester removed */}
         </CardFooter>
       </Card>
     </motion.div>
