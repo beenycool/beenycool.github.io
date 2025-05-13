@@ -16,7 +16,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import debounce from 'lodash.debounce';
 
 // API URL for our backend
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 
+  (typeof window !== 'undefined' && window.location.hostname === 'localhost' 
+    ? 'http://localhost:3003'  // Local development 
+    : 'https://your-backend-name.onrender.com'); // Replace with your Render backend URL
 
 // Constants moved to a separate section for easier management
 const SUBJECTS = [
@@ -605,6 +608,44 @@ const AIMarker = () => {
   // At the top of your component
   const hasManuallySetSubject = useRef(false);
 
+  // Define classifySubjectAI before using it
+  const classifySubjectAI = useCallback(async (answerText) => {
+    if (!openai || !answerText) return null;
+    try {
+      const completion = await openai.chat.completions.create({
+        model: "google/gemini-2.0-flash-exp:free", // or any fast/cheap model
+        messages: [
+          {
+            role: "system",
+            content: "You are a GCSE subject classifier. Given a student's answer, return only the subject from this list: English, Maths, Science, History, Geography, Computer Science, Business Studies. If none match, return 'Other'."
+          },
+          {
+            role: "user",
+            content: answerText
+          }
+        ],
+        max_tokens: 10,
+        temperature: 0
+      });
+      const subjectRaw = completion.choices[0].message.content.trim().toLowerCase();
+      // Map AI output to your subject values
+      const mapping = {
+        "english": "english",
+        "maths": "maths",
+        "science": "science",
+        "history": "history",
+        "geography": "geography",
+        "computer science": "computerScience",
+        "business studies": "businessStudies",
+        "other": null
+      };
+      return mapping[subjectRaw] || null;
+    } catch (err) {
+      // fallback to keyword detection if AI fails
+      return null;
+    }
+  }, [openai]);
+
   // Debounced classify function
   const debouncedClassifySubject = useCallback(
     debounce(async (text) => {
@@ -814,43 +855,6 @@ const AIMarker = () => {
       return newCount;
     });
   }, []);
-
-  const classifySubjectAI = useCallback(async (answerText) => {
-    if (!openai || !answerText) return null;
-    try {
-      const completion = await openai.chat.completions.create({
-        model: "google/gemini-2.0-flash-exp:free", // or any fast/cheap model
-        messages: [
-          {
-            role: "system",
-            content: "You are a GCSE subject classifier. Given a student's answer, return only the subject from this list: English, Maths, Science, History, Geography, Computer Science, Business Studies. If none match, return 'Other'."
-          },
-          {
-            role: "user",
-            content: answerText
-          }
-        ],
-        max_tokens: 10,
-        temperature: 0
-      });
-      const subjectRaw = completion.choices[0].message.content.trim().toLowerCase();
-      // Map AI output to your subject values
-      const mapping = {
-        "english": "english",
-        "maths": "maths",
-        "science": "science",
-        "history": "history",
-        "geography": "geography",
-        "computer science": "computerScience",
-        "business studies": "businessStudies",
-        "other": null
-      };
-      return mapping[subjectRaw] || null;
-    } catch (err) {
-      // fallback to keyword detection if AI fails
-      return null;
-    }
-  }, [openai]);
 
   return (
     <motion.div
