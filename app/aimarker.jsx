@@ -51,7 +51,7 @@ const USER_TYPES = [
 const AI_MODELS = [
   { value: "google/gemini-2.5-pro-exp-03-25", label: "Gemini 2.5 Pro (smartest, 1rpm limit)", description: "Best quality but limited to 1 request per minute" },
   { value: "deepseek/deepseek-r1:free", label: "Thinking Model (takes longer)", description: "More thorough reasoning process" },
-  { value: "deepseek/deepseek-v3:free", label: "Good All-Rounder", description: "Balanced speed and quality" }
+  { value: "deepseek/deepseek-chat-v3-0324:free", label: "Good All-Rounder", description: "Balanced speed and quality" }
 ];
 
 const subjectKeywords = {
@@ -136,118 +136,6 @@ const checkBackendStatus = async (model) => {
         : error.message
     };
   }
-};
-
-// Add a CORS tester component after the API_BASE_URL constant
-// CORS tester component
-const CORSTester = () => {
-  const [testResult, setTestResult] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
-
-  const testCORS = async () => {
-    setIsLoading(true);
-    setError(null);
-    setTestResult(null);
-    
-    try {
-      // Test the /api/cors-test endpoint
-      const response = await fetch(`${API_BASE_URL}/api/cors-test`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      if (!response.ok) {
-        throw new Error(`CORS test failed: ${response.status} ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      setTestResult(data);
-    } catch (err) {
-      console.error('CORS test error:', err);
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Next, test the health endpoint
-  const testHealth = async () => {
-    setIsLoading(true);
-    setError(null);
-    setTestResult(null);
-    
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/health`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Health check failed: ${response.status} ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      setTestResult({
-        message: 'Health check successful',
-        data
-      });
-    } catch (err) {
-      console.error('Health check error:', err);
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <div className="mt-8 p-4 border border-gray-200 dark:border-gray-800 rounded-md">
-      <h3 className="text-lg font-medium mb-2">CORS Connection Tester</h3>
-      <div className="flex space-x-2 mb-4">
-        <Button
-          onClick={testCORS}
-          disabled={isLoading}
-          size="sm"
-          variant="outline"
-        >
-          {isLoading ? 'Testing...' : 'Test CORS'}
-        </Button>
-        <Button
-          onClick={testHealth}
-          disabled={isLoading}
-          size="sm"
-          variant="outline"
-        >
-          {isLoading ? 'Testing...' : 'Test Health Endpoint'}
-        </Button>
-      </div>
-      
-      {error && (
-        <div className="p-2 mb-2 bg-red-50 text-red-800 dark:bg-red-900/20 dark:text-red-300 rounded text-sm">
-          <p className="font-medium">Error:</p>
-          <pre className="whitespace-pre-wrap">{error}</pre>
-        </div>
-      )}
-      
-      {testResult && (
-        <div className="p-2 bg-green-50 text-green-800 dark:bg-green-900/20 dark:text-green-300 rounded text-sm">
-          <p className="font-medium">Success:</p>
-          <pre className="whitespace-pre-wrap text-xs max-h-40 overflow-auto">
-            {JSON.stringify(testResult, null, 2)}
-          </pre>
-        </div>
-      )}
-      
-      <div className="mt-2 text-xs text-gray-500">
-        <p>API URL: {API_BASE_URL}</p>
-        <p>Current origin: {typeof window !== 'undefined' ? window.location.origin : 'N/A'}</p>
-      </div>
-    </div>
-  );
 };
 
 const AIMarker = () => {
@@ -821,11 +709,15 @@ When assessing, consider whether responses demonstrate:
       }
       // Check for network errors
       else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-        errorMessage = 'Network error. Please check your internet connection and try again.';
+        errorMessage = 'Network error. Please check your internet connection and try again. Note that Render\'s free tier servers may take up to 50 seconds to wake up after inactivity.';
       }
       // Check for server errors
       else if (error.message.includes('500') || error.message.includes('503')) {
-        errorMessage = 'Server error. The backend service might be unavailable or still starting up. Please try again in a moment.';
+        errorMessage = 'Server error. The backend service might be unavailable or still starting up. If this persists, please wait a minute and try again.';
+      }
+      // Check for model errors
+      else if (error.message.includes('not a valid model ID')) {
+        errorMessage = 'The selected model is not available on the backend. Please try a different model.';
       }
       
       setError({
@@ -1809,7 +1701,7 @@ When assessing, consider whether responses demonstrate:
                                       'Content-Type': 'application/json',
                                     },
                                     body: JSON.stringify({
-                                      model: "google/gemini-2.0-flash-exp:free",
+                                      model: "google/gemini-pro:free",
                                       messages: [
                                         {
                                           role: "system",
@@ -1820,17 +1712,16 @@ When assessing, consider whether responses demonstrate:
                                           content: question
                                         }
                                       ],
-                                      temperature: 0.3,
-                                      max_tokens: 800
+                                      max_tokens: 1500
                                     })
                                   });
                                   
                                   if (!response.ok) {
-                                    throw new Error(`API request failed: ${response.status}`);
+                                    throw new Error(`HTTP error: ${response.status}`);
                                   }
                                   
                                   const data = await response.json();
-                                  const generatedMarkScheme = data.choices[0].message.content;
+                                  const generatedMarkScheme = data?.choices?.[0]?.message?.content || "No mark scheme generated. Please try again.";
                                   
                                   setMarkScheme(generatedMarkScheme);
                                   setSuccess({
@@ -1843,18 +1734,17 @@ When assessing, consider whether responses demonstrate:
                                 } catch (error) {
                                   console.error("Error generating mark scheme:", error);
                                   setError({
-                                    type: "ai_error",
+                                    type: "api_error",
                                     message: `Failed to generate mark scheme: ${error.message}`
                                   });
                                 } finally {
                                   setLoading(false);
                                 }
                               }}
-                              className="flex items-center text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors"
-                              type="button"
-                              disabled={loading}
+                              className="flex items-center px-3 py-2 text-sm bg-primary/10 hover:bg-primary/20 text-primary dark:bg-primary/20 dark:hover:bg-primary/30 rounded-md transition-colors"
+                              disabled={loading || !question}
                             >
-                              <RefreshCw className="h-3 w-3 mr-1" />
+                              <FilePlus size={14} className="mr-2" />
                               Generate Mark Scheme with AOs
                             </button>
                             {loading && <Loader2 className="h-3 w-3 animate-spin text-gray-400" />}
