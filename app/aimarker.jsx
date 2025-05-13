@@ -2,18 +2,38 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
+import 'katex/dist/katex.min.css'; // Add import for KaTeX CSS
+import remarkMath from 'remark-math'; // Add import for remark-math plugin
+import rehypeKatex from 'rehype-katex'; // Add import for rehype-katex plugin
 import OpenAI from 'openai';
 import { getSubjectGuidance } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
-import { Loader2, Upload, AlertTriangle, CheckCircle2, RefreshCw, HelpCircle, ChevronDown, ChevronRight, Save, Share2, ExternalLink, Settings, FilePlus } from "lucide-react";
+import { Loader2, Upload, AlertTriangle, CheckCircle2, RefreshCw, HelpCircle, ChevronDown, ChevronRight, Save, Share2, ExternalLink, Settings, FilePlus, ChevronUp, Zap, X } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import debounce from 'lodash.debounce';
+import { 
+  Copy, Mail, Twitter, Facebook, Download, 
+  Printer, Code
+} from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Separator } from "@/components/ui/separator";
+import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 
 // API URL for our backend
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 
@@ -101,7 +121,7 @@ const copyFeedbackToClipboard = (feedback) => {
   }
 };
 
-// Add a helper function to check if the backend is available
+// Improved backend status checker with retry mechanism
 const checkBackendStatus = async (model) => {
   try {
     let retryCount = 0;
@@ -110,14 +130,15 @@ const checkBackendStatus = async (model) => {
     while (retryCount <= maxRetries) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // Increased timeout to 10 seconds
+        const timeoutId = setTimeout(() => controller.abort(), 12000); // Increased timeout to 12 seconds
         
-        const response = await fetch(`${API_BASE_URL}/api/health`, {
+        const response = await fetch(`${API_BASE_URL}/api/health?timestamp=${Date.now()}`, {
           method: 'GET',
           signal: controller.signal,
           headers: {
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
           }
         });
         
@@ -135,23 +156,30 @@ const checkBackendStatus = async (model) => {
         if (data.openaiClient !== true || data.apiKeyConfigured !== true) {
           return { 
             ok: false, 
-            error: 'The backend API service is not properly configured. Please try again later.' 
+            error: 'The backend API service is not properly configured. Please try again later.',
+            status: 'error',
+            data
           };
         }
         
         // Check if the selected model is available (if provided)
         if (model) {
-          // The backend doesn't explicitly report available models yet,
-          // but we can check if the API is properly configured
-          if (!data.apiKeyConfigured) {
-            return { 
-              ok: false, 
-              error: `API key not configured on the backend. Try again later or contact support.` 
+          // Check for rate limiting or model availability
+          if (model === "google/gemini-2.5-pro-exp-03-25" && data.rateLimited === true) {
+            return {
+              ok: false,
+              error: 'Gemini 2.5 Pro is rate limited. Please try again in a minute or choose another model.',
+              status: 'rate_limited',
+              data
             };
           }
         }
         
-        return { ok: true, data };
+        return { 
+          ok: true, 
+          data,
+          status: 'online' 
+        };
       } catch (error) {
         if (retryCount === maxRetries) {
           // Don't retry if we've hit max retries, just throw the error
@@ -170,89 +198,108 @@ const checkBackendStatus = async (model) => {
     console.error("Backend health check failed:", error);
     
     let errorMessage = error.message;
+    let status = 'error';
+    
     if (error.name === 'AbortError') {
       errorMessage = 'Backend did not respond in time. Render\'s free tier servers may take up to 50 seconds to wake up.';
+      status = 'timeout';
     } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-      errorMessage = 'Network connection to backend failed. Please check your internet connection.';
+      errorMessage = 'Network connection to backend failed. Please check your internet connection and try again in a moment.';
+      status = 'network';
     }
     
     return { 
       ok: false, 
-      error: errorMessage
+      error: errorMessage,
+      status
     };
   }
 };
 
-// Backend Status Checker Component
+// Enhanced Backend Status Checker Component
 const BackendStatusChecker = ({ onStatusChange }) => {
-  const [status, setStatus] = useState('checking'); // 'checking', 'online', 'offline', 'error'
+  const [status, setStatus] = useState('checking'); // 'checking', 'online', 'offline', 'error', 'rate_limited'
   const [statusDetail, setStatusDetail] = useState(null);
   const [lastChecked, setLastChecked] = useState(null);
+  const [isWakingUp, setIsWakingUp] = useState(false);
+  const [wakeupProgress, setWakeupProgress] = useState(0);
+  const wakeupTimerRef = useRef(null);
   
   const checkStatus = useCallback(async () => {
     try {
       setStatus('checking');
       
       // Check if the backend is reachable
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      
-      const response = await fetch(`${API_BASE_URL}/api/health`, {
-        method: 'GET',
-        signal: controller.signal,
-        headers: {
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
-        }
-      });
-      
-      clearTimeout(timeoutId);
-      
-      if (!response.ok) {
-        setStatus('error');
-        setStatusDetail(`Backend returned ${response.status} ${response.statusText}`);
-        if (onStatusChange) onStatusChange('error');
-        return;
-      }
-      
-      const data = await response.json();
+      const result = await checkBackendStatus();
       setLastChecked(new Date().toLocaleTimeString());
       
-      // Check if the backend has the API key configured
-      if (!data.apiKeyConfigured) {
-        setStatus('error');
-        setStatusDetail('API key not configured on server');
-        if (onStatusChange) onStatusChange('error', data);
-        return;
-      }
-      
-      // Check if OpenAI client is properly initialized
-      if (!data.openaiClient) {
-        setStatus('error');
-        setStatusDetail('API client initialization failed');
-        if (onStatusChange) onStatusChange('error', data);
+      if (!result.ok) {
+        // If it's a timeout, assume the server is waking up
+        if (result.status === 'timeout') {
+          setStatus('waking_up');
+          setStatusDetail('Server is waking up...');
+          setIsWakingUp(true);
+          setWakeupProgress(0);
+          
+          // Start a progress timer for visual feedback - max 50 seconds for wakeup
+          clearInterval(wakeupTimerRef.current);
+          wakeupTimerRef.current = setInterval(() => {
+            setWakeupProgress(prev => {
+              const newProgress = prev + 2; // Increment by 2% every second
+              if (newProgress >= 100) {
+                clearInterval(wakeupTimerRef.current);
+                return 100;
+              }
+              return newProgress;
+            });
+          }, 1000);
+          
+          // Schedule an automatic recheck after 10 seconds
+          setTimeout(() => {
+            checkStatus();
+          }, 10000);
+        } else {
+          setStatus(result.status || 'error');
+          setStatusDetail(result.error);
+          setIsWakingUp(false);
+          clearInterval(wakeupTimerRef.current);
+        }
+        
+        if (onStatusChange) onStatusChange(result.status || 'error', result.data);
         return;
       }
       
       // All checks passed
       setStatus('online');
       setStatusDetail(null);
-      if (onStatusChange) onStatusChange('online', data);
+      setIsWakingUp(false);
+      clearInterval(wakeupTimerRef.current);
+      
+      if (onStatusChange) onStatusChange('online', result.data);
       
     } catch (error) {
       console.error('Backend status check failed:', error);
       
       if (error.name === 'AbortError') {
-        setStatus('offline');
+        setStatus('timeout');
         setStatusDetail('Connection timed out');
       } else {
         setStatus('error');
         setStatusDetail(error.message);
       }
       
-      if (onStatusChange) onStatusChange('offline');
+      if (onStatusChange) onStatusChange(error.name === 'AbortError' ? 'timeout' : 'error');
     }
   }, [API_BASE_URL, onStatusChange]);
+  
+  // Clean up interval on unmount
+  useEffect(() => {
+    return () => {
+      if (wakeupTimerRef.current) {
+        clearInterval(wakeupTimerRef.current);
+      }
+    };
+  }, []);
   
   // Check status on mount and periodically
   useEffect(() => {
@@ -271,34 +318,47 @@ const BackendStatusChecker = ({ onStatusChange }) => {
         <TooltipTrigger asChild>
           <button 
             onClick={checkStatus}
-            className={`inline-flex items-center h-5 px-1.5 rounded text-xs font-medium ${
+            className={`inline-flex items-center h-6 px-2 rounded text-xs font-medium ${
               status === 'checking' ? 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300' :
               status === 'online' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' :
-              status === 'offline' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' :
-              'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
+              status === 'waking_up' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' :
+              status === 'rate_limited' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400' :
+              status === 'offline' || status === 'timeout' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400' :
+              'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
             }`}
           >
-            <span className={`w-1.5 h-1.5 rounded-full mr-1 ${
+            <span className={`w-2 h-2 rounded-full mr-1.5 ${
               status === 'checking' ? 'bg-gray-500 dark:bg-gray-400' :
               status === 'online' ? 'bg-green-500 dark:bg-green-400' :
-              status === 'offline' ? 'bg-red-500 dark:bg-red-400' :
-              'bg-amber-500 dark:bg-amber-400'
+              status === 'waking_up' ? 'bg-blue-500 dark:bg-blue-400' :
+              status === 'rate_limited' ? 'bg-amber-500 dark:bg-amber-400' :
+              status === 'offline' || status === 'timeout' ? 'bg-orange-500 dark:bg-orange-400' :
+              'bg-red-500 dark:bg-red-400'
             }`} />
             {status === 'checking' ? 'Checking' :
              status === 'online' ? 'Online' :
-             status === 'offline' ? 'Offline' :
+             status === 'waking_up' ? 'Waking Up' :
+             status === 'rate_limited' ? 'Rate Limited' :
+             status === 'offline' || status === 'timeout' ? 'Starting Up' :
              'Error'}
           </button>
         </TooltipTrigger>
         <TooltipContent className="max-w-xs">
-          <div className="space-y-1">
+          <div className="space-y-2">
             <p className="font-medium">{
               status === 'checking' ? 'Checking backend status...' :
               status === 'online' ? 'Backend is online and ready' :
-              status === 'offline' ? 'Backend is offline or unreachable' :
+              status === 'waking_up' ? 'Backend is starting up (may take up to 50 seconds)' :
+              status === 'rate_limited' ? 'API rate limit reached' :
+              status === 'offline' || status === 'timeout' ? 'Backend is starting up after inactivity' :
               'Backend error detected'
             }</p>
             {statusDetail && <p className="text-xs opacity-80">{statusDetail}</p>}
+            {isWakingUp && (
+              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 mt-1">
+                <div className="bg-blue-600 dark:bg-blue-500 h-1.5 rounded-full" style={{ width: `${wakeupProgress}%` }}></div>
+              </div>
+            )}
             {lastChecked && <p className="text-xs opacity-70">Last checked: {lastChecked}</p>}
             <p className="text-xs italic">Click to check again</p>
           </div>
@@ -308,6 +368,396 @@ const BackendStatusChecker = ({ onStatusChange }) => {
   );
 };
 
+// Improve the debounced classify function with visual indication
+const debouncedClassifySubject = useCallback(
+  debounce(async (text) => {
+    if (loading) return; // Don't run while loading
+    
+    const detected = await classifySubjectAI(text);
+    if (detected && detected !== subject && !hasManuallySetSubject.current) {
+      // Store the previous subject to show a nice transition
+      const prevSubject = allSubjects.find(s => s.value === subject)?.label || '';
+      const newSubject = allSubjects.find(s => s.value === detected)?.label || '';
+      
+      setSubject(detected);
+      setDetectedSubject(detected);
+      
+      // Show a success message with nice animation
+      setSuccess({
+        message: `Subject automatically detected as ${newSubject}`,
+        detail: prevSubject ? `Changed from ${prevSubject}` : null,
+        icon: 'detection'
+      });
+      
+      setTimeout(() => setSuccess(null), 3000);
+    }
+  }, 1000),
+  [classifySubjectAI, subject, allSubjects, loading]
+);
+
+// Add a better success alert component with animations
+const EnhancedAlert = ({ success, error }) => {
+  if (!success && !error) return null;
+  
+  if (error) {
+    return (
+      <Alert variant="destructive" className="mb-4 animate-in fade-in slide-in-from-top-5 duration-300">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertTitle>Error</AlertTitle>
+        <AlertDescription className="flex flex-col gap-2">
+          {error.message}
+          {(error.retry || error.type === "network" || error.type === "timeout" || error.type === "api_error") && (
+            <div className="mt-1">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleSubmitForMarking}
+                disabled={loading}
+              >
+                Retry
+              </Button>
+            </div>
+          )}
+        </AlertDescription>
+      </Alert>
+    );
+  }
+  
+  if (success) {
+    return (
+      <Alert className="mb-4 animate-in fade-in slide-in-from-top-5 duration-300 bg-green-50 text-green-800 border-green-200 dark:bg-green-900/20 dark:border-green-900 dark:text-green-300">
+        {success.icon === 'detection' ? (
+          <motion.div
+            initial={{ rotate: -30, scale: 0.9 }}
+            animate={{ rotate: 0, scale: 1 }}
+            transition={{ duration: 0.3 }}
+          >
+            <Zap className="h-4 w-4" />
+          </motion.div>
+        ) : (
+          <CheckCircle2 className="h-4 w-4" />
+        )}
+        <AlertDescription className="flex flex-col">
+          <span>{success.message}</span>
+          {success.detail && (
+            <span className="text-xs opacity-80 mt-0.5">{success.detail}</span>
+          )}
+        </AlertDescription>
+      </Alert>
+    );
+  }
+  
+  return null;
+};
+
+// Add a progress indicator component
+const ProgressIndicator = ({ loading, progress }) => {
+  if (!loading) return null;
+  
+  return (
+    <div className="absolute inset-0 bg-black/5 dark:bg-black/20 backdrop-blur-[1px] flex items-center justify-center z-50 rounded-lg">
+      <div className="bg-white dark:bg-gray-900 p-4 rounded-lg shadow-lg flex flex-col items-center gap-2 min-w-[200px]">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        <p className="text-sm font-medium">{progress || "Processing..."}</p>
+      </div>
+    </div>
+  );
+};
+
+// Enhanced Markdown component with LaTeX support
+const MathMarkdown = ({ children }) => {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkMath]}
+      rehypePlugins={[rehypeKatex]}
+      components={{
+        // You can customize components if needed
+        h1: ({ node, ...props }) => <h1 className="text-xl my-3 font-bold" {...props} />,
+        h2: ({ node, ...props }) => <h2 className="text-lg my-3 font-bold" {...props} />,
+        h3: ({ node, ...props }) => <h3 className="text-base my-2.5 font-semibold" {...props} />,
+        p: ({ node, ...props }) => <p className="my-2" {...props} />,
+        ul: ({ node, ...props }) => <ul className="list-disc pl-5 my-2" {...props} />,
+        ol: ({ node, ...props }) => <ol className="list-decimal pl-5 my-2" {...props} />,
+        li: ({ node, ...props }) => <li className="ml-2 my-1" {...props} />,
+        strong: ({ node, ...props }) => <strong className="font-bold" {...props} />,
+        em: ({ node, ...props }) => <em className="italic" {...props} />,
+      }}
+    >
+      {children}
+    </ReactMarkdown>
+  );
+};
+
+// Enhanced feedback sharing functionality
+const shareFeedback = (feedback, method, grade) => {
+  const title = `GCSE Grade ${grade} Feedback`;
+  const cleanFeedback = feedback.replace(/\[GRADE:\d\]/g, '');
+  
+  switch (method) {
+    case 'clipboard':
+      navigator.clipboard.writeText(cleanFeedback);
+      return 'Feedback copied to clipboard!';
+    case 'email':
+      const emailSubject = encodeURIComponent(title);
+      const emailBody = encodeURIComponent(cleanFeedback);
+      window.open(`mailto:?subject=${emailSubject}&body=${emailBody}`);
+      return 'Email client opened';
+    case 'twitter':
+      const tweetText = encodeURIComponent(`I received a Grade ${grade} on my GCSE assessment! #GCSE #Education`);
+      window.open(`https://twitter.com/intent/tweet?text=${tweetText}`);
+      return 'Twitter share opened';
+    case 'facebook':
+      window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}`);
+      return 'Facebook share opened';
+    default:
+      return '';
+  }
+};
+
+// Improved PDF export function using html2canvas and jsPDF
+const saveFeedbackAsPdf = async (feedbackElement, grade) => {
+  try {
+    // Dynamically import the libraries (only load when needed)
+    const html2canvasModule = await import('html2canvas');
+    const jsPDFModule = await import('jspdf');
+    
+    const html2canvas = html2canvasModule.default;
+    const jsPDF = jsPDFModule.default;
+    
+    const feedbackContainer = feedbackElement.current;
+    if (!feedbackContainer) return;
+    
+    const canvas = await html2canvas(feedbackContainer, {
+      scale: 2,
+      useCORS: true,
+      logging: false
+    });
+    
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = pdf.internal.pageSize.getHeight();
+    
+    const imgWidth = canvas.width;
+    const imgHeight = canvas.height;
+    
+    const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+    const imgX = (pdfWidth - imgWidth * ratio) / 2;
+    
+    pdf.addImage(imgData, 'PNG', imgX, 0, imgWidth * ratio, imgHeight * ratio);
+    pdf.save(`GCSE_Grade${grade}_Feedback.pdf`);
+    
+    return 'Feedback saved as PDF';
+  } catch (error) {
+    console.error('Error saving PDF:', error);
+    alert('Could not generate PDF. Please try again or use another method to save the feedback.');
+  }
+};
+
+// Improved print functionality
+const printFeedback = (feedbackElement) => {
+  try {
+    const printWindow = window.open('', '_blank');
+    const feedbackHTML = feedbackElement.current.innerHTML;
+    
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>GCSE Assessment Feedback</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            .feedback-container { max-width: 800px; margin: 0 auto; }
+            h1, h2, h3 { color: #333; }
+            ul { padding-left: 20px; }
+            li { margin-bottom: 5px; }
+            .grade { display: inline-block; width: 40px; height: 40px; 
+                    background: #f0f0f0; border-radius: 50%; text-align: center; 
+                    line-height: 40px; font-weight: bold; font-size: 20px; 
+                    margin: 10px 0; }
+          </style>
+        </head>
+        <body>
+          <div class="feedback-container">
+            <h1>GCSE Assessment Feedback</h1>
+            ${feedbackHTML}
+          </div>
+          <script>
+            window.onload = function() { window.print(); window.close(); }
+          </script>
+        </body>
+      </html>
+    `);
+    
+    printWindow.document.close();
+    return 'Print dialog opened';
+  } catch (error) {
+    console.error('Error printing feedback:', error);
+    alert('Could not open print dialog. Please try again or use another method to save the feedback.');
+  }
+};
+
+// Enhanced Feedback UI component
+const EnhancedFeedback = ({ feedback, grade, modelName }) => {
+  const feedbackRef = useRef(null);
+  const [shareMessage, setShareMessage] = useState(null);
+  
+  const handleShare = (method) => {
+    const message = shareFeedback(feedback, method, grade);
+    setShareMessage(message);
+    setTimeout(() => setShareMessage(null), 2000);
+  };
+  
+  const handleSaveAsPdf = async () => {
+    const message = await saveFeedbackAsPdf(feedbackRef, grade);
+    setShareMessage(message);
+    setTimeout(() => setShareMessage(null), 2000);
+  };
+  
+  const handlePrint = () => {
+    const message = printFeedback(feedbackRef);
+    setShareMessage(message);
+    setTimeout(() => setShareMessage(null), 2000);
+  };
+  
+  return (
+    <div className="relative">
+      {shareMessage && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-black/80 text-white px-3 py-1.5 rounded text-sm z-10"
+        >
+          {shareMessage}
+        </motion.div>
+      )}
+      
+      <div className="flex justify-between items-center mb-3">
+        <div className="flex items-center gap-2">
+          {grade && (
+            <div className="inline-flex items-center justify-center h-10 w-10 bg-gradient-to-br from-indigo-600 to-purple-600 dark:from-indigo-500 dark:to-purple-500 text-white font-bold rounded-full shadow-md">
+              {grade}
+            </div>
+          )}
+          <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
+            Feedback
+            <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
+              by {modelName}
+            </span>
+          </h3>
+        </div>
+        
+        <div className="flex items-center gap-1.5">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => window.location.reload()}
+                  className="h-8 w-8 p-0 rounded-full"
+                >
+                  <RefreshCw className="h-4 w-4 text-gray-600 dark:text-gray-400" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Try a different model</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        
+          <DropdownMenu>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0 rounded-full"
+                    >
+                      <Share2 className="h-4 w-4 text-gray-600 dark:text-gray-400" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Share feedback</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>Share Feedback</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => handleShare('clipboard')}>
+                <Copy className="mr-2 h-4 w-4" />
+                <span>Copy to clipboard</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleShare('email')}>
+                <Mail className="mr-2 h-4 w-4" />
+                <span>Share via email</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleShare('twitter')}>
+                <Twitter className="mr-2 h-4 w-4" />
+                <span>Share on Twitter</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleShare('facebook')}>
+                <Facebook className="mr-2 h-4 w-4" />
+                <span>Share on Facebook</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleSaveAsPdf}>
+                <Download className="mr-2 h-4 w-4" />
+                <span>Save as PDF</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handlePrint}>
+                <Printer className="mr-2 h-4 w-4" />
+                <span>Print feedback</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+      
+      <div 
+        ref={feedbackRef}
+        className="prose prose-sm dark:prose-invert prose-p:my-2 prose-h1:text-xl prose-h1:my-3 prose-h2:text-lg prose-h2:my-3 prose-h3:text-base prose-h3:font-semibold prose-h3:my-2.5 max-w-none bg-white dark:bg-gray-900 p-4 rounded-lg shadow-sm border border-gray-100 dark:border-gray-800"
+      >
+        <MathMarkdown>{feedback}</MathMarkdown>
+      </div>
+    </div>
+  );
+};
+
+// Add a hook to detect viewport size
+const useViewport = () => {
+  const [viewportSize, setViewportSize] = useState({
+    width: typeof window !== 'undefined' ? window.innerWidth : 0,
+    height: typeof window !== 'undefined' ? window.innerHeight : 0
+  });
+  
+  useEffect(() => {
+    const handleResize = () => {
+      setViewportSize({
+        width: window.innerWidth,
+        height: window.innerHeight
+      });
+    };
+    
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', handleResize);
+      // Initial call
+      handleResize();
+      
+      return () => window.removeEventListener('resize', handleResize);
+    }
+  }, []);
+  
+  return viewportSize;
+};
+
+// Enhanced AIMarker component with mobile responsiveness
 const AIMarker = () => {
   // ======== STATE MANAGEMENT ========
   // Form state
@@ -340,6 +790,7 @@ const AIMarker = () => {
   const [success, setSuccess] = useState(null);
   const [detectedSubject, setDetectedSubject] = useState(null);
   const [shortcutFeedback, setShortcutFeedback] = useState(null);
+  const [processingProgress, setProcessingProgress] = useState("");
   
   // API and rate limiting
   const [openai, setOpenai] = useState(null);
@@ -348,6 +799,13 @@ const AIMarker = () => {
   const [lastRequestDate, setLastRequestDate] = useState(new Date().toDateString());
   const [selectedModel, setSelectedModel] = useState("google/gemini-2.5-pro-exp-03-25");
   const [imageLoading, setImageLoading] = useState(false);
+  const [backendError, setBackendError] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const [helpButtonRef, setHelpButtonRef] = useState(null);
+  const [questionInputRef, setQuestionInputRef] = useState(null);
+  const [answerInputRef, setAnswerInputRef] = useState(null);
+  const [marksInputRef, setMarksInputRef] = useState(null);
+  const [markSchemeButtonRef, setMarkSchemeButtonRef] = useState(null);
 
   // ======== MAIN FUNCTIONS ========
   // Submit handler
@@ -380,7 +838,8 @@ const AIMarker = () => {
       setLoading(false);
       setError({
         type: "network",
-        message: `Backend connection error: ${backendStatus.error}. Render's free tier servers may take up to 30 seconds to wake up after inactivity. Please try again.`
+        message: `Backend connection error: ${backendStatus.error}. Render's free tier servers may take up to 50 seconds to wake up after inactivity. Please try again in a minute.`,
+        retry: true
       });
       return;
     }
@@ -460,10 +919,23 @@ e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number
 - ${userType === 'teacher' ? 'Professional and assessment-focused' : 'Approachable and encouraging'}
 - Specific praise ("Excellent use of terminology when...")
 - Constructive criticism ${userType === 'teacher' ? '("This meets level 3 criteria because...")' : '("Consider expanding on...")'}
-- Avoid vague statements - always reference the answer
+- Avoid vague statements - always reference the answer`;
 
-4. SUBJECT-SPECIFIC GUIDANCE:
+      // Add math-specific LaTeX formatting instructions
+      if (subject === "maths") {
+        basePrompt += `\n\n4. MATHEMATICAL NOTATION:
+- Use LaTeX notation for mathematical expressions enclosed in ( ) for inline formulas and as separate blocks for complex formulas
+- Example inline: ( x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a} )
+- Example block:
+$$
+x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}
+$$
+- Format solutions step-by-step with clear explanations
+- Number equations and reference them in your feedback`;
+      } else {
+        basePrompt += `\n\n4. SUBJECT-SPECIFIC GUIDANCE:
 ${getSubjectGuidance(subject, examBoard)}`;
+      }
 
       // Add thinking model specific instructions
       if (selectedModel === "deepseek/deepseek-r1:free") {
@@ -473,58 +945,6 @@ ${getSubjectGuidance(subject, examBoard)}`;
 - Consider what evidence supports each point you make in your feedback
 - Show your reasoning for the grade assigned by comparing to GCSE standards
 - Mark your thinking process with [THINKING] and your final feedback with [FEEDBACK]`;
-      }
-
-      // Add specific guidance for English Paper 1, Question 3
-      if (subject === "english" && examBoard === "aqa" && questionType === "paper1q3") {
-        basePrompt = `You are an expert AQA English Language examiner specializing in Paper 1, Question 3 (structure analysis).
-
-Your task is to provide detailed, constructive feedback for ${userType === 'teacher' ? 'assessment purposes' : 'student learning'} following the Level 4 (7-8 marks) criteria:
-
-1. ASSESSMENT CRITERIA:
-- Perceptive and detailed understanding of structural features
-- Precise analysis of the effects of the writer's structural choices
-- Selection of judicious, well-chosen examples
-- Sophisticated and accurate use of subject terminology
-
-2. FEEDBACK STRUCTURE:
-a) Summary of performance (1-2 sentences)
-b) 2-3 specific strengths with examples
-c) 2-3 areas for improvement with ${userType === 'teacher' ? 'marking criteria' : 'actionable suggestions'}
-d) One specific ${userType === 'teacher' ? 'assessment note' : '"next step" for the student'}
-e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number, with marks out of 8
-
-3. TONE & STYLE:
-- ${userType === 'teacher' ? 'Professional and assessment-focused' : 'Approachable and encouraging'}
-- Specific praise ("Excellent analysis of shifts in focus when...")
-- Constructive criticism ${userType === 'teacher' ? '("This meets level 3 criteria because...")' : '("Consider expanding your analysis of...")'}
-- Avoid vague statements - always reference the answer
-
-4. SPECIFIC GUIDANCE FOR PAPER 1, QUESTION 3:
-- Reward answers that track meaningful shifts in focus (setting → character movement → objects → internal conflicts)
-- Value analysis of narrative progression and its impact on tension/atmosphere
-- Look for identification of purposeful positioning of key elements
-- Praise sophisticated analytical language with interpretive thinking (e.g., "juxtaposition creates a sharp spike in tension")
-- Encourage precise use of terminology (shifts in narrative focus, cyclical structure, juxtaposition, foreshadowing)
-- Discourage generic comments like "this makes the reader want to read on"
-- Mark down for focus on language features rather than structural elements
-- Penalize listing techniques without analyzing their effect
-
-When assessing, consider whether responses demonstrate:
-- Whole-text structural analysis 
-- Sophisticated analytical language
-- Precise terminology usage
-- Exemplary textual support that connects details to their structural function`;
-
-        // Add thinking model specific instructions for English Paper 1, Question 3
-        if (selectedModel === "deepseek/deepseek-r1:free") {
-          basePrompt += `\n\n5. THINKING PROCESS:
-- First, carefully analyze how well the student identifies structural features
-- Evaluate their understanding of writer's intentions regarding structure
-- Consider how effectively they analyze shifts in focus, narrative progression, etc.
-- Assess their use of subject terminology and textual evidence
-- Show your reasoning process with [THINKING] and final feedback with [FEEDBACK]`;
-        }
       }
 
       return basePrompt;
@@ -744,9 +1164,8 @@ When assessing, consider whether responses demonstrate:
                         const cleanedContent = content.replace('[FEEDBACK]', '');
                         finalFeedback += cleanedContent;
                       } else {
-                        // If no markers yet, add to both until we figure out which mode we're in
+                        // If no markers yet, add to thinking until we figure out which mode we're in
                         thinking += content;
-                        finalFeedback += content;
                         setModelThinking(thinking);
                       }
                     } catch (e) {
@@ -1086,7 +1505,7 @@ When assessing, consider whether responses demonstrate:
       
       // Ctrl/Cmd + / to toggle help guide
       if ((e.ctrlKey || e.metaKey) && e.key === '/') {
-        setShowGuide(prev => !prev);
+        setShowHelp(prev => !prev);
         setShortcutFeedback("Toggled help guide");
         e.preventDefault();
       }
@@ -1148,22 +1567,6 @@ When assessing, consider whether responses demonstrate:
       return null;
     }
   }, [openai]);
-
-  // Debounced classify function
-  const debouncedClassifySubject = useCallback(
-    debounce(async (text) => {
-      const detected = await classifySubjectAI(text);
-      if (detected && detected !== subject && !hasManuallySetSubject.current) {
-        setSubject(detected);
-        setDetectedSubject(detected);
-        setSuccess({
-          message: `Subject automatically detected as ${allSubjects.find(s => s.value === detected)?.label}`,
-        });
-        setTimeout(() => setSuccess(null), 3000);
-      }
-    }, 1000),
-    [classifySubjectAI, subject, allSubjects]
-  );
 
   useEffect(() => {
     if (!answer || answer.length < 20 || hasManuallySetSubject.current) return;
@@ -1447,547 +1850,185 @@ When assessing, consider whether responses demonstrate:
     }, 3000);
   };
 
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.5 }}
-      className="w-full max-w-4xl mx-auto p-2 sm:p-4 md:p-6"
-    >
-      {/* Keyboard shortcut feedback indicator */}
-      <AnimatePresence>
-        {shortcutFeedback && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50"
-          >
-            <div className="bg-black/80 text-white px-4 py-2 rounded-md shadow-lg text-sm">
-              {shortcutFeedback}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+  // Improve the mark scheme generation function
+  const generateMarkScheme = async () => {
+    if (!question) {
+      setError({
+        type: "validation",
+        message: "Please enter a question first to generate a mark scheme"
+      });
+      return;
+    }
+    
+    setLoading(true);
+    setSuccess({
+      message: "Generating mark scheme with relevant Assessment Objectives..."
+    });
+    
+    let retryCount = 0;
+    const maxRetries = 2; // Try up to 3 times total (initial + 2 retries)
+    
+    while (retryCount <= maxRetries) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: "google/gemini-pro:free", // Use a faster model for mark scheme generation
+            messages: [
+              {
+                role: "system",
+                content: `You are an expert in GCSE ${subject} for the ${examBoard.toUpperCase()} exam board. Generate a concise mark scheme with relevant Assessment Objectives (AOs) for the following question. Format using bullet points and include key marking criteria.`
+              },
+              {
+                role: "user",
+                content: question
+              }
+            ],
+            max_tokens: 1500
+          })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        const generatedMarkScheme = data?.choices?.[0]?.message?.content || "No mark scheme generated. Please try again.";
+        
+        setMarkScheme(generatedMarkScheme);
+        setSuccess({
+          message: "Mark scheme generated successfully!"
+        });
+        
+        setTimeout(() => {
+          setSuccess(null);
+        }, 3000);
+        
+        break; // Success, exit the retry loop
+      } catch (error) {
+        console.error("Error generating mark scheme:", error);
+        
+        if (retryCount === maxRetries) {
+          setError({
+            type: "api_error",
+            message: `Failed to generate mark scheme. Backend service may be starting up. Please try again in a minute.`,
+            retry: true
+          });
+        } else {
+          setSuccess({
+            message: `Retrying mark scheme generation (${retryCount + 1}/${maxRetries})...`
+          });
+          // Wait before retrying
+          await new Promise(resolve => setTimeout(resolve, 3000 * (retryCount + 1)));
+        }
+        
+        retryCount++;
+      }
+    }
+    
+    setLoading(false);
+  };
 
-      <Card className="w-full shadow-lg rounded-xl bg-gradient-to-br from-gray-50/50 to-white dark:from-gray-900/20 dark:to-gray-950/50">
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-gray-600 to-gray-800 dark:from-gray-400 dark:to-gray-600 bg-clip-text text-transparent">
-                GCSE AI Marker
-              </CardTitle>
-              <CardDescription className="text-sm sm:text-base text-gray-600 dark:text-gray-400">
-                Instant feedback on your GCSE answers
-              </CardDescription>
-            </div>
-            
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={() => setShowGuide(!showGuide)}
-                    className="h-8 w-8 rounded-full p-0"
-                  >
-                    <HelpCircle size={18} className="text-gray-600 dark:text-gray-400" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>How to use this tool</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-          
-          {showGuide && (
-            <div className="guide-card">
-              <QuickGuide />
-            </div>
-          )}
-          
-          {/* Subject Selector as Dropdown with Add Custom Option */}
-          <div className="flex flex-wrap gap-2 pt-2">
-            {!isAddingSubject ? (
-              <>
-                <Select value={subject} onValueChange={handleSubjectChange}>
-                  <SelectTrigger className="w-[180px] bg-white dark:bg-gray-900">
-                    <SelectValue placeholder="Select a subject" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <div className="max-h-[300px] overflow-y-auto">
-                      {allSubjects.map((s) => (
-                        <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                      ))}
-                      <div className="border-t border-gray-200 dark:border-gray-800 my-1"></div>
-                      <button
-                        className="w-full py-1.5 px-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center gap-1.5"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setIsAddingSubject(true);
-                        }}
-                      >
-                        <FilePlus className="h-4 w-4" /> Add custom subject
-                      </button>
-                    </div>
-                  </SelectContent>
-                </Select>
-                
-                <Select value={examBoard} onValueChange={setExamBoard}>
-                  <SelectTrigger className="w-[120px] bg-white dark:bg-gray-900">
-                    <SelectValue placeholder="Exam Board" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {EXAM_BOARDS.map((board) => (
-                      <SelectItem key={board.value} value={board.value}>{board.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                
-                {/* Question Type selector - only show for English AQA */}
-                {subject === "english" && examBoard === "aqa" && (
-                  <div className="mb-4">
-                    <label htmlFor="questionType" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center">
-                      Question Type 
-                      <span className="ml-2 inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">AQA English</span>
-                    </label>
-                    <Select 
-                      value={questionType} 
-                      onValueChange={(value) => {
-                        setQuestionType(value);
-                        
-                        // Show a success message when a specialized question type is selected
-                        if (value !== "general") {
-                          setSuccess({
-                            message: `Selected ${
-                              value === "paper1q3" ? "Paper 1, Question 3 (Structure Analysis)" : 
-                              value === "paper1q4" ? "Paper 1, Question 4 (Evaluation)" :
-                              value === "paper2q2" ? "Paper 2, Question 2 (Summary)" : 
-                              "Paper 2, Question 5 (Writing)"
-                            } criteria`
-                          });
-                          setTimeout(() => {
-                            setSuccess(null);
-                          }, 3000);
-                        }
-                      }}
-                    >
-                      <SelectTrigger id="questionType" 
-                        className={`w-full ${
-                          questionType === "paper1q3" ? "bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800" :
-                          questionType === "paper1q4" ? "bg-indigo-50 border-indigo-200 dark:bg-indigo-900/20 dark:border-indigo-800" :
-                          questionType === "paper2q2" ? "bg-violet-50 border-violet-200 dark:bg-violet-900/20 dark:border-violet-800" :
-                          questionType === "paper2q5" ? "bg-teal-50 border-teal-200 dark:bg-teal-900/20 dark:border-teal-800" :
-                          ""
-                        }`}
-                      >
-                        <SelectValue placeholder="Select question type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="general">General Assessment</SelectItem>
-                        <SelectGroup>
-                          <SelectLabel>Paper 1</SelectLabel>
-                          <SelectItem value="paper1q3" className="bg-blue-50 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
-                            Paper 1, Question 3 (Structure)
-                          </SelectItem>
-                          <SelectItem value="paper1q4" className="bg-indigo-50 text-indigo-800 dark:bg-indigo-900/20 dark:text-indigo-300">
-                            Paper 1, Question 4 (Evaluation)
-                          </SelectItem>
-                        </SelectGroup>
-                        <SelectGroup>
-                          <SelectLabel>Paper 2</SelectLabel>
-                          <SelectItem value="paper2q2" className="bg-violet-50 text-violet-800 dark:bg-violet-900/20 dark:text-violet-300">
-                            Paper 2, Question 2 (Summary)
-                          </SelectItem>
-                          <SelectItem value="paper2q5" className="bg-teal-50 text-teal-800 dark:bg-teal-900/20 dark:text-teal-300">
-                            Paper 2, Question 5 (Writing)
-                          </SelectItem>
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-                
-                {/* Model Selector */}
-                <Select value={selectedModel} onValueChange={setSelectedModel}>
-                  <SelectTrigger className="w-[280px] bg-white dark:bg-gray-900">
-                    <div className="flex items-center">
-                      <Settings className="h-3.5 w-3.5 mr-1.5 opacity-70" />
-                      <SelectValue placeholder="Select AI model" />
-                    </div>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {AI_MODELS.map((model) => (
-                      <SelectItem key={model.value} value={model.value}>
-                        <div>
-                          <div className="font-medium">{model.label}</div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">{model.description}</div>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </>
+  // Add this component for displaying the Model Thinking Process
+  const ModelThinkingBox = ({ thinking, loading }) => {
+    const [isExpanded, setIsExpanded] = useState(false);
+    
+    if (!thinking && !loading) return null;
+    
+    return (
+      <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-md">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center">
+            <div className="text-sm font-medium text-gray-700 dark:text-gray-300">Model Thinking Process</div>
+            {loading && !thinking ? (
+              <Badge variant="outline" className="ml-2 px-1.5 py-0 text-xs bg-blue-50 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
+                <Loader2 className="mr-1 h-3 w-3 animate-spin" /> 
+                Processing...
+              </Badge>
             ) : (
-              <div className="flex gap-2">
-                <input
-                  ref={customSubjectInputRef}
-                  type="text"
-                  aria-label="Add custom subject"
-                  value={customSubject}
-                  onChange={(e) => setCustomSubject(e.target.value)}
-                  placeholder="Enter subject name"
-                  className="px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      addCustomSubject();
-                    } else if (e.key === 'Escape') {
-                      setIsAddingSubject(false);
-                      setCustomSubject("");
-                    }
-                  }}
-                />
-                <Button 
-                  size="sm" 
-                  onClick={addCustomSubject}
-                  disabled={!customSubject.trim()}
-                >
-                  Add
-                </Button>
-                <Button 
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setIsAddingSubject(false);
-                    setCustomSubject("");
-                  }}
-                >
-                  Cancel
-                </Button>
-              </div>
+              <Badge variant="outline" className="ml-2 px-1.5 py-0 text-xs">Step-by-Step Reasoning</Badge>
             )}
           </div>
-        </CardHeader>
-
-        <CardContent className="p-4">
-          {/* Status Messages */}
-          {error && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Error</AlertTitle>
-              <AlertDescription>
-                {error.message}
-                {(error.type === "network" || error.type === "timeout" || error.type === "api_error") && (
-                  <div className="mt-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={handleSubmitForMarking}
-                      disabled={loading}
-                    >
-                      Retry
-                    </Button>
-                  </div>
-                )}
-              </AlertDescription>
-            </Alert>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="h-7 w-7 p-0 rounded-full"
+            onClick={() => setIsExpanded(!isExpanded)}
+          >
+            {isExpanded ? 
+              <ChevronUp size={16} className="text-gray-500 dark:text-gray-400" /> :
+              <ChevronDown size={16} className="text-gray-500 dark:text-gray-400" />
+            }
+          </Button>
+        </div>
+        <div 
+          className={`overflow-y-auto text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap transition-all duration-300 font-mono border border-gray-100 dark:border-gray-800 p-2 rounded bg-white dark:bg-gray-950 ${
+            isExpanded ? 'max-h-[500px]' : 'max-h-48'
+          }`}
+        >
+          {loading && !thinking ? (
+            <div className="flex flex-col items-center justify-center py-4 text-gray-400">
+              <Loader2 className="h-4 w-4 animate-spin mb-2" />
+              <span>Waiting for the model to start thinking...</span>
+            </div>
+          ) : thinking ? (
+            // Process and display thinking, ensuring we only show the [THINKING] part
+            thinking.includes('[THINKING]') 
+              ? thinking.split('[THINKING]')[1].split('[FEEDBACK]')[0] 
+              : thinking
+          ) : (
+            "Waiting for model's thinking process..."
           )}
-          
-          {success && !error && (
-            <Alert className="mb-4 bg-green-50 text-green-800 border-green-200 dark:bg-green-900/20 dark:border-green-900 dark:text-green-300">
-              <CheckCircle2 className="h-4 w-4" />
-              <AlertDescription>{success.message}</AlertDescription>
-            </Alert>
-          )}
+        </div>
+      </div>
+    );
+  };
 
-          {/* Special notice for each AQA English question type */}
-          {subject === "english" && examBoard === "aqa" && questionType === "paper1q3" && (
-            <Alert className="mb-4 bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-900/20 dark:border-blue-900 dark:text-blue-300">
-              <HelpCircle className="h-4 w-4" />
-              <AlertTitle>Paper 1, Question 3 - Structure Analysis</AlertTitle>
-              <AlertDescription>
-                Using specialized AQA criteria for structure analysis questions. Your answer will be assessed on:
-                <ul className="mt-2 ml-5 list-disc text-sm">
-                  <li>Perceptive understanding of structural features</li>
-                  <li>Analysis of writer's structural choices</li>
-                  <li>Selection of judicious examples</li>
-                  <li>Sophisticated use of subject terminology</li>
-                </ul>
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {subject === "english" && examBoard === "aqa" && questionType === "paper1q4" && (
-            <Alert className="mb-4 bg-indigo-50 text-indigo-800 border-indigo-200 dark:bg-indigo-900/20 dark:border-indigo-900 dark:text-indigo-300">
-              <HelpCircle className="h-4 w-4" />
-              <AlertTitle>Paper 1, Question 4 - Evaluation</AlertTitle>
-              <AlertDescription>
-                Using specialized AQA criteria for evaluation questions. Your answer will be assessed on:
-                <ul className="mt-2 ml-5 list-disc text-sm">
-                  <li>Perceptive and critical evaluation of the text</li>
-                  <li>Detailed examination of writer's methods</li>
-                  <li>Convincing selection of textual detail</li>
-                  <li>Well-structured argument with clear opinions</li>
-                </ul>
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {subject === "english" && examBoard === "aqa" && questionType === "paper2q2" && (
-            <Alert className="mb-4 bg-violet-50 text-violet-800 border-violet-200 dark:bg-violet-900/20 dark:border-violet-900 dark:text-violet-300">
-              <HelpCircle className="h-4 w-4" />
-              <AlertTitle>Paper 2, Question 2 - Summary</AlertTitle>
-              <AlertDescription>
-                Using specialized AQA criteria for summary questions. Your answer will be assessed on:
-                <ul className="mt-2 ml-5 list-disc text-sm">
-                  <li>Perceptive synthesis and comparison of ideas</li>
-                  <li>Clear summary of differences/similarities</li>
-                  <li>Judicious use of evidence from both texts</li>
-                  <li>Focus on content rather than methods</li>
-                </ul>
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {subject === "english" && examBoard === "aqa" && questionType === "paper2q5" && (
-            <Alert className="mb-4 bg-teal-50 text-teal-800 border-teal-200 dark:bg-teal-900/20 dark:border-teal-900 dark:text-teal-300">
-              <HelpCircle className="h-4 w-4" />
-              <AlertTitle>Paper 2, Question 5 - Writing</AlertTitle>
-              <AlertDescription>
-                Using specialized AQA criteria for writing tasks. Your answer will be assessed in two areas:
-                <div className="mt-2">
-                  <strong className="text-sm">Content (24 marks):</strong>
-                  <ul className="ml-5 list-disc text-sm">
-                    <li>Compelling, convincing communication</li>
-                    <li>Crafted writing with sustained control</li>
-                    <li>Manipulation of language for effect</li>
-                    <li>Match to purpose, format and audience</li>
-                  </ul>
-                </div>
-                <div className="mt-2">
-                  <strong className="text-sm">Technical Accuracy (16 marks):</strong>
-                  <ul className="ml-5 list-disc text-sm">
-                    <li>Sophisticated vocabulary and accurate spelling</li>
-                    <li>Range of punctuation used for effect</li>
-                    <li>Varied sentence forms for effect</li>
-                    <li>Accuracy in grammar</li>
-                  </ul>
-                </div>
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* Debug information - REMOVED */}
-
-          {/* Main Content Tabs */}
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid grid-cols-2 mb-4">
-              <TabsTrigger value="answer">Answer Sheet</TabsTrigger>
-              <TabsTrigger value="feedback" disabled={!feedback}>
-                Assessment
-                {grade && <span className="ml-2 py-0.5 px-2 text-xs bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200 rounded-full">Grade: {grade}</span>}
-              </TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="answer" className="space-y-4 mt-0">
-              {/* Question Section */}
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Question</label>
-                  <div className="flex items-center space-x-2">
-                    <div className="flex items-center space-x-1">
-                      <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Marks:</label>
-                      <input
-                        type="number"
-                        value={totalMarks}
-                        onChange={(e) => setTotalMarks(e.target.value)}
-                        placeholder="#"
-                        min="1"
-                        max="100"
-                        className="w-16 h-8 px-2 border border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
-                      />
-                    </div>
-                    
-                    <Select value={examBoard} onValueChange={setExamBoard}>
-                      <SelectTrigger className="h-8 w-[120px] text-xs">
-                        <SelectValue placeholder="Exam Board" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {EXAM_BOARDS.map((board) => (
-                          <SelectItem key={board.value} value={board.value}>{board.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    
-                    <Select value={userType} onValueChange={setUserType}>
-                      <SelectTrigger className="h-8 w-[100px] text-xs">
-                        <SelectValue placeholder="I am a..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {USER_TYPES.map((type) => (
-                          <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                
-                <Textarea
-                  value={question}
-                  onChange={(e) => setQuestion(e.target.value)}
-                  className="min-h-[80px] focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
-                  placeholder="Enter the exam question here..."
-                />
-              </div>
-
-              {/* Answer Section */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Student Answer</label>
-                <Textarea
-                  value={answer}
-                  onChange={(e) => setAnswer(e.target.value)}
-                  className="min-h-[200px] focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
-                  placeholder="Type or paste your answer here..."
-                />
-              </div>
-
-              {/* Advanced Options - Now properly collapsible */}
-              <div className="bg-gray-50 dark:bg-gray-900/30 p-4 rounded-lg border border-gray-200 dark:border-gray-800">
-                <button 
-                  onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
-                  className="w-full flex items-center justify-between mb-3 text-sm font-medium text-gray-700 dark:text-gray-300"
-                >
-                  <span className="flex items-center">
-                    {showAdvancedOptions ? <ChevronDown size={16} className="mr-1" /> : <ChevronRight size={16} className="mr-1" />}
-                    Advanced Options
-                  </span>
-                  <Badge variant="outline" className="text-xs">
-                    {showAdvancedOptions ? "Hide" : "Show"}
-                  </Badge>
-                </button>
-                
-                <AnimatePresence>
-                  {showAdvancedOptions && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: "auto", opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center space-x-2">
-                            <button 
-                              onClick={async () => {
-                                if (!question) {
-                                  setError({
-                                    type: "validation",
-                                    message: "Please enter a question first to generate a mark scheme"
-                                  });
-                                  return;
-                                }
-                                
-                                setLoading(true);
-                                setSuccess({
-                                  message: "Generating mark scheme with relevant Assessment Objectives..."
-                                });
-                                
-                                try {
-                                  const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
-                                    method: 'POST',
-                                    headers: {
-                                      'Content-Type': 'application/json',
-                                    },
-                                    body: JSON.stringify({
-                                      model: "google/gemini-pro:free",
-                                      messages: [
-                                        {
-                                          role: "system",
-                                          content: `You are an expert in GCSE ${subject} for the ${examBoard.toUpperCase()} exam board. Generate a concise mark scheme with relevant Assessment Objectives (AOs) for the following question. Format using bullet points and include key marking criteria.`
-                                        },
-                                        {
-                                          role: "user",
-                                          content: question
-                                        }
-                                      ],
-                                      max_tokens: 1500
-                                    })
-                                  });
-                                  
-                                  if (!response.ok) {
-                                    throw new Error(`HTTP error: ${response.status}`);
-                                  }
-                                  
-                                  const data = await response.json();
-                                  const generatedMarkScheme = data?.choices?.[0]?.message?.content || "No mark scheme generated. Please try again.";
-                                  
-                                  setMarkScheme(generatedMarkScheme);
-                                  setSuccess({
-                                    message: "Mark scheme generated successfully!"
-                                  });
-                                  
-                                  setTimeout(() => {
-                                    setSuccess(null);
-                                  }, 3000);
-                                } catch (error) {
-                                  console.error("Error generating mark scheme:", error);
-                                  setError({
-                                    type: "api_error",
-                                    message: `Failed to generate mark scheme: ${error.message}`
-                                  });
-                                } finally {
-                                  setLoading(false);
-                                }
-                              }}
-                              className="flex items-center px-3 py-2 text-sm bg-primary/10 hover:bg-primary/20 text-primary dark:bg-primary/20 dark:hover:bg-primary/30 rounded-md transition-colors"
-                              disabled={loading || !question}
-                            >
-                              <FilePlus size={14} className="mr-2" />
-                              Generate Mark Scheme with AOs
-                            </button>
-                            {loading && <Loader2 className="h-3 w-3 animate-spin text-gray-400" />}
-                          </div>
-                        </div>
-                        
-                        <div className="space-y-2">
-                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
-                            Mark Scheme (optional)
-                          </label>
-                          <Textarea
-                            value={markScheme}
-                            onChange={(e) => setMarkScheme(e.target.value)}
-                            className="min-h-[100px] focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
-                            placeholder="Enter marking points or assessment criteria..."
-                          />
-                        </div>
-                        
-                        <div className="space-y-2">
-                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
-                            Text Extract (optional)
-                          </label>
-                          <Textarea
-                            value={textExtract}
-                            onChange={(e) => setTextExtract(e.target.value)}
-                            className="min-h-[100px] focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
-                            placeholder="Paste relevant text extract here..."
-                          />
-                        </div>
-                        
-                        <div className="space-y-2">
-                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
-                            Relevant Material (optional)
-                          </label>
-                          <Textarea
-                            value={relevantMaterial}
-                            onChange={(e) => setRelevantMaterial(e.target.value)}
-                            className="min-h-[100px] focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
-                            placeholder="Enter any relevant material or notes here..."
-                          />
-                        </div>
-                        
-                        <div>
+  // ======== JSX / UI COMPONENTS ========
+  // Quick guide dropdown content
+  const QuickGuide = () => {
+    return (
+      <motion.div
+        initial={{ opacity: 0, height: 0 }}
+        animate={{ opacity: 1, height: 'auto' }}
+        exit={{ opacity: 0, height: 0 }}
+        transition={{ duration: 0.3 }}
+        className="mb-6"
+      >
+        <Card className="bg-gray-50 border-gray-200 shadow-sm dark:bg-gray-900 dark:border-gray-800 relative">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => setShowGuide(false)}
+            className="absolute right-2 top-2 h-7 w-7 rounded-full p-0"
+            aria-label="Close guide"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </Button>
+          <CardContent className="p-4">
+            <div className="space-y-3">
+              <div>
+                <h3 className="font-semibold text-gray-800 dark:text-gray-200">Quick Guide:</h3>
+                <ul className="mt-2 space-y-1 text-sm">
+                  <li className="flex items-start">
+                    <span className="font-bold text-gray-700 dark:text-gray-300 mr-2">1.</span>
+                    <span className="text-gray-700 dark:text-gray-300">Enter your question and answer in the appropriate fields</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="font-bold text-gray-700 dark:text-gray-300 mr-2">2.</span>
+                    <span className="text-gray-700 dark:text-gray-300">Select your subject, exam board, and whether you're a student or teacher</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="font-bold text-gray-700 dark:text-gray-300 mr-2">3.</span>
+                    <span className="text-gray-700 dark:text-gray-300">Add marks available and optional mark scheme details</span>
+                  </li>
+                  <li className="flex items-start">
                           <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
                             Upload Handwritten Answer
                           </label>
@@ -2081,135 +2122,14 @@ When assessing, consider whether responses demonstrate:
                 <>
                   {/* Model Thinking Box */}
                   {selectedModel === "deepseek/deepseek-r1:free" && (loading || modelThinking) && (
-                    <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-md">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center">
-                          <div className="text-sm font-medium text-gray-700 dark:text-gray-300">Model Thinking Process</div>
-                          {loading && !modelThinking ? (
-                            <Badge variant="outline" className="ml-2 px-1.5 py-0 text-xs bg-blue-50 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
-                              <Loader2 className="mr-1 h-3 w-3 animate-spin" /> 
-                              Waiting for model...
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="ml-2 px-1.5 py-0 text-xs">Step-by-Step Reasoning</Badge>
-                          )}
-                        </div>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="h-7 w-7 p-0 rounded-full"
-                          onClick={() => {
-                            const thinkingElement = document.getElementById('thinking-content');
-                            if (thinkingElement) {
-                              thinkingElement.classList.toggle('max-h-48');
-                              thinkingElement.classList.toggle('max-h-[500px]');
-                            }
-                          }}
-                        >
-                          <ChevronDown size={16} className="text-gray-500 dark:text-gray-400" />
-                        </Button>
-                      </div>
-                      <div 
-                        id="thinking-content"
-                        className="max-h-48 overflow-y-auto text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap transition-all duration-300 font-mono border border-gray-100 dark:border-gray-800 p-2 rounded bg-white dark:bg-gray-950"
-                      >
-                        {loading && !modelThinking ? (
-                          <div className="flex flex-col items-center justify-center py-4 text-gray-400">
-                            <Loader2 className="h-4 w-4 animate-spin mb-2" />
-                            <span>Waiting for the model to start thinking...</span>
-                          </div>
-                        ) : modelThinking ? (
-                          modelThinking
-                        ) : (
-                          "Waiting for model's thinking process..."
-                        )}
-                      </div>
-                    </div>
+                    <ModelThinkingBox thinking={modelThinking} loading={loading} />
                   )}
                   
-                  <div className="relative">
-                    <div className="flex justify-between items-center mb-3">
-                      <div className="flex items-center gap-2">
-                        {grade && (
-                          <div className="inline-flex items-center justify-center h-10 w-10 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-bold rounded-full">
-                            {grade}
-                          </div>
-                        )}
-                        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
-                          Feedback
-                          <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
-                            by {AI_MODELS.find(m => m.value === selectedModel)?.label || selectedModel}
-                          </span>
-                        </h3>
-                      </div>
-                      
-                      <div className="flex items-center gap-1.5">
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  // Get a different model if available (fallback)
-                                  const currentModelIndex = AI_MODELS.findIndex(m => m.value === selectedModel);
-                                  const nextModelIndex = (currentModelIndex + 1) % AI_MODELS.length;
-                                  setSelectedModel(AI_MODELS[nextModelIndex].value);
-                                  handleSubmitForMarking();
-                                }}
-                                className="h-8 w-8 p-0 rounded-full"
-                              >
-                                <RefreshCw className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Try a different model</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => copyFeedbackToClipboard(feedback)}
-                                className="h-8 w-8 p-0 rounded-full"
-                              >
-                                <Share2 className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Copy to clipboard</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                        
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={saveFeedbackAsPdf}
-                                className="h-8 w-8 p-0 rounded-full"
-                              >
-                                <Save className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Save as PDF</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </div>
-                    </div>
-                    
-                    <div className="prose prose-sm dark:prose-invert prose-p:my-2 prose-h1:text-xl prose-h1:my-3 prose-h2:text-lg prose-h2:my-3 prose-h3:text-base prose-h3:font-semibold prose-h3:my-2.5 max-w-none">
-                      <ReactMarkdown>{feedback}</ReactMarkdown>
-                    </div>
-                  </div>
+                  <EnhancedFeedback 
+                    feedback={feedback} 
+                    grade={grade} 
+                    modelName={AI_MODELS.find(m => m.value === selectedModel)?.label || selectedModel}
+                  />
                 </>
               ) : (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
