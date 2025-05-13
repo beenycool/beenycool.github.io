@@ -74,6 +74,36 @@ const copyFeedbackToClipboard = (feedback) => {
   }
 };
 
+// Add a helper function to check if the backend is available
+const checkBackendStatus = async () => {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    
+    const response = await fetch(`${API_BASE_URL}/api/health`, {
+      method: 'GET',
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      throw new Error(`Backend health check failed: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    return { ok: true, data };
+  } catch (error) {
+    console.error("Backend health check failed:", error);
+    return { 
+      ok: false, 
+      error: error.name === 'AbortError' 
+        ? 'Backend did not respond in time'
+        : error.message
+    };
+  }
+};
+
 const AIMarker = () => {
   // ======== STATE MANAGEMENT ========
   // Form state
@@ -207,6 +237,22 @@ const AIMarker = () => {
       return;
     }
     
+    // Check if backend is reachable
+    setLoading(true);
+    setSuccess({
+      message: "Checking backend status..."
+    });
+    
+    const backendStatus = await checkBackendStatus();
+    if (!backendStatus.ok) {
+      setLoading(false);
+      setError({
+        type: "network",
+        message: `Backend connection error: ${backendStatus.error}. Render's free tier servers may take up to 30 seconds to wake up after inactivity. Please try again.`
+      });
+      return;
+    }
+    
     // Rate limiting checks
     const now = Date.now();
     const today = new Date().toDateString();
@@ -220,12 +266,14 @@ const AIMarker = () => {
     
     // Special rate limit for Gemini 2.5 Pro
     if (selectedModel === "google/gemini-2.5-pro-exp-03-25" && now - lastRequestTime < 60000) {
+      setLoading(false);
       setError({
         type: "rate_limit",
         message: "Gemini 2.5 Pro is limited to 1 request per minute. Please wait or select a different model."
       });
       return;
     } else if (selectedModel !== "google/gemini-2.5-pro-exp-03-25" && now - lastRequestTime < 10000) {
+      setLoading(false);
       setError({
         type: "rate_limit",
         message: "Please wait at least 10 seconds between requests"
@@ -253,12 +301,15 @@ const AIMarker = () => {
     };
 
     if (!consumeToken()) {
+      setLoading(false);
       setError({ type: "rate_limit", message: "Daily request limit reached (500/day)" });
       return;
     }
 
     // Set loading state
-    setLoading(true);
+    setSuccess({
+      message: "Processing request..."
+    });
     setLastRequestTime(now);
     setDailyRequests((prev) => {
       const newCount = prev + 1;
@@ -287,6 +338,14 @@ const AIMarker = () => {
     // Get AI feedback
     let completion;
     try {
+      // Create an AbortController to handle timeouts
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 second timeout
+      
+      setSuccess({
+        message: "Analyzing answer... (this may take up to 60 seconds)"
+      });
+
       if (selectedModel === "deepseek/deepseek-r1:free") {
         // Streaming request requires special handling
         const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
@@ -335,11 +394,14 @@ const AIMarker = () => {
             frequency_penalty: 0,
             presence_penalty: 0,
             stream: true
-          })
+          }),
+          signal: controller.signal
         });
+        
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
-          throw new Error(`API request failed: ${response.statusText}`);
+          throw new Error(`API request failed: ${response.status} ${response.statusText}`);
         }
 
         // Process the streaming response
@@ -347,7 +409,7 @@ const AIMarker = () => {
         const decoder = new TextDecoder("utf-8");
         let fullResponse = "";
         let thinking = "";
-
+        
         try {
           while (true) {
             const { done, value } = await reader.read();
@@ -436,11 +498,18 @@ const AIMarker = () => {
             frequency_penalty: 0,
             presence_penalty: 0,
             stream: false
-          })
+          }),
+          signal: controller.signal
         });
+        
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
-          throw new Error(`API request failed: ${response.statusText}`);
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(
+            errorData.message || 
+            `API request failed: ${response.status} ${response.statusText}`
+          );
         }
 
         completion = await response.json();
@@ -453,20 +522,40 @@ const AIMarker = () => {
           if (gradeMatch && gradeMatch[1]) {
             setGrade(gradeMatch[1]);
           }
+        } else {
+          throw new Error("Received empty or invalid response from the API");
         }
       }
     } catch (error) {
       console.error("Error submitting for marking:", error);
+      
+      let errorMessage = error.message;
+      
+      // Check if it's an abort error (timeout)
+      if (error.name === 'AbortError') {
+        errorMessage = 'Request timed out. The server took too long to respond. Please try again.';
+      }
+      // Check for network errors
+      else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+        errorMessage = 'Network error. Please check your internet connection and try again.';
+      }
+      // Check for server errors
+      else if (error.message.includes('500') || error.message.includes('503')) {
+        errorMessage = 'Server error. The backend service might be unavailable or still starting up. Please try again in a moment.';
+      }
+      
       setError({
-        type: "api_error",
-        message: `Failed to get feedback: ${error.message}`
+        type: error.name === 'AbortError' ? 'timeout' : 'api_error',
+        message: `Failed to get feedback: ${errorMessage}`
       });
+      
       setLoading(false);
       return;
     }
     
     // Automatically switch to feedback tab
     setActiveTab("feedback");
+    setLoading(false);
     
     setSuccess({
       message: "Answer marked successfully!"
@@ -1013,7 +1102,7 @@ const AIMarker = () => {
               <AlertTitle>Error</AlertTitle>
               <AlertDescription>
                 {error.message}
-                {error.type === "network" && (
+                {(error.type === "network" || error.type === "timeout" || error.type === "api_error") && (
                   <div className="mt-2">
                     <Button
                       size="sm"
