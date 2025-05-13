@@ -97,7 +97,7 @@ const copyFeedbackToClipboard = (feedback) => {
 };
 
 // Add a helper function to check if the backend is available
-const checkBackendStatus = async () => {
+const checkBackendStatus = async (model) => {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
@@ -114,6 +114,15 @@ const checkBackendStatus = async () => {
     }
     
     const data = await response.json();
+    
+    // Check if the selected model is available
+    if (data.availableModels && model && !data.availableModels.includes(model)) {
+      return { 
+        ok: false, 
+        error: `The selected model "${model}" may not be available on the backend. Available models: ${data.availableModels?.join(', ') || 'None reported'}` 
+      };
+    }
+    
     return { ok: true, data };
   } catch (error) {
     console.error("Backend health check failed:", error);
@@ -378,7 +387,7 @@ const AIMarker = () => {
       message: "Checking backend status..."
     });
     
-    const backendStatus = await checkBackendStatus();
+    const backendStatus = await checkBackendStatus(selectedModel);
     if (!backendStatus.ok) {
       setLoading(false);
       setError({
@@ -501,7 +510,7 @@ const AIMarker = () => {
             messages: [
               {
                 role: "system",
-                content: getSystemPrompt()
+                content: getSystemPrompt() + "\nIMPORTANT: Please show your reasoning step-by-step. Prefix your thinking process with '[THINKING]' and your final answer with '[FEEDBACK]'."
               },
               {
                 role: "user",
@@ -529,6 +538,9 @@ const AIMarker = () => {
         const decoder = new TextDecoder("utf-8");
         let fullResponse = "";
         let thinking = "";
+        let finalFeedback = "";
+        let inThinkingMode = false;
+        let inFeedbackMode = false;
         
         try {
           while (true) {
@@ -548,27 +560,83 @@ const AIMarker = () => {
                   const content = parsedData.choices[0]?.delta?.content || "";
                   fullResponse += content;
                   
-                  if (content) {
+                  // Check for thinking mode markers
+                  if (content.includes('[THINKING]')) {
+                    inThinkingMode = true;
+                    inFeedbackMode = false;
+                  } else if (content.includes('[FEEDBACK]')) {
+                    inThinkingMode = false;
+                    inFeedbackMode = true;
+                  }
+                  
+                  // Process content based on current mode
+                  if (inThinkingMode) {
+                    // Remove the thinking marker from the first part
+                    const cleanedContent = content.replace('[THINKING]', '');
+                    thinking += cleanedContent;
+                    setModelThinking(thinking);
+                  } else if (inFeedbackMode) {
+                    // Remove the feedback marker from the first part
+                    const cleanedContent = content.replace('[FEEDBACK]', '');
+                    finalFeedback += cleanedContent;
+                  } else {
+                    // If no markers yet, add to both until we figure out which mode we're in
                     thinking += content;
+                    finalFeedback += content;
                     setModelThinking(thinking);
                   }
                 } catch (e) {
                   console.error('Error parsing stream data:', e);
+                  // Continue processing even if there's an error with a particular chunk
                 }
               }
             }
+            
+            // Show interim feedback to improve user experience
+            if (!inFeedbackMode && thinking && thinking.length > 0) {
+              setSuccess({
+                message: "Analyzing response... Processing thinking steps"
+              });
+            }
           }
           
-          setFeedback(fullResponse);
+          // If we never saw a feedback marker, use the full response
+          if (!inFeedbackMode) {
+            finalFeedback = fullResponse;
+          }
           
-          const gradeMatch = fullResponse.match(/\[GRADE:(\d)\]/);
+          setFeedback(finalFeedback.trim());
+          
+          const gradeMatch = finalFeedback.match(/\[GRADE:(\d)\]/);
           if (gradeMatch && gradeMatch[1]) {
             setGrade(gradeMatch[1]);
           }
         } catch (error) {
           console.error("Streaming error:", error);
-          setFeedback(fullResponse || "Partial feedback received due to streaming error.");
-          setError({ type: "streaming", message: "Feedback stream interrupted. Displaying partial response." });
+          
+          // Determine what kind of error occurred
+          let errorMessage = "Error processing response stream.";
+          if (error.name === 'AbortError') {
+            errorMessage = "Stream timed out. The model is taking too long to respond.";
+          } else if (error.name === 'SyntaxError') {
+            errorMessage = "Invalid data received from server. The model might not support streaming.";
+          } else if (error.message.includes('network')) {
+            errorMessage = "Network error during streaming. Please check your connection.";
+          }
+          
+          // If we have partial results, still show them
+          if (finalFeedback || fullResponse) {
+            setFeedback(finalFeedback || fullResponse || "Partial feedback received due to streaming error.");
+            setError({ 
+              type: "streaming", 
+              message: `${errorMessage} Showing partial results.` 
+            });
+          } else {
+            setError({ 
+              type: "streaming", 
+              message: errorMessage + " Please try again or select a different model."
+            });
+          }
         }
       } else {
         // Regular non-streaming request
@@ -959,6 +1027,16 @@ const AIMarker = () => {
 4. SUBJECT-SPECIFIC GUIDANCE:
   ${getSubjectGuidance(subject, examBoard)}`;
 
+    // Add thinking model specific instructions
+    if (selectedModel === "deepseek/deepseek-r1:free") {
+      basePrompt += `\n\n5. THINKING PROCESS:
+  - First, analyze the student's answer carefully and identify key strengths and weaknesses
+  - For each section of the answer, evaluate both content accuracy and quality of explanation
+  - Consider what evidence supports each point you make in your feedback
+  - Show your reasoning for the grade assigned by comparing to GCSE standards
+  - Mark your thinking process with [THINKING] and your final feedback with [FEEDBACK]`;
+    }
+
     // Add specific guidance for English Paper 1, Question 3
     if (subject === "english" && examBoard === "aqa" && questionType === "paper1q3") {
       basePrompt = `You are an expert AQA English Language examiner specializing in Paper 1, Question 3 (structure analysis).
@@ -999,6 +1077,16 @@ When assessing, consider whether responses demonstrate:
 - Sophisticated analytical language
 - Precise terminology usage
 - Exemplary textual support that connects details to their structural function`;
+
+      // Add thinking model specific instructions for English Paper 1, Question 3
+      if (selectedModel === "deepseek/deepseek-r1:free") {
+        basePrompt += `\n\n5. THINKING PROCESS:
+  - First, carefully analyze how well the student identifies structural features
+  - Evaluate their understanding of writer's intentions regarding structure
+  - Consider how effectively they analyze shifts in focus, narrative progression, etc.
+  - Assess their use of subject terminology and textual evidence
+  - Show your reasoning process with [THINKING] and final feedback with [FEEDBACK]`;
+      }
     }
     // Add specific guidance for English Paper 1, Question 4
     else if (subject === "english" && examBoard === "aqa" && questionType === "paper1q4") {
@@ -1140,7 +1228,7 @@ When assessing, consider both content and technical accuracy equally:
     }
 
     return basePrompt;
-  }, [subject, examBoard, questionType, userType]);
+  }, [subject, examBoard, questionType, userType, selectedModel]);
 
   // ======== JSX / UI COMPONENTS ========
   // Quick guide dropdown content
@@ -1842,14 +1930,49 @@ When assessing, consider both content and technical accuracy equally:
               ) : feedback ? (
                 <>
                   {/* Model Thinking Box */}
-                  {selectedModel === "deepseek/deepseek-r1:free" && modelThinking && (
+                  {selectedModel === "deepseek/deepseek-r1:free" && (loading || modelThinking) && (
                     <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-md">
-                      <div className="flex items-center mb-2">
-                        <div className="text-sm font-medium text-gray-700 dark:text-gray-300">Model Thinking Process</div>
-                        <Badge variant="outline" className="ml-2 px-1.5 py-0 text-xs">Reasoning</Badge>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center">
+                          <div className="text-sm font-medium text-gray-700 dark:text-gray-300">Model Thinking Process</div>
+                          {loading && !modelThinking ? (
+                            <Badge variant="outline" className="ml-2 px-1.5 py-0 text-xs bg-blue-50 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
+                              <Loader2 className="mr-1 h-3 w-3 animate-spin" /> 
+                              Waiting for model...
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="ml-2 px-1.5 py-0 text-xs">Step-by-Step Reasoning</Badge>
+                          )}
+                        </div>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-7 w-7 p-0 rounded-full"
+                          onClick={() => {
+                            const thinkingElement = document.getElementById('thinking-content');
+                            if (thinkingElement) {
+                              thinkingElement.classList.toggle('max-h-48');
+                              thinkingElement.classList.toggle('max-h-[500px]');
+                            }
+                          }}
+                        >
+                          <ChevronDown size={16} className="text-gray-500 dark:text-gray-400" />
+                        </Button>
                       </div>
-                      <div className="max-h-48 overflow-y-auto text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap">
-                        {modelThinking}
+                      <div 
+                        id="thinking-content"
+                        className="max-h-48 overflow-y-auto text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap transition-all duration-300 font-mono border border-gray-100 dark:border-gray-800 p-2 rounded bg-white dark:bg-gray-950"
+                      >
+                        {loading && !modelThinking ? (
+                          <div className="flex flex-col items-center justify-center py-4 text-gray-400">
+                            <Loader2 className="h-4 w-4 animate-spin mb-2" />
+                            <span>Waiting for the model to start thinking...</span>
+                          </div>
+                        ) : modelThinking ? (
+                          modelThinking
+                        ) : (
+                          "Waiting for model's thinking process..."
+                        )}
                       </div>
                     </div>
                   )}
