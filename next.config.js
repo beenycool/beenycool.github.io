@@ -8,7 +8,7 @@ const nextConfig = {
   basePath: '',
   assetPrefix: '',
   env: {
-    NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3003',
+    NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL || 'https://beenycool-github-io.onrender.com',
   },
   webpack: (config, { dev, isServer }) => {
     // Add optimization settings
