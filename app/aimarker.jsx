@@ -61,6 +61,28 @@ const subjectKeywords = {
   businessStudies: ['business', 'market', 'finance', 'profit', 'enterprise', 'economy']
 };
 
+// Add question types for English subject
+const QUESTION_TYPES = {
+  english: {
+    aqa: [
+      { value: "general", label: "General Assessment" },
+      { value: "paper1q3", label: "Paper 1, Question 3 (Structure)" },
+      { value: "paper1q4", label: "Paper 1, Question 4 (Evaluation)" },
+      { value: "paper2q2", label: "Paper 2, Question 2 (Summary)" },
+      { value: "paper2q5", label: "Paper 2, Question 5 (Writing)" }
+    ],
+    edexcel: [
+      { value: "general", label: "General Assessment" }
+    ],
+    ocr: [
+      { value: "general", label: "General Assessment" }
+    ],
+    wjec: [
+      { value: "general", label: "General Assessment" }
+    ]
+  }
+};
+
 // Helper function to save feedback as PDF - placeholder for actual implementation
 const saveFeedbackAsPdf = () => {
   alert("PDF download feature will be added in the next update!");
@@ -223,6 +245,7 @@ const AIMarker = () => {
   const [answer, setAnswer] = useState("");
   const [subject, setSubject] = useState("english");
   const [examBoard, setExamBoard] = useState("aqa");
+  const [questionType, setQuestionType] = useState("general");
   const [userType, setUserType] = useState("student");
   const [markScheme, setMarkScheme] = useState("");
   const [image, setImage] = useState(null);
@@ -470,30 +493,7 @@ const AIMarker = () => {
             messages: [
               {
                 role: "system",
-                content: `You are an experienced GCSE ${subject} examiner. Your task is to provide detailed, constructive feedback for ${userType === 'teacher' ? 'assessment purposes' : 'student learning'} following these guidelines:
-
-1. ASSESSMENT CRITERIA:
-  - Accuracy of content (subject knowledge)
-  - Clarity and structure of response
-  - Use of evidence/examples
-  - Depth of analysis (where applicable)
-  - Technical accuracy (spelling, grammar, terminology)
-
-2. FEEDBACK STRUCTURE:
-  a) Summary of performance (1-2 sentences)
-  b) 2-3 specific strengths with examples
-  c) 2-3 areas for improvement with ${userType === 'teacher' ? 'marking criteria' : 'actionable suggestions'}
-  d) One specific ${userType === 'teacher' ? 'assessment note' : '"next step" for the student'}
-  e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number
-
-3. TONE & STYLE:
-  - ${userType === 'teacher' ? 'Professional and assessment-focused' : 'Approachable and encouraging'}
-  - Specific praise ("Excellent use of terminology when...")
-  - Constructive criticism ${userType === 'teacher' ? '("This meets level 3 criteria because...")' : '("Consider expanding on...")'}
-  - Avoid vague statements - always reference the answer
-
-4. SUBJECT-SPECIFIC GUIDANCE:
-  ${getSubjectGuidance(subject, examBoard)}`
+                content: getSystemPrompt()
               },
               {
                 role: "user",
@@ -574,30 +574,7 @@ const AIMarker = () => {
             messages: [
               {
                 role: "system",
-                content: `You are an experienced GCSE ${subject} examiner. Your task is to provide detailed, constructive feedback for ${userType === 'teacher' ? 'assessment purposes' : 'student learning'} following these guidelines:
-
-1. ASSESSMENT CRITERIA:
-  - Accuracy of content (subject knowledge)
-  - Clarity and structure of response
-  - Use of evidence/examples
-  - Depth of analysis (where applicable)
-  - Technical accuracy (spelling, grammar, terminology)
-
-2. FEEDBACK STRUCTURE:
-  a) Summary of performance (1-2 sentences)
-  b) 2-3 specific strengths with examples
-  c) 2-3 areas for improvement with ${userType === 'teacher' ? 'marking criteria' : 'actionable suggestions'}
-  d) One specific ${userType === 'teacher' ? 'assessment note' : '"next step" for the student'}
-  e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number
-
-3. TONE & STYLE:
-  - ${userType === 'teacher' ? 'Professional and assessment-focused' : 'Approachable and encouraging'}
-  - Specific praise ("Excellent use of terminology when...")
-  - Constructive criticism ${userType === 'teacher' ? '("This meets level 3 criteria because...")' : '("Consider expanding on...")'}
-  - Avoid vague statements - always reference the answer
-
-4. SUBJECT-SPECIFIC GUIDANCE:
-  ${getSubjectGuidance(subject, examBoard)}`
+                content: getSystemPrompt()
               },
               {
                 role: "user",
@@ -712,6 +689,7 @@ const AIMarker = () => {
           setTotalMarks(formData.totalMarks || "");
           setTextExtract(formData.textExtract || "");
           setRelevantMaterial(formData.relevantMaterial || "");
+          setQuestionType(formData.questionType || "general");
           // Don't restore selected model to prevent rate limit issues
           
           // Check if we have saved subjects
@@ -746,7 +724,8 @@ const AIMarker = () => {
         totalMarks,
         textExtract,
         relevantMaterial,
-        customSubjects
+        customSubjects,
+        questionType
       };
       
       try {
@@ -755,7 +734,7 @@ const AIMarker = () => {
         console.error("Error saving form data:", error);
       }
     }
-  }, [question, answer, subject, examBoard, userType, markScheme, totalMarks, textExtract, relevantMaterial, customSubjects]);
+  }, [question, answer, subject, examBoard, userType, markScheme, totalMarks, textExtract, relevantMaterial, customSubjects, questionType]);
 
   // Add keyboard shortcuts for common actions
   useEffect(() => {
@@ -924,6 +903,77 @@ const AIMarker = () => {
   const toggleAdvancedOptions = useCallback(() => {
     setShowAdvancedOptions(!showAdvancedOptions);
   }, [showAdvancedOptions]);
+
+  // Get the system prompt based on selected options
+  const getSystemPrompt = useCallback(() => {
+    let basePrompt = `You are an experienced GCSE ${subject} examiner. Your task is to provide detailed, constructive feedback for ${userType === 'teacher' ? 'assessment purposes' : 'student learning'} following these guidelines:
+
+1. ASSESSMENT CRITERIA:
+  - Accuracy of content (subject knowledge)
+  - Clarity and structure of response
+  - Use of evidence/examples
+  - Depth of analysis (where applicable)
+  - Technical accuracy (spelling, grammar, terminology)
+
+2. FEEDBACK STRUCTURE:
+  a) Summary of performance (1-2 sentences)
+  b) 2-3 specific strengths with examples
+  c) 2-3 areas for improvement with ${userType === 'teacher' ? 'marking criteria' : 'actionable suggestions'}
+  d) One specific ${userType === 'teacher' ? 'assessment note' : '"next step" for the student'}
+  e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number
+
+3. TONE & STYLE:
+  - ${userType === 'teacher' ? 'Professional and assessment-focused' : 'Approachable and encouraging'}
+  - Specific praise ("Excellent use of terminology when...")
+  - Constructive criticism ${userType === 'teacher' ? '("This meets level 3 criteria because...")' : '("Consider expanding on...")'}
+  - Avoid vague statements - always reference the answer
+
+4. SUBJECT-SPECIFIC GUIDANCE:
+  ${getSubjectGuidance(subject, examBoard)}`;
+
+    // Add specific guidance for English Paper 1, Question 3
+    if (subject === "english" && examBoard === "aqa" && questionType === "paper1q3") {
+      basePrompt = `You are an expert AQA English Language examiner specializing in Paper 1, Question 3 (structure analysis).
+
+Your task is to provide detailed, constructive feedback for ${userType === 'teacher' ? 'assessment purposes' : 'student learning'} following the Level 4 (7-8 marks) criteria:
+
+1. ASSESSMENT CRITERIA:
+  - Perceptive and detailed understanding of structural features
+  - Precise analysis of the effects of the writer's structural choices
+  - Selection of judicious, well-chosen examples
+  - Sophisticated and accurate use of subject terminology
+
+2. FEEDBACK STRUCTURE:
+  a) Summary of performance (1-2 sentences)
+  b) 2-3 specific strengths with examples
+  c) 2-3 areas for improvement with ${userType === 'teacher' ? 'marking criteria' : 'actionable suggestions'}
+  d) One specific ${userType === 'teacher' ? 'assessment note' : '"next step" for the student'}
+  e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number, with marks out of 8
+
+3. TONE & STYLE:
+  - ${userType === 'teacher' ? 'Professional and assessment-focused' : 'Approachable and encouraging'}
+  - Specific praise ("Excellent analysis of shifts in focus when...")
+  - Constructive criticism ${userType === 'teacher' ? '("This meets level 3 criteria because...")' : '("Consider expanding your analysis of...")'}
+  - Avoid vague statements - always reference the answer
+
+4. SPECIFIC GUIDANCE FOR PAPER 1, QUESTION 3:
+  - Reward answers that track meaningful shifts in focus (setting → character movement → objects → internal conflicts)
+  - Value analysis of narrative progression and its impact on tension/atmosphere
+  - Look for identification of purposeful positioning of key elements
+  - Praise sophisticated analytical language with interpretive thinking (e.g., "juxtaposition creates a sharp spike in tension")
+  - Encourage precise use of terminology (shifts in narrative focus, cyclical structure, juxtaposition, foreshadowing)
+  - Discourage generic comments like "this makes the reader want to read on"
+  - Mark down for focus on language features rather than structural elements
+
+When assessing, consider whether responses demonstrate:
+- Whole-text structural analysis 
+- Sophisticated analytical language
+- Precise terminology usage
+- Exemplary textual support that connects details to their structural function`;
+    }
+
+    return basePrompt;
+  }, [subject, examBoard, questionType, userType]);
 
   // ======== JSX / UI COMPONENTS ========
   // Quick guide dropdown content
@@ -1145,6 +1195,31 @@ const AIMarker = () => {
                   </SelectContent>
                 </Select>
                 
+                <Select value={examBoard} onValueChange={setExamBoard}>
+                  <SelectTrigger className="w-[120px] bg-white dark:bg-gray-900">
+                    <SelectValue placeholder="Exam Board" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {EXAM_BOARDS.map((board) => (
+                      <SelectItem key={board.value} value={board.value}>{board.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                
+                {/* Question Type selector - only show for English AQA */}
+                {subject === "english" && examBoard === "aqa" && (
+                  <Select value={questionType} onValueChange={setQuestionType}>
+                    <SelectTrigger className="w-[240px] bg-white dark:bg-gray-900">
+                      <SelectValue placeholder="Question Type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {QUESTION_TYPES.english.aqa.map((type) => (
+                        <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                
                 {/* Model Selector */}
                 <Select value={selectedModel} onValueChange={setSelectedModel}>
                   <SelectTrigger className="w-[280px] bg-white dark:bg-gray-900">
@@ -1234,6 +1309,23 @@ const AIMarker = () => {
             <Alert className="mb-4 bg-green-50 text-green-800 border-green-200 dark:bg-green-900/20 dark:border-green-900 dark:text-green-300">
               <CheckCircle2 className="h-4 w-4" />
               <AlertDescription>{success.message}</AlertDescription>
+            </Alert>
+          )}
+
+          {/* Special notice for Paper 1 Question 3 */}
+          {subject === "english" && examBoard === "aqa" && questionType === "paper1q3" && (
+            <Alert className="mb-4 bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-900/20 dark:border-blue-900 dark:text-blue-300">
+              <HelpCircle className="h-4 w-4" />
+              <AlertTitle>Paper 1, Question 3 - Structure Analysis</AlertTitle>
+              <AlertDescription>
+                Using specialized AQA criteria for structure analysis questions. Your answer will be assessed on:
+                <ul className="mt-2 ml-5 list-disc text-sm">
+                  <li>Perceptive understanding of structural features</li>
+                  <li>Analysis of writer's structural choices</li>
+                  <li>Selection of judicious examples</li>
+                  <li>Sophisticated use of subject terminology</li>
+                </ul>
+              </AlertDescription>
             </Alert>
           )}
 

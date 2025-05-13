@@ -32,7 +32,33 @@ export function getSubjectGuidance(subject: string, examBoard?: string): string 
   const boardGuidance = {
     aqa: {
       english: `- AQA emphasizes clear structure and textual references
-- Look for AO1 (interpretation), AO2 (analysis), AO3 (context)`,
+- Look for AO1 (interpretation), AO2 (analysis), AO3 (context)
+
+For Paper 1, Question 3 (Structure Analysis):
+- Assess against Level 4 (7-8 marks) criteria:
+  * Perceptive and detailed understanding of structural features
+  * Precise analysis of the writer's structural choices and their effects
+  * Selection of judicious, well-chosen examples
+  * Sophisticated and accurate use of subject terminology
+
+- Look for whole-text structural analysis:
+  * Track meaningful shifts in focus (setting → character movement → objects → internal conflicts)
+  * Analysis of narrative progression and its impact on tension/atmosphere
+  * Identification of purposeful positioning of key elements
+
+- Reward sophisticated analytical language:
+  * Interpretive thinking (e.g., "juxtaposition creates a sharp spike in tension")
+  * Conceptual analysis over superficial observations
+  * Commentary on how structure shapes meaning and reader response
+
+- Check for precise terminology:
+  * Shifts in narrative focus, cyclical structure, juxtaposition, foreshadowing
+  * Terminology that enhances rather than substitutes for analysis
+
+- Mark down for:
+  * Generic comments like "this makes the reader want to read on"
+  * Focus on language features rather than structural elements
+  * Listing techniques without analyzing their effect`,
       maths: `- AQA values method marks and clear working
 - Problem-solving questions are key differentiators`,
       science: `- AQA requires precise terminology
