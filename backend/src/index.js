@@ -54,7 +54,7 @@ app.use(cors({
     return callback(null, true);
   },
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-stainless-timeout', 'x-stainless-os', 'x-stainless-arch', 'x-stainless-runtime', 'x-stainless-runtime-version'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-stainless-timeout', 'x-stainless-os', 'x-stainless-arch', 'x-stainless-runtime', 'x-stainless-runtime-version', 'x-stainless-package-version'],
   credentials: true,
   maxAge: 86400 // 24 hours
 }));
@@ -63,7 +63,7 @@ app.use(cors({
 app.options('*', cors({
   origin: allowedOrigins,
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-stainless-timeout', 'x-stainless-os', 'x-stainless-arch', 'x-stainless-runtime', 'x-stainless-runtime-version'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-stainless-timeout', 'x-stainless-os', 'x-stainless-arch', 'x-stainless-runtime', 'x-stainless-runtime-version', 'x-stainless-package-version'],
   credentials: true,
   maxAge: 86400
 }));
@@ -78,7 +78,7 @@ app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', allowedOrigins[0]);
   }
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-stainless-timeout, x-stainless-os', 'x-stainless-arch', 'x-stainless-runtime', 'x-stainless-runtime-version');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-stainless-timeout, x-stainless-os', 'x-stainless-arch', 'x-stainless-runtime', 'x-stainless-runtime-version', 'x-stainless-package-version');
   res.header('Access-Control-Allow-Credentials', 'true');
   next();
 });
