@@ -51,7 +51,9 @@ const USER_TYPES = [
 const AI_MODELS = [
   { value: "google/gemini-2.5-pro-exp-03-25", label: "Gemini 2.5 Pro (smartest, 1rpm limit)", description: "Best quality but limited to 1 request per minute" },
   { value: "deepseek/deepseek-r1:free", label: "Thinking Model (takes longer)", description: "More thorough reasoning process" },
-  { value: "deepseek/deepseek-chat-v3-0324:free", label: "Good All-Rounder", description: "Balanced speed and quality" }
+  { value: "deepseek/deepseek-chat-v3-0324:free", label: "Good All-Rounder", description: "Balanced speed and quality" },
+  { value: "google/gemini-2.0-flash-exp:free", label: "Fast Response", description: "Quick responses, suitable for shorter answers" },
+  { value: "anthropic/claude-3-sonnet", label: "Claude 3 Sonnet", description: "Good analysis with advanced reasoning" },
 ];
 
 const subjectKeywords = {
@@ -102,40 +104,208 @@ const copyFeedbackToClipboard = (feedback) => {
 // Add a helper function to check if the backend is available
 const checkBackendStatus = async (model) => {
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    let retryCount = 0;
+    const maxRetries = 3; // Try up to 4 times total (initial + 3 retries)
     
-    const response = await fetch(`${API_BASE_URL}/api/health`, {
-      method: 'GET',
-      signal: controller.signal
-    });
-    
-    clearTimeout(timeoutId);
-    
-    if (!response.ok) {
-      throw new Error(`Backend health check failed: ${response.status}`);
+    while (retryCount <= maxRetries) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // Increased timeout to 10 seconds
+        
+        const response = await fetch(`${API_BASE_URL}/api/health`, {
+          method: 'GET',
+          signal: controller.signal,
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          throw new Error(`Backend health check failed: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        console.log('Backend health check data:', data);
+        
+        // Check if any model is available
+        if (data.openaiClient !== true || data.apiKeyConfigured !== true) {
+          return { 
+            ok: false, 
+            error: 'The backend API service is not properly configured. Please try again later.' 
+          };
+        }
+        
+        // Check if the selected model is available (if provided)
+        if (model) {
+          // The backend doesn't explicitly report available models yet,
+          // but we can check if the API is properly configured
+          if (!data.apiKeyConfigured) {
+            return { 
+              ok: false, 
+              error: `API key not configured on the backend. Try again later or contact support.` 
+            };
+          }
+        }
+        
+        return { ok: true, data };
+      } catch (error) {
+        if (retryCount === maxRetries) {
+          // Don't retry if we've hit max retries, just throw the error
+          throw error;
+        }
+        
+        const waitTime = 2000 * (retryCount + 1); // Progressive backoff
+        console.log(`Retry attempt ${retryCount + 1} for backend health check in ${waitTime}ms`);
+        
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        retryCount++;
+      }
     }
-    
-    const data = await response.json();
-    
-    // Check if the selected model is available
-    if (data.availableModels && model && !data.availableModels.includes(model)) {
-      return { 
-        ok: false, 
-        error: `The selected model "${model}" may not be available on the backend. Available models: ${data.availableModels?.join(', ') || 'None reported'}` 
-      };
-    }
-    
-    return { ok: true, data };
   } catch (error) {
     console.error("Backend health check failed:", error);
+    
+    let errorMessage = error.message;
+    if (error.name === 'AbortError') {
+      errorMessage = 'Backend did not respond in time. Render\'s free tier servers may take up to 50 seconds to wake up.';
+    } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+      errorMessage = 'Network connection to backend failed. Please check your internet connection.';
+    }
+    
     return { 
       ok: false, 
-      error: error.name === 'AbortError' 
-        ? 'Backend did not respond in time'
-        : error.message
+      error: errorMessage
     };
   }
+};
+
+// Backend Status Checker Component
+const BackendStatusChecker = ({ onStatusChange }) => {
+  const [status, setStatus] = useState('checking'); // 'checking', 'online', 'offline', 'error'
+  const [statusDetail, setStatusDetail] = useState(null);
+  const [lastChecked, setLastChecked] = useState(null);
+  
+  const checkStatus = useCallback(async () => {
+    try {
+      setStatus('checking');
+      
+      // Check if the backend is reachable
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
+      const response = await fetch(`${API_BASE_URL}/api/health`, {
+        method: 'GET',
+        signal: controller.signal,
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        setStatus('error');
+        setStatusDetail(`Backend returned ${response.status} ${response.statusText}`);
+        if (onStatusChange) onStatusChange('error');
+        return;
+      }
+      
+      const data = await response.json();
+      setLastChecked(new Date().toLocaleTimeString());
+      
+      // Check if the backend has the API key configured
+      if (!data.apiKeyConfigured) {
+        setStatus('error');
+        setStatusDetail('API key not configured on server');
+        if (onStatusChange) onStatusChange('error', data);
+        return;
+      }
+      
+      // Check if OpenAI client is properly initialized
+      if (!data.openaiClient) {
+        setStatus('error');
+        setStatusDetail('API client initialization failed');
+        if (onStatusChange) onStatusChange('error', data);
+        return;
+      }
+      
+      // All checks passed
+      setStatus('online');
+      setStatusDetail(null);
+      if (onStatusChange) onStatusChange('online', data);
+      
+    } catch (error) {
+      console.error('Backend status check failed:', error);
+      
+      if (error.name === 'AbortError') {
+        setStatus('offline');
+        setStatusDetail('Connection timed out');
+      } else {
+        setStatus('error');
+        setStatusDetail(error.message);
+      }
+      
+      if (onStatusChange) onStatusChange('offline');
+    }
+  }, [API_BASE_URL, onStatusChange]);
+  
+  // Check status on mount and periodically
+  useEffect(() => {
+    checkStatus();
+    
+    // Set up periodic checking
+    const interval = setInterval(checkStatus, 60000); // Check every minute
+    
+    return () => clearInterval(interval);
+  }, [checkStatus]);
+  
+  // Return status badge component
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button 
+            onClick={checkStatus}
+            className={`inline-flex items-center h-5 px-1.5 rounded text-xs font-medium ${
+              status === 'checking' ? 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300' :
+              status === 'online' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' :
+              status === 'offline' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' :
+              'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
+            }`}
+          >
+            <span className={`w-1.5 h-1.5 rounded-full mr-1 ${
+              status === 'checking' ? 'bg-gray-500 dark:bg-gray-400' :
+              status === 'online' ? 'bg-green-500 dark:bg-green-400' :
+              status === 'offline' ? 'bg-red-500 dark:bg-red-400' :
+              'bg-amber-500 dark:bg-amber-400'
+            }`} />
+            {status === 'checking' ? 'Checking' :
+             status === 'online' ? 'Online' :
+             status === 'offline' ? 'Offline' :
+             'Error'}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-xs">
+          <div className="space-y-1">
+            <p className="font-medium">{
+              status === 'checking' ? 'Checking backend status...' :
+              status === 'online' ? 'Backend is online and ready' :
+              status === 'offline' ? 'Backend is offline or unreachable' :
+              'Backend error detected'
+            }</p>
+            {statusDetail && <p className="text-xs opacity-80">{statusDetail}</p>}
+            {lastChecked && <p className="text-xs opacity-70">Last checked: {lastChecked}</p>}
+            <p className="text-xs italic">Click to check again</p>
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
 };
 
 const AIMarker = () => {
@@ -204,45 +374,7 @@ const AIMarker = () => {
       message: "Checking backend status..."
     });
     
-    // Define inline backend status check
-    const checkBackendStatus = async (model) => {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-        
-        const response = await fetch(`${API_BASE_URL}/api/health`, {
-          method: 'GET',
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (!response.ok) {
-          throw new Error(`Backend health check failed: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        // Check if the selected model is available
-        if (data.availableModels && model && !data.availableModels.includes(model)) {
-          return { 
-            ok: false, 
-            error: `The selected model "${model}" may not be available on the backend. Available models: ${data.availableModels?.join(', ') || 'None reported'}` 
-          };
-        }
-        
-        return { ok: true, data };
-      } catch (error) {
-        console.error("Backend health check failed:", error);
-        return { 
-          ok: false, 
-          error: error.name === 'AbortError' 
-            ? 'Backend did not respond in time'
-            : error.message
-        };
-      }
-    };
-    
+    // Use the global checkBackendStatus instead of redefining it
     const backendStatus = await checkBackendStatus(selectedModel);
     if (!backendStatus.ok) {
       setLoading(false);
@@ -499,204 +631,272 @@ When assessing, consider whether responses demonstrate:
     try {
       // Create an AbortController to handle timeouts
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 150000); // Increased to 150 second timeout for slower models
       
       setSuccess({
-        message: "Analyzing answer... (this may take up to 60 seconds)"
+        message: "Analyzing answer... (this may take up to 90 seconds)"
       });
 
-      if (selectedModel === "deepseek/deepseek-r1:free") {
-        // Streaming request requires special handling
-        const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: selectedModel,
-            messages: [
-              {
-                role: "system",
-                content: systemPrompt + "\nIMPORTANT: Please show your reasoning step-by-step. Prefix your thinking process with '[THINKING]' and your final answer with '[FEEDBACK]'."
-              },
-              {
-                role: "user",
-                content: content
-              }
-            ],
-            temperature: 0.7,
-            max_tokens: 4000,
-            top_p: 1,
-            frequency_penalty: 0,
-            presence_penalty: 0,
-            stream: true
-          }),
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
+      let retryCount = 0;
+      const maxRetries = 2; // Try up to 3 times total (initial + 2 retries)
+      let requestError = null;
 
-        if (!response.ok) {
-          throw new Error(`API request failed: ${response.status} ${response.statusText}`);
-        }
-
-        // Process the streaming response
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder("utf-8");
-        let fullResponse = "";
-        let thinking = "";
-        let finalFeedback = "";
-        let inThinkingMode = false;
-        let inFeedbackMode = false;
-        
+      while (retryCount <= maxRetries) {
         try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
+          if (selectedModel === "deepseek/deepseek-r1:free") {
+            // Streaming request implementation
+            const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                model: selectedModel,
+                messages: [
+                  {
+                    role: "system",
+                    content: systemPrompt + "\nIMPORTANT: Please show your reasoning step-by-step. Prefix your thinking process with '[THINKING]' and your final answer with '[FEEDBACK]'."
+                  },
+                  {
+                    role: "user",
+                    content: content
+                  }
+                ],
+                temperature: 0.7,
+                max_tokens: 4000,
+                top_p: 1,
+                frequency_penalty: 0,
+                presence_penalty: 0,
+                stream: true
+              }),
+              signal: controller.signal
+            });
             
-            const chunk = decoder.decode(value);
-            const lines = chunk.split('\n\n');
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => ({}));
+              throw new Error(
+                errorData.message || 
+                `API request failed: ${response.status} ${response.statusText}`
+              );
+            }
+
+            // Process the streaming response
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder("utf-8");
+            let fullResponse = "";
+            let thinking = "";
+            let finalFeedback = "";
+            let inThinkingMode = false;
+            let inFeedbackMode = false;
             
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                const data = line.substring(6);
-                if (data === '[DONE]') continue;
+            try {
+              setSuccess({
+                message: "Receiving response stream..."
+              });
+              
+              let lastProgressUpdate = Date.now();
+              
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
                 
-                try {
-                  const parsedData = JSON.parse(data);
-                  const content = parsedData.choices[0]?.delta?.content || "";
-                  fullResponse += content;
-                  
-                  // Check for thinking mode markers
-                  if (content.includes('[THINKING]')) {
-                    inThinkingMode = true;
-                    inFeedbackMode = false;
-                  } else if (content.includes('[FEEDBACK]')) {
-                    inThinkingMode = false;
-                    inFeedbackMode = true;
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n\n');
+                
+                // Update progress message periodically to show the system is still working
+                const now = Date.now();
+                if (now - lastProgressUpdate > 3000) {
+                  setSuccess({
+                    message: `Processing response: ${thinking.length > 0 ? Math.min(99, Math.floor(thinking.length / 50)) : 0}%`
+                  });
+                  lastProgressUpdate = now;
+                }
+                
+                for (const line of lines) {
+                  if (line.startsWith('data: ')) {
+                    const data = line.substring(6);
+                    if (data === '[DONE]') continue;
+                    
+                    try {
+                      const parsedData = JSON.parse(data);
+                      const content = parsedData.choices[0]?.delta?.content || "";
+                      fullResponse += content;
+                      
+                      // Check for thinking mode markers
+                      if (content.includes('[THINKING]')) {
+                        inThinkingMode = true;
+                        inFeedbackMode = false;
+                      } else if (content.includes('[FEEDBACK]')) {
+                        inThinkingMode = false;
+                        inFeedbackMode = true;
+                      }
+                      
+                      // Process content based on current mode
+                      if (inThinkingMode) {
+                        // Remove the thinking marker from the first part
+                        const cleanedContent = content.replace('[THINKING]', '');
+                        thinking += cleanedContent;
+                        setModelThinking(thinking);
+                      } else if (inFeedbackMode) {
+                        // Remove the feedback marker from the first part
+                        const cleanedContent = content.replace('[FEEDBACK]', '');
+                        finalFeedback += cleanedContent;
+                      } else {
+                        // If no markers yet, add to both until we figure out which mode we're in
+                        thinking += content;
+                        finalFeedback += content;
+                        setModelThinking(thinking);
+                      }
+                    } catch (e) {
+                      console.error('Error parsing stream data:', e);
+                      // Continue processing even if there's an error with a particular chunk
+                    }
                   }
-                  
-                  // Process content based on current mode
-                  if (inThinkingMode) {
-                    // Remove the thinking marker from the first part
-                    const cleanedContent = content.replace('[THINKING]', '');
-                    thinking += cleanedContent;
-                    setModelThinking(thinking);
-                  } else if (inFeedbackMode) {
-                    // Remove the feedback marker from the first part
-                    const cleanedContent = content.replace('[FEEDBACK]', '');
-                    finalFeedback += cleanedContent;
-                  } else {
-                    // If no markers yet, add to both until we figure out which mode we're in
-                    thinking += content;
-                    finalFeedback += content;
-                    setModelThinking(thinking);
-                  }
-                } catch (e) {
-                  console.error('Error parsing stream data:', e);
-                  // Continue processing even if there's an error with a particular chunk
                 }
               }
+              
+              // If we never saw a feedback marker, use the full response
+              if (!inFeedbackMode && fullResponse) {
+                // Try to find the feedback section automatically
+                const feedbackIndex = fullResponse.indexOf('[FEEDBACK]');
+                if (feedbackIndex >= 0) {
+                  finalFeedback = fullResponse.substring(feedbackIndex + 10); // +10 to skip [FEEDBACK]
+                } else {
+                  finalFeedback = fullResponse;
+                }
+              }
+              
+              setFeedback(finalFeedback.trim());
+              
+              const gradeMatch = finalFeedback.match(/\[GRADE:(\d)\]/);
+              if (gradeMatch && gradeMatch[1]) {
+                setGrade(gradeMatch[1]);
+              }
+            } catch (error) {
+              console.error("Streaming error:", error);
+              
+              // Determine what kind of error occurred
+              let errorMessage = "Error processing response stream.";
+              if (error.name === 'AbortError') {
+                errorMessage = "Stream timed out. The model is taking too long to respond.";
+              } else if (error.name === 'SyntaxError') {
+                errorMessage = "Invalid data received from server. The model might not support streaming.";
+              } else if (error.message.includes('network')) {
+                errorMessage = "Network error during streaming. Please check your connection.";
+              }
+              
+              // If we have partial results, still show them
+              if (finalFeedback || fullResponse) {
+                setFeedback(finalFeedback || fullResponse || "Partial feedback received due to streaming error.");
+                setError({ 
+                  type: "streaming", 
+                  message: `${errorMessage} Showing partial results.` 
+                });
+              } else {
+                setError({ 
+                  type: "streaming", 
+                  message: errorMessage + " Please try again or select a different model."
+                });
+              }
             }
             
-            // Show interim feedback to improve user experience
-            if (!inFeedbackMode && thinking && thinking.length > 0) {
-              setSuccess({
-                message: "Analyzing response... Processing thinking steps"
-              });
+            // Handle successful response and break the retry loop
+            break;
+          } else {
+            // Regular non-streaming request with enhanced timeout handling
+            const timeoutPromise = new Promise((_, reject) => {
+              setTimeout(() => reject(new Error('Request timeout - server taking too long to respond')), 120000);
+            });
+            
+            const fetchPromise = fetch(`${API_BASE_URL}/api/chat/completions`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                model: selectedModel,
+                messages: [
+                  {
+                    role: "system",
+                    content: systemPrompt
+                  },
+                  {
+                    role: "user",
+                    content: content
+                  }
+                ],
+                temperature: 0.7,
+                max_tokens: 4000,
+                top_p: 1,
+                frequency_penalty: 0,
+                presence_penalty: 0,
+                stream: false
+              }),
+              signal: controller.signal
+            });
+            
+            // Race between the fetch and a timeout
+            const response = await Promise.race([fetchPromise, timeoutPromise]);
+            
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => ({}));
+              throw new Error(
+                errorData.message || 
+                `API request failed: ${response.status} ${response.statusText}`
+              );
+            }
+
+            completion = await response.json();
+            
+            if (completion.choices && completion.choices[0].message.content) {
+              const content = completion.choices[0].message.content;
+              setFeedback(content);
+              
+              const gradeMatch = content.match(/\[GRADE:(\d)\]/);
+              if (gradeMatch && gradeMatch[1]) {
+                setGrade(gradeMatch[1]);
+              }
+              
+              // Successfully received response, no need to retry
+              break;
+            } else {
+              throw new Error("Received empty or invalid response from the API");
             }
           }
-          
-          // If we never saw a feedback marker, use the full response
-          if (!inFeedbackMode) {
-            finalFeedback = fullResponse;
-          }
-          
-          setFeedback(finalFeedback.trim());
-          
-          const gradeMatch = finalFeedback.match(/\[GRADE:(\d)\]/);
-          if (gradeMatch && gradeMatch[1]) {
-            setGrade(gradeMatch[1]);
-          }
         } catch (error) {
-          console.error("Streaming error:", error);
+          requestError = error;
           
-          // Determine what kind of error occurred
-          let errorMessage = "Error processing response stream.";
-          if (error.name === 'AbortError') {
-            errorMessage = "Stream timed out. The model is taking too long to respond.";
-          } else if (error.name === 'SyntaxError') {
-            errorMessage = "Invalid data received from server. The model might not support streaming.";
-          } else if (error.message.includes('network')) {
-            errorMessage = "Network error during streaming. Please check your connection.";
+          // Check if it's a retriable error
+          if (retryCount === maxRetries || 
+              (error.name !== 'AbortError' && 
+               !error.message.includes('NetworkError') && 
+               !error.message.includes('Failed to fetch') &&
+               !error.message.includes('timeout') && 
+               !error.message.includes('500') && 
+               !error.message.includes('503'))) {
+            break; // Don't retry for non-retriable errors or if we've hit max retries
           }
           
-          // If we have partial results, still show them
-          if (finalFeedback || fullResponse) {
-            setFeedback(finalFeedback || fullResponse || "Partial feedback received due to streaming error.");
-            setError({ 
-              type: "streaming", 
-              message: `${errorMessage} Showing partial results.` 
-            });
-          } else {
-            setError({ 
-              type: "streaming", 
-              message: errorMessage + " Please try again or select a different model."
-            });
-          }
-        }
-      } else {
-        // Regular non-streaming request
-        const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: selectedModel,
-            messages: [
-              {
-                role: "system",
-                content: systemPrompt
-              },
-              {
-                role: "user",
-                content: content
-              }
-            ],
-            temperature: 0.7,
-            max_tokens: 4000,
-            top_p: 1,
-            frequency_penalty: 0,
-            presence_penalty: 0,
-            stream: false
-          }),
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(
-            errorData.message || 
-            `API request failed: ${response.status} ${response.statusText}`
-          );
-        }
-
-        completion = await response.json();
-        
-        if (completion.choices && completion.choices[0].message.content) {
-          const content = completion.choices[0].message.content;
-          setFeedback(content);
+          retryCount++;
           
-          const gradeMatch = content.match(/\[GRADE:(\d)\]/);
-          if (gradeMatch && gradeMatch[1]) {
-            setGrade(gradeMatch[1]);
-          }
-        } else {
-          throw new Error("Received empty or invalid response from the API");
+          // Add a progress message with attempt number
+          setSuccess({
+            message: `Request failed, retrying (attempt ${retryCount} of ${maxRetries})...`
+          });
+          
+          // Add an increasing delay between retries
+          const retryDelay = 3000 * retryCount;
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
         }
+      }
+      
+      // If all retries failed, throw the last error
+      if (requestError && retryCount > maxRetries) {
+        throw requestError;
       }
     } catch (error) {
       console.error("Error submitting for marking:", error);
@@ -705,7 +905,7 @@ When assessing, consider whether responses demonstrate:
       
       // Check if it's an abort error (timeout)
       if (error.name === 'AbortError') {
-        errorMessage = 'Request timed out. The server took too long to respond. Please try again.';
+        errorMessage = 'Request timed out. The server took too long to respond. Please try again with a faster model.';
       }
       // Check for network errors
       else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
@@ -1937,10 +2137,37 @@ When assessing, consider whether responses demonstrate:
                         )}
                         <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
                           Feedback
+                          <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
+                            by {AI_MODELS.find(m => m.value === selectedModel)?.label || selectedModel}
+                          </span>
                         </h3>
                       </div>
                       
                       <div className="flex items-center gap-1.5">
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  // Get a different model if available (fallback)
+                                  const currentModelIndex = AI_MODELS.findIndex(m => m.value === selectedModel);
+                                  const nextModelIndex = (currentModelIndex + 1) % AI_MODELS.length;
+                                  setSelectedModel(AI_MODELS[nextModelIndex].value);
+                                  handleSubmitForMarking();
+                                }}
+                                className="h-8 w-8 p-0 rounded-full"
+                              >
+                                <RefreshCw className="h-4 w-4 text-gray-600 dark:text-gray-400" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Try a different model</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -2001,10 +2228,25 @@ When assessing, consider whether responses demonstrate:
         </CardContent>
         
         <CardFooter className="flex flex-col gap-4 p-4 text-center">
-          <p className="text-xs text-gray-500 dark:text-gray-400 max-w-lg mx-auto">
-            This AI marker provides guidance based on GCSE criteria but should not replace official marking.
-            Selected model: <span className="font-medium">{AI_MODELS.find(m => m.value === selectedModel)?.label || selectedModel}</span>
-          </p>
+          <div className="flex items-center justify-center gap-2">
+            <p className="text-xs text-gray-500 dark:text-gray-400 max-w-lg">
+              This AI marker provides guidance based on GCSE criteria but should not replace official marking.
+              Selected model: <span className="font-medium">{AI_MODELS.find(m => m.value === selectedModel)?.label || selectedModel}</span>
+            </p>
+            <BackendStatusChecker 
+              onStatusChange={(status, data) => {
+                // You can handle status changes here if needed
+                if (status === 'offline' || status === 'error') {
+                  setError({
+                    type: 'backend',
+                    message: status === 'offline' 
+                      ? 'Backend service is currently unavailable. Please try again later.' 
+                      : 'Backend error detected. This may affect the application functionality.'
+                  });
+                }
+              }}
+            />
+          </div>
           
           <Button
             variant="link"
@@ -2015,8 +2257,6 @@ When assessing, consider whether responses demonstrate:
             <ExternalLink size={12} className="mr-1" />
             GCSE Qualification Standards
           </Button>
-          
-          {/* CORS tester removed */}
         </CardFooter>
       </Card>
     </motion.div>
