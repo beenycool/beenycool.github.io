@@ -104,6 +104,118 @@ const checkBackendStatus = async () => {
   }
 };
 
+// Add a CORS tester component after the API_BASE_URL constant
+// CORS tester component
+const CORSTester = () => {
+  const [testResult, setTestResult] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const testCORS = async () => {
+    setIsLoading(true);
+    setError(null);
+    setTestResult(null);
+    
+    try {
+      // Test the /api/cors-test endpoint
+      const response = await fetch(`${API_BASE_URL}/api/cors-test`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`CORS test failed: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      setTestResult(data);
+    } catch (err) {
+      console.error('CORS test error:', err);
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Next, test the health endpoint
+  const testHealth = async () => {
+    setIsLoading(true);
+    setError(null);
+    setTestResult(null);
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/health`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Health check failed: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      setTestResult({
+        message: 'Health check successful',
+        data
+      });
+    } catch (err) {
+      console.error('Health check error:', err);
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="mt-8 p-4 border border-gray-200 dark:border-gray-800 rounded-md">
+      <h3 className="text-lg font-medium mb-2">CORS Connection Tester</h3>
+      <div className="flex space-x-2 mb-4">
+        <Button
+          onClick={testCORS}
+          disabled={isLoading}
+          size="sm"
+          variant="outline"
+        >
+          {isLoading ? 'Testing...' : 'Test CORS'}
+        </Button>
+        <Button
+          onClick={testHealth}
+          disabled={isLoading}
+          size="sm"
+          variant="outline"
+        >
+          {isLoading ? 'Testing...' : 'Test Health Endpoint'}
+        </Button>
+      </div>
+      
+      {error && (
+        <div className="p-2 mb-2 bg-red-50 text-red-800 dark:bg-red-900/20 dark:text-red-300 rounded text-sm">
+          <p className="font-medium">Error:</p>
+          <pre className="whitespace-pre-wrap">{error}</pre>
+        </div>
+      )}
+      
+      {testResult && (
+        <div className="p-2 bg-green-50 text-green-800 dark:bg-green-900/20 dark:text-green-300 rounded text-sm">
+          <p className="font-medium">Success:</p>
+          <pre className="whitespace-pre-wrap text-xs max-h-40 overflow-auto">
+            {JSON.stringify(testResult, null, 2)}
+          </pre>
+        </div>
+      )}
+      
+      <div className="mt-2 text-xs text-gray-500">
+        <p>API URL: {API_BASE_URL}</p>
+        <p>Current origin: {typeof window !== 'undefined' ? window.location.origin : 'N/A'}</p>
+      </div>
+    </div>
+  );
+};
+
 const AIMarker = () => {
   // ======== STATE MANAGEMENT ========
   // Form state
@@ -1451,6 +1563,11 @@ const AIMarker = () => {
             <ExternalLink size={12} className="mr-1" />
             GCSE Qualification Standards
           </Button>
+          
+          {/* Add CORS tester in development or if there's a CORS error */}
+          {(process.env.NODE_ENV === 'development' || error?.type === 'network') && (
+            <CORSTester />
+          )}
         </CardFooter>
       </Card>
     </motion.div>
