@@ -4,7 +4,34 @@ This guide provides troubleshooting steps for common issues with the GCSE AI Mar
 
 ## Common Issues and Solutions
 
-### 1. "Analyzing..." Never Completes
+### 1. CORS (Cross-Origin Resource Sharing) Issues
+
+If you see errors like `Access to fetch at 'https://your-backend-url.onrender.com/api/health' from origin 'https://beenycool.github.io' has been blocked by CORS policy`, follow these steps:
+
+#### Potential Causes:
+
+1. **Backend CORS Configuration**: The backend server isn't configured to allow requests from your GitHub Pages domain.
+2. **Render Free Tier Restart**: Sometimes when Render free tier services restart, they may not load environment variables correctly.
+3. **Incorrect Environment Variables**: The `ALLOWED_ORIGINS` environment variable doesn't include your GitHub Pages domain.
+
+#### Solutions:
+
+1. **Check CORS Configuration**:
+   - The backend should have `https://beenycool.github.io` in its allowed origins
+   - This is now hardcoded as a fallback but should also be in the environment variables
+
+2. **Test CORS Directly**:
+   - Visit `{your-backend-url}/api/cors-test` in your browser
+   - Use the CORS tester component that's visible during development or when there's a network error
+   - Check if the response includes the correct `Access-Control-Allow-Origin` header
+
+3. **Restart the Backend Service**:
+   - Go to your Render dashboard
+   - Select your backend service
+   - Click on "Manual Deploy" > "Deploy latest commit"
+   - Wait for the service to restart
+
+### 2. "Analyzing..." Never Completes
 
 If the application gets stuck in the "Analyzing..." state:
 
@@ -33,14 +60,14 @@ If the application gets stuck in the "Analyzing..." state:
    - Visit `{your-backend-url}/api/health` in your browser
    - Visit `{your-backend-url}/api/test-key` to verify your API key is configured
 
-### 2. Rate Limiting Issues
+### 3. Rate Limiting Issues
 
 #### Solutions:
 
 1. **Wait Between Requests**: The app has built-in rate limiting (1 request per minute for Gemini 2.5 Pro)
 2. **Try a Different Model**: Select a different model from the dropdown
 
-### 3. Error Messages
+### 4. Error Messages
 
 For specific error messages:
 
@@ -71,6 +98,9 @@ curl https://your-backend-url.onrender.com/api/health
 
 # Test the OpenRouter API key configuration
 curl https://your-backend-url.onrender.com/api/test-key
+
+# Test CORS configuration
+curl https://your-backend-url.onrender.com/api/cors-test
 ```
 
 ### Common Error Codes

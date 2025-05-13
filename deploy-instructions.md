@@ -30,15 +30,22 @@ This guide will help you properly deploy the GCSE AI Marker application, ensurin
      - `ALLOWED_ORIGINS`: `https://beenycool.github.io,http://localhost:3000`
      - `DEBUG`: `true` (optional, for detailed logging)
    
-4. **Deploy the Service**
+4. **CORS Configuration (IMPORTANT)**
+   - Double-check that the `ALLOWED_ORIGINS` environment variable includes `https://beenycool.github.io`
+   - The backend code now has a fallback that automatically adds the GitHub Pages domain
+   - After deployment, test the CORS configuration by visiting `https://your-backend.onrender.com/api/cors-test`
+   - Make sure the response includes the correct `Access-Control-Allow-Origin` header
+   
+5. **Deploy the Service**
    - Click "Create Web Service"
    - Wait for the deployment to complete
    - Note the URL assigned to your service (e.g., `https://your-backend.onrender.com`)
 
-5. **Test the Backend**
+6. **Test the Backend**
    - Visit `https://your-backend.onrender.com/api/health` in your browser
    - You should see a JSON response with `"status": "ok"`
    - Also test `https://your-backend.onrender.com/api/test-key` to ensure your API key is working
+   - Test CORS with `https://your-backend.onrender.com/api/cors-test`
 
 ## 2. Frontend Deployment (GitHub Pages)
 
@@ -66,12 +73,19 @@ If you encounter issues after deployment:
 
 ### Common Backend Issues
 
-1. **Backend is sleeping**
+1. **CORS Issues**
+   - This is the most common problem! Look for CORS errors in the browser console
+   - If you see `Access to fetch at... has been blocked by CORS policy`, your CORS configuration isn't working
+   - Verify the backend has proper CORS headers by testing `https://your-backend.onrender.com/api/cors-test`
+   - Restart the backend service from Render dashboard if CORS isn't working
+   - Check `DEBUG.md` for detailed CORS troubleshooting
+
+2. **Backend is sleeping**
    - Render free tier puts services to sleep after inactivity
    - The first request after sleep can take 30+ seconds
    - In your frontend code, we've added logic to handle this gracefully
 
-2. **OpenRouter API key issues**
+3. **OpenRouter API key issues**
    - Check if your key is valid on OpenRouter.ai
    - Verify it's correctly set in the environment variables
    - Look for 401 errors in the Render logs
@@ -103,7 +117,7 @@ Consider upgrading to a paid plan if:
 
 - **Backend logs**: Available in your Render dashboard
 - **Frontend issues**: Check browser console for errors
-- **API issues**: Added `/api/health` and `/api/test-key` endpoints for easier debugging
+- **API issues**: Added `/api/health`, `/api/test-key`, and `/api/cors-test` endpoints for easier debugging
 
 ## Need More Help?
 

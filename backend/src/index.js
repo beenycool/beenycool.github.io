@@ -24,30 +24,64 @@ const logger = {
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Configure allowed origins from env
+// Configure allowed origins - ENSURE GitHub Pages domain is explicitly included
 const allowedOrigins = process.env.ALLOWED_ORIGINS 
   ? process.env.ALLOWED_ORIGINS.split(',') 
-  : ['http://localhost:3000'];
+  : ['http://localhost:3000', 'https://beenycool.github.io'];
+
+// Always ensure GitHub Pages domain is in the allowed origins
+if (!allowedOrigins.includes('https://beenycool.github.io')) {
+  allowedOrigins.push('https://beenycool.github.io');
+}
 
 logger.info(`Server starting with allowed origins:`, allowedOrigins);
 logger.info(`OpenRouter API Key exists: ${!!process.env.OPENROUTER_API_KEY}`);
 
-// CORS setup with specific origins
+// Improved CORS setup
 app.use(cors({
   origin: function(origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
+    
+    // Check if origin is allowed
     if (allowedOrigins.indexOf(origin) === -1) {
       logger.error(`CORS blocked request from origin: ${origin}`);
       const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
       return callback(new Error(msg), false);
     }
+    
     logger.debug(`CORS allowed request from origin: ${origin}`);
     return callback(null, true);
   },
-  methods: ['GET', 'POST'],
-  credentials: true
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+  maxAge: 86400 // 24 hours
 }));
+
+// Add explicit handling for OPTIONS requests (preflight)
+app.options('*', cors({
+  origin: allowedOrigins,
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+  maxAge: 86400
+}));
+
+// Also add a simple middleware to ensure CORS headers are always set
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  } else {
+    // If no origin header or unknown origin, set to the first allowed origin
+    res.header('Access-Control-Allow-Origin', allowedOrigins[0]);
+  }
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  next();
+});
 
 app.use(express.json({ limit: '10mb' }));
 
@@ -91,7 +125,10 @@ app.get('/api/health', (req, res) => {
       uptime: process.uptime()
     },
     openaiClient: !!openai,
-    apiKeyConfigured: !!process.env.OPENROUTER_API_KEY
+    apiKeyConfigured: !!process.env.OPENROUTER_API_KEY,
+    corsConfig: {
+      allowedOrigins
+    }
   };
   logger.debug('Health check response', healthData);
   res.status(200).json(healthData);
@@ -296,6 +333,29 @@ app.get('/api/test-key', (req, res) => {
       configured: true,
       masked: maskedKey,
       length: key.length
+    }
+  });
+});
+
+// Add a CORS test endpoint
+app.get('/api/cors-test', (req, res) => {
+  // Get the origin that made the request
+  const origin = req.headers.origin || 'No origin header';
+  
+  // Return info that can help diagnose CORS issues
+  res.status(200).json({
+    message: 'CORS test successful',
+    receivedOrigin: origin,
+    corsAllowed: allowedOrigins.includes(origin),
+    allowedOrigins: allowedOrigins,
+    headers: {
+      sent: {
+        'Access-Control-Allow-Origin': res.getHeader('Access-Control-Allow-Origin'),
+        'Access-Control-Allow-Methods': res.getHeader('Access-Control-Allow-Methods'),
+        'Access-Control-Allow-Headers': res.getHeader('Access-Control-Allow-Headers'),
+        'Access-Control-Allow-Credentials': res.getHeader('Access-Control-Allow-Credentials')
+      },
+      received: req.headers
     }
   });
 });
