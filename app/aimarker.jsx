@@ -17,9 +17,10 @@ import debounce from 'lodash.debounce';
 
 // API URL for our backend
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 
-  (typeof window !== 'undefined' && window.location.hostname === 'localhost' 
-    ? 'http://localhost:3003'  // Local development 
-    : 'https://your-backend-name.onrender.com'); // Replace with your Render backend URL
+  (typeof window !== 'undefined' && 
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+      ? 'http://localhost:3003'  // Local development 
+      : 'https://beenycool-github-io.onrender.com'); // Replace with your Render backend URL
 
 // Constants moved to a separate section for easier management
 const SUBJECTS = [
