@@ -288,80 +288,6 @@ const AIMarker = () => {
   const [selectedModel, setSelectedModel] = useState("google/gemini-2.5-pro-exp-03-25");
   const [imageLoading, setImageLoading] = useState(false);
 
-  // ======== HELPER FUNCTIONS ========
-  // Reset form
-  const resetForm = useCallback(() => {
-    setQuestion("");
-    setAnswer("");
-    setFeedback("");
-    setGrade("");
-    setError(null);
-    setSuccess(null);
-    setImage(null);
-    setMarkScheme("");
-    setActiveTab("answer");
-    setTotalMarks("");
-    setTextExtract("");
-    setRelevantMaterial("");
-  }, []);
-  
-  // Process image upload
-  const processImageUpload = useCallback(async (imageFile) => {
-    setImageLoading(true);
-    if (!imageFile) return null;
-    
-    try {
-      const reader = new FileReader();
-      const imageBase64 = await new Promise((resolve) => {
-        reader.onload = () => resolve(reader.result.split(',')[1]);
-        reader.readAsDataURL(imageFile);
-      });
-      
-      setSuccess({
-        message: "Processing your image... Please wait."
-      });
-      
-      // Use our backend API directly instead of OpenAI client
-      const response = await fetch(`${API_BASE_URL}/api/image/extract`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ image_base64: imageBase64 })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Image processing failed: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      const extractedText = data.text;
-      
-      // Auto-fill the answer field with the extracted text
-      setAnswer(prev => prev ? `${prev}\n${extractedText}` : extractedText);
-      
-      setSuccess({
-        message: "Image processed successfully! Text has been added to your answer."
-      });
-      
-      setTimeout(() => {
-        setSuccess(null);
-      }, 3000);
-      
-      return extractedText;
-    } catch (error) {
-      console.error("Error processing image:", error);
-      setError({
-        type: "image_processing",
-        message: "Failed to process the image. Please try again or enter text manually."
-      });
-      return null;
-    } finally {
-      setImageLoading(false);
-      setImage(null); // Clear the image after processing
-    }
-  }, [API_BASE_URL]);
-
   // ======== MAIN FUNCTIONS ========
   // Submit handler
   const handleSubmitForMarking = useCallback(async () => {
@@ -386,6 +312,45 @@ const AIMarker = () => {
     setSuccess({
       message: "Checking backend status..."
     });
+    
+    // Define inline backend status check
+    const checkBackendStatus = async (model) => {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        
+        const response = await fetch(`${API_BASE_URL}/api/health`, {
+          method: 'GET',
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          throw new Error(`Backend health check failed: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        // Check if the selected model is available
+        if (data.availableModels && model && !data.availableModels.includes(model)) {
+          return { 
+            ok: false, 
+            error: `The selected model "${model}" may not be available on the backend. Available models: ${data.availableModels?.join(', ') || 'None reported'}` 
+          };
+        }
+        
+        return { ok: true, data };
+      } catch (error) {
+        console.error("Backend health check failed:", error);
+        return { 
+          ok: false, 
+          error: error.name === 'AbortError' 
+            ? 'Backend did not respond in time'
+            : error.message
+        };
+      }
+    };
     
     const backendStatus = await checkBackendStatus(selectedModel);
     if (!backendStatus.ok) {
@@ -450,6 +415,100 @@ const AIMarker = () => {
       return;
     }
 
+    // Build system prompt
+    const buildSystemPrompt = () => {
+      let basePrompt = `You are an experienced GCSE ${subject} examiner. Your task is to provide detailed, constructive feedback for ${userType === 'teacher' ? 'assessment purposes' : 'student learning'} following these guidelines:
+
+1. ASSESSMENT CRITERIA:
+- Accuracy of content (subject knowledge)
+- Clarity and structure of response
+- Use of evidence/examples
+- Depth of analysis (where applicable)
+- Technical accuracy (spelling, grammar, terminology)
+
+2. FEEDBACK STRUCTURE:
+a) Summary of performance (1-2 sentences)
+b) 2-3 specific strengths with examples
+c) 2-3 areas for improvement with ${userType === 'teacher' ? 'marking criteria' : 'actionable suggestions'}
+d) One specific ${userType === 'teacher' ? 'assessment note' : '"next step" for the student'}
+e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number
+
+3. TONE & STYLE:
+- ${userType === 'teacher' ? 'Professional and assessment-focused' : 'Approachable and encouraging'}
+- Specific praise ("Excellent use of terminology when...")
+- Constructive criticism ${userType === 'teacher' ? '("This meets level 3 criteria because...")' : '("Consider expanding on...")'}
+- Avoid vague statements - always reference the answer
+
+4. SUBJECT-SPECIFIC GUIDANCE:
+${getSubjectGuidance(subject, examBoard)}`;
+
+      // Add thinking model specific instructions
+      if (selectedModel === "deepseek/deepseek-r1:free") {
+        basePrompt += `\n\n5. THINKING PROCESS:
+- First, analyze the student's answer carefully and identify key strengths and weaknesses
+- For each section of the answer, evaluate both content accuracy and quality of explanation
+- Consider what evidence supports each point you make in your feedback
+- Show your reasoning for the grade assigned by comparing to GCSE standards
+- Mark your thinking process with [THINKING] and your final feedback with [FEEDBACK]`;
+      }
+
+      // Add specific guidance for English Paper 1, Question 3
+      if (subject === "english" && examBoard === "aqa" && questionType === "paper1q3") {
+        basePrompt = `You are an expert AQA English Language examiner specializing in Paper 1, Question 3 (structure analysis).
+
+Your task is to provide detailed, constructive feedback for ${userType === 'teacher' ? 'assessment purposes' : 'student learning'} following the Level 4 (7-8 marks) criteria:
+
+1. ASSESSMENT CRITERIA:
+- Perceptive and detailed understanding of structural features
+- Precise analysis of the effects of the writer's structural choices
+- Selection of judicious, well-chosen examples
+- Sophisticated and accurate use of subject terminology
+
+2. FEEDBACK STRUCTURE:
+a) Summary of performance (1-2 sentences)
+b) 2-3 specific strengths with examples
+c) 2-3 areas for improvement with ${userType === 'teacher' ? 'marking criteria' : 'actionable suggestions'}
+d) One specific ${userType === 'teacher' ? 'assessment note' : '"next step" for the student'}
+e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number, with marks out of 8
+
+3. TONE & STYLE:
+- ${userType === 'teacher' ? 'Professional and assessment-focused' : 'Approachable and encouraging'}
+- Specific praise ("Excellent analysis of shifts in focus when...")
+- Constructive criticism ${userType === 'teacher' ? '("This meets level 3 criteria because...")' : '("Consider expanding your analysis of...")'}
+- Avoid vague statements - always reference the answer
+
+4. SPECIFIC GUIDANCE FOR PAPER 1, QUESTION 3:
+- Reward answers that track meaningful shifts in focus (setting → character movement → objects → internal conflicts)
+- Value analysis of narrative progression and its impact on tension/atmosphere
+- Look for identification of purposeful positioning of key elements
+- Praise sophisticated analytical language with interpretive thinking (e.g., "juxtaposition creates a sharp spike in tension")
+- Encourage precise use of terminology (shifts in narrative focus, cyclical structure, juxtaposition, foreshadowing)
+- Discourage generic comments like "this makes the reader want to read on"
+- Mark down for focus on language features rather than structural elements
+- Penalize listing techniques without analyzing their effect
+
+When assessing, consider whether responses demonstrate:
+- Whole-text structural analysis 
+- Sophisticated analytical language
+- Precise terminology usage
+- Exemplary textual support that connects details to their structural function`;
+
+        // Add thinking model specific instructions for English Paper 1, Question 3
+        if (selectedModel === "deepseek/deepseek-r1:free") {
+          basePrompt += `\n\n5. THINKING PROCESS:
+- First, carefully analyze how well the student identifies structural features
+- Evaluate their understanding of writer's intentions regarding structure
+- Consider how effectively they analyze shifts in focus, narrative progression, etc.
+- Assess their use of subject terminology and textual evidence
+- Show your reasoning process with [THINKING] and final feedback with [FEEDBACK]`;
+        }
+      }
+
+      return basePrompt;
+    };
+
+    const systemPrompt = buildSystemPrompt();
+
     // Set loading state
     setSuccess({
       message: "Processing request..."
@@ -465,7 +524,64 @@ const AIMarker = () => {
 
     // Process image if uploaded
     if (image) {
-      const imageText = await processImageUpload(image);
+      // Inline image processing function
+      const processImage = async (imageFile) => {
+        setImageLoading(true);
+        if (!imageFile) return null;
+        
+        try {
+          const reader = new FileReader();
+          const imageBase64 = await new Promise((resolve) => {
+            reader.onload = () => resolve(reader.result.split(',')[1]);
+            reader.readAsDataURL(imageFile);
+          });
+          
+          setSuccess({
+            message: "Processing your image... Please wait."
+          });
+          
+          // Use our backend API directly instead of OpenAI client
+          const response = await fetch(`${API_BASE_URL}/api/image/extract`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ image_base64: imageBase64 })
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Image processing failed: ${response.statusText}`);
+          }
+          
+          const data = await response.json();
+          const extractedText = data.text;
+          
+          // Auto-fill the answer field with the extracted text
+          setAnswer(prev => prev ? `${prev}\n${extractedText}` : extractedText);
+          
+          setSuccess({
+            message: "Image processed successfully! Text has been added to your answer."
+          });
+          
+          setTimeout(() => {
+            setSuccess(null);
+          }, 3000);
+          
+          return extractedText;
+        } catch (error) {
+          console.error("Error processing image:", error);
+          setError({
+            type: "image_processing",
+            message: "Failed to process the image. Please try again or enter text manually."
+          });
+          return null;
+        } finally {
+          setImageLoading(false);
+          setImage(null); // Clear the image after processing
+        }
+      };
+      
+      const imageText = await processImage(image);
       if (imageText) {
         answerToMark = answer ? `${answer}\n${imageText}` : imageText;
         setAnswer(answerToMark); // UI sync
@@ -510,7 +626,7 @@ const AIMarker = () => {
             messages: [
               {
                 role: "system",
-                content: getSystemPrompt() + "\nIMPORTANT: Please show your reasoning step-by-step. Prefix your thinking process with '[THINKING]' and your final answer with '[FEEDBACK]'."
+                content: systemPrompt + "\nIMPORTANT: Please show your reasoning step-by-step. Prefix your thinking process with '[THINKING]' and your final answer with '[FEEDBACK]'."
               },
               {
                 role: "user",
@@ -650,7 +766,7 @@ const AIMarker = () => {
             messages: [
               {
                 role: "system",
-                content: getSystemPrompt()
+                content: systemPrompt
               },
               {
                 role: "user",
@@ -734,7 +850,6 @@ const AIMarker = () => {
     dailyRequests, 
     markScheme, 
     openai, 
-    processImageUpload, 
     question, 
     selectedModel, 
     subject, 
@@ -743,7 +858,7 @@ const AIMarker = () => {
     totalMarks, 
     userType,
     questionType,
-    getSystemPrompt,
+    getSubjectGuidance,
     API_BASE_URL
   ]);
 
@@ -946,289 +1061,78 @@ const AIMarker = () => {
   }, [answer, debouncedClassifySubject]);
 
   // ======== HELPER FUNCTIONS ========
-  // Add custom subject
-  const addCustomSubject = useCallback(() => {
-    if (customSubject.trim() === "") return;
+  // Reset form
+  const resetForm = useCallback(() => {
+    setQuestion("");
+    setAnswer("");
+    setFeedback("");
+    setGrade("");
+    setError(null);
+    setSuccess(null);
+    setImage(null);
+    setMarkScheme("");
+    setActiveTab("answer");
+    setTotalMarks("");
+    setTextExtract("");
+    setRelevantMaterial("");
+  }, []);
+  
+  // Process image upload
+  const processImageUpload = useCallback(async (imageFile) => {
+    setImageLoading(true);
+    if (!imageFile) return null;
     
-    const newSubject = {
-      value: customSubject.toLowerCase().replace(/\s+/g, ''),
-      label: customSubject.trim()
-    };
-    
-    setCustomSubjects([...customSubjects, newSubject]);
-    setAllSubjects([...allSubjects, newSubject]);
-    setSubject(newSubject.value);
-    setCustomSubject("");
-    setIsAddingSubject(false);
-    
-    setSuccess({
-      message: `Added new subject: ${newSubject.label}`
-    });
-    
-    setTimeout(() => {
-      setSuccess(null);
-    }, 3000);
-  }, [customSubject, customSubjects, allSubjects, setCustomSubjects, setAllSubjects, setSubject, setCustomSubject, setIsAddingSubject, setSuccess]);
-
-  // Handle image file selection
-  const handleImageChange = (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        setError({
-          type: "validation",
-          message: "Image file is too large. Maximum size is 5MB."
-        });
-        return;
-      }
-      setImage(file);
-      setSuccess({
-        message: `Image "${file.name}" loaded. Click 'Process Image' to extract text.`
+    try {
+      const reader = new FileReader();
+      const imageBase64 = await new Promise((resolve) => {
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.readAsDataURL(imageFile);
       });
-    }
-  };
-
-  // Process uploaded image immediately
-  const handleProcessImage = () => {
-    if (image) {
-      processImageUpload(image);
-    }
-  };
-
-  // Toggle advanced options
-  const toggleAdvancedOptions = useCallback(() => {
-    setShowAdvancedOptions(!showAdvancedOptions);
-  }, [showAdvancedOptions]);
-
-  // Get the system prompt based on selected options
-  const getSystemPrompt = useCallback(() => {
-    let basePrompt = `You are an experienced GCSE ${subject} examiner. Your task is to provide detailed, constructive feedback for ${userType === 'teacher' ? 'assessment purposes' : 'student learning'} following these guidelines:
-
-1. ASSESSMENT CRITERIA:
-  - Accuracy of content (subject knowledge)
-  - Clarity and structure of response
-  - Use of evidence/examples
-  - Depth of analysis (where applicable)
-  - Technical accuracy (spelling, grammar, terminology)
-
-2. FEEDBACK STRUCTURE:
-  a) Summary of performance (1-2 sentences)
-  b) 2-3 specific strengths with examples
-  c) 2-3 areas for improvement with ${userType === 'teacher' ? 'marking criteria' : 'actionable suggestions'}
-  d) One specific ${userType === 'teacher' ? 'assessment note' : '"next step" for the student'}
-  e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number
-
-3. TONE & STYLE:
-  - ${userType === 'teacher' ? 'Professional and assessment-focused' : 'Approachable and encouraging'}
-  - Specific praise ("Excellent use of terminology when...")
-  - Constructive criticism ${userType === 'teacher' ? '("This meets level 3 criteria because...")' : '("Consider expanding on...")'}
-  - Avoid vague statements - always reference the answer
-
-4. SUBJECT-SPECIFIC GUIDANCE:
-  ${getSubjectGuidance(subject, examBoard)}`;
-
-    // Add thinking model specific instructions
-    if (selectedModel === "deepseek/deepseek-r1:free") {
-      basePrompt += `\n\n5. THINKING PROCESS:
-  - First, analyze the student's answer carefully and identify key strengths and weaknesses
-  - For each section of the answer, evaluate both content accuracy and quality of explanation
-  - Consider what evidence supports each point you make in your feedback
-  - Show your reasoning for the grade assigned by comparing to GCSE standards
-  - Mark your thinking process with [THINKING] and your final feedback with [FEEDBACK]`;
-    }
-
-    // Add specific guidance for English Paper 1, Question 3
-    if (subject === "english" && examBoard === "aqa" && questionType === "paper1q3") {
-      basePrompt = `You are an expert AQA English Language examiner specializing in Paper 1, Question 3 (structure analysis).
-
-Your task is to provide detailed, constructive feedback for ${userType === 'teacher' ? 'assessment purposes' : 'student learning'} following the Level 4 (7-8 marks) criteria:
-
-1. ASSESSMENT CRITERIA:
-  - Perceptive and detailed understanding of structural features
-  - Precise analysis of the effects of the writer's structural choices
-  - Selection of judicious, well-chosen examples
-  - Sophisticated and accurate use of subject terminology
-
-2. FEEDBACK STRUCTURE:
-  a) Summary of performance (1-2 sentences)
-  b) 2-3 specific strengths with examples
-  c) 2-3 areas for improvement with ${userType === 'teacher' ? 'marking criteria' : 'actionable suggestions'}
-  d) One specific ${userType === 'teacher' ? 'assessment note' : '"next step" for the student'}
-  e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number, with marks out of 8
-
-3. TONE & STYLE:
-  - ${userType === 'teacher' ? 'Professional and assessment-focused' : 'Approachable and encouraging'}
-  - Specific praise ("Excellent analysis of shifts in focus when...")
-  - Constructive criticism ${userType === 'teacher' ? '("This meets level 3 criteria because...")' : '("Consider expanding your analysis of...")'}
-  - Avoid vague statements - always reference the answer
-
-4. SPECIFIC GUIDANCE FOR PAPER 1, QUESTION 3:
-  - Reward answers that track meaningful shifts in focus (setting → character movement → objects → internal conflicts)
-  - Value analysis of narrative progression and its impact on tension/atmosphere
-  - Look for identification of purposeful positioning of key elements
-  - Praise sophisticated analytical language with interpretive thinking (e.g., "juxtaposition creates a sharp spike in tension")
-  - Encourage precise use of terminology (shifts in narrative focus, cyclical structure, juxtaposition, foreshadowing)
-  - Discourage generic comments like "this makes the reader want to read on"
-  - Mark down for focus on language features rather than structural elements
-  - Penalize listing techniques without analyzing their effect
-
-When assessing, consider whether responses demonstrate:
-- Whole-text structural analysis 
-- Sophisticated analytical language
-- Precise terminology usage
-- Exemplary textual support that connects details to their structural function`;
-
-      // Add thinking model specific instructions for English Paper 1, Question 3
-      if (selectedModel === "deepseek/deepseek-r1:free") {
-        basePrompt += `\n\n5. THINKING PROCESS:
-  - First, carefully analyze how well the student identifies structural features
-  - Evaluate their understanding of writer's intentions regarding structure
-  - Consider how effectively they analyze shifts in focus, narrative progression, etc.
-  - Assess their use of subject terminology and textual evidence
-  - Show your reasoning process with [THINKING] and final feedback with [FEEDBACK]`;
+      
+      setSuccess({
+        message: "Processing your image... Please wait."
+      });
+      
+      // Use our backend API directly instead of OpenAI client
+      const response = await fetch(`${API_BASE_URL}/api/image/extract`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ image_base64: imageBase64 })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Image processing failed: ${response.statusText}`);
       }
+      
+      const data = await response.json();
+      const extractedText = data.text;
+      
+      // Auto-fill the answer field with the extracted text
+      setAnswer(prev => prev ? `${prev}\n${extractedText}` : extractedText);
+      
+      setSuccess({
+        message: "Image processed successfully! Text has been added to your answer."
+      });
+      
+      setTimeout(() => {
+        setSuccess(null);
+      }, 3000);
+      
+      return extractedText;
+    } catch (error) {
+      console.error("Error processing image:", error);
+      setError({
+        type: "image_processing",
+        message: "Failed to process the image. Please try again or enter text manually."
+      });
+      return null;
+    } finally {
+      setImageLoading(false);
+      setImage(null); // Clear the image after processing
     }
-    // Add specific guidance for English Paper 1, Question 4
-    else if (subject === "english" && examBoard === "aqa" && questionType === "paper1q4") {
-      basePrompt = `You are an expert AQA English Language examiner specializing in Paper 1, Question 4 (evaluation).
-
-Your task is to provide detailed, constructive feedback for ${userType === 'teacher' ? 'assessment purposes' : 'student learning'} following the Level 4 (16-20 marks) criteria:
-
-1. ASSESSMENT CRITERIA:
-  - Perceptive and critical evaluation of the text
-  - Detailed examination of effects of writer's methods
-  - Convincing selection of textual detail
-  - Sophisticated and accurate use of subject terminology
-
-2. FEEDBACK STRUCTURE:
-  a) Summary of performance (1-2 sentences)
-  b) 2-3 specific strengths with examples
-  c) 2-3 areas for improvement with ${userType === 'teacher' ? 'marking criteria' : 'actionable suggestions'}
-  d) One specific ${userType === 'teacher' ? 'assessment note' : '"next step" for the student'}
-  e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number, with marks out of 20
-
-3. TONE & STYLE:
-  - ${userType === 'teacher' ? 'Professional and assessment-focused' : 'Approachable and encouraging'}
-  - Specific praise ("Excellent critical evaluation when...")
-  - Constructive criticism ${userType === 'teacher' ? '("This meets level 3 criteria because...")' : '("Consider developing your opinion on...")'}
-  - Avoid vague statements - always reference the answer
-
-4. SPECIFIC GUIDANCE FOR PAPER 1, QUESTION 4:
-  - Look for clear and convincing critical opinions about the text
-  - Value analysis of writer's methods in creating effects
-  - Reward use of a range of textual references that support evaluative judgments
-  - Praise well-structured arguments with clear line of thought
-  - Encourage valid, developed personal response rather than formulaic statements
-  - Look for explicit evaluation using phrases like "effectively portrays" or "successfully conveys"
-  - Value focus on how the writer influences the reader's thoughts and feelings
-  - Reward consideration of alternative interpretations
-  - Mark down for superficial or undeveloped points
-  - Penalize evaluation not linked to writer's methods
-  - Discourage overreliance on quotations without analysis
-
-When assessing, consider whether responses demonstrate:
-- Clear critical and evaluative judgment
-- Analysis of the effects of writer's methods
-- Well-selected textual evidence
-- Structured argument with clear focus on the statement`;
-    }
-    // Add specific guidance for English Paper 2, Question 2
-    else if (subject === "english" && examBoard === "aqa" && questionType === "paper2q2") {
-      basePrompt = `You are an expert AQA English Language examiner specializing in Paper 2, Question 2 (summary).
-
-Your task is to provide detailed, constructive feedback for ${userType === 'teacher' ? 'assessment purposes' : 'student learning'} following the Level 4 (7-8 marks) criteria:
-
-1. ASSESSMENT CRITERIA:
-  - Perceptive synthesis and comparison of ideas
-  - Clear and effective summary of differences and/or similarities
-  - Judicious use of evidence from both texts
-  - Well-structured response with clear focus
-
-2. FEEDBACK STRUCTURE:
-  a) Summary of performance (1-2 sentences)
-  b) 2-3 specific strengths with examples
-  c) 2-3 areas for improvement with ${userType === 'teacher' ? 'marking criteria' : 'actionable suggestions'}
-  d) One specific ${userType === 'teacher' ? 'assessment note' : '"next step" for the student'}
-  e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number, with marks out of 8
-
-3. TONE & STYLE:
-  - ${userType === 'teacher' ? 'Professional and assessment-focused' : 'Approachable and encouraging'}
-  - Specific praise ("Excellent synthesis of key points when...")
-  - Constructive criticism ${userType === 'teacher' ? '("This meets level 3 criteria because...")' : '("Consider developing your comparison of...")'}
-  - Avoid vague statements - always reference the answer
-
-4. SPECIFIC GUIDANCE FOR PAPER 2, QUESTION 2:
-  - Look for synthesis rather than side-by-side points
-  - Value use of comparative language and connectives (e.g., "whereas," "unlike," "similarly")
-  - Reward balanced coverage of both texts
-  - Praise precise selection of relevant details
-  - Encourage concise expression that captures key points
-  - Value inference from text rather than just literal interpretation
-  - Reward organization that brings out meaningful comparison
-  - Look for focus on content and ideas rather than writers' methods
-  - Mark down for lengthy quotations without synthesis
-  - Penalize analysis of language or structure (not required for summary)
-  - Discourage unbalanced treatment of the texts
-  - Mark down for simple listing of points from each text
-
-When assessing, consider whether responses demonstrate:
-- Synthesis and comparison of ideas
-- Selection of relevant details from both texts
-- Organization that highlights differences/similarities
-- Focus on content rather than methods`;
-    }
-    // Add specific guidance for English Paper 2, Question 5
-    else if (subject === "english" && examBoard === "aqa" && questionType === "paper2q5") {
-      basePrompt = `You are an expert AQA English Language examiner specializing in Paper 2, Question 5 (writing).
-
-Your task is to provide detailed, constructive feedback for ${userType === 'teacher' ? 'assessment purposes' : 'student learning'} following two assessment categories:
-
-1. CONTENT ASSESSMENT CRITERIA (Level 4, 19-24 marks):
-  - Compelling, convincing communication
-  - Crafted, detailed writing with sustained control
-  - Conscious manipulation of language for effect
-  - Perfect match to purpose, format and audience
-
-2. TECHNICAL ACCURACY CRITERIA (Level 4, 13-16 marks):
-  - Highly sophisticated vocabulary and accurate spelling
-  - Wide range of punctuation used accurately and for effect
-  - Wide range of appropriate sentence forms for effect
-  - High level of accuracy in grammar
-
-3. FEEDBACK STRUCTURE:
-  a) Summary of performance (1-2 sentences)
-  b) 2-3 specific strengths with examples (content and accuracy)
-  c) 2-3 areas for improvement with ${userType === 'teacher' ? 'marking criteria' : 'actionable suggestions'}
-  d) One specific ${userType === 'teacher' ? 'assessment note' : '"next step" for the student'}
-  e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number, with marks out of 40 (24 for content + 16 for accuracy)
-
-4. TONE & STYLE:
-  - ${userType === 'teacher' ? 'Professional and assessment-focused' : 'Approachable and encouraging'}
-  - Specific praise ("Excellent adaptation to format when...")
-  - Constructive criticism ${userType === 'teacher' ? '("This meets level 3 criteria because...")' : '("Consider varying your sentence structures by...")'}
-  - Avoid vague statements - always reference the answer
-
-5. SPECIFIC GUIDANCE FOR PAPER 2, QUESTION 5:
-  - Look for clear adaptation to format, audience and purpose
-  - Value deliberate vocabulary choices for impact
-  - Reward varied and controlled sentence structures
-  - Praise structure and organization that enhance meaning
-  - Encourage originality and creativity in approach
-  - Value sophisticated understanding of form/text type
-  - Reward deliberate crafting for reader impact
-  - Look for cohesive and persuasive writing
-  - Mark down for formulaic or inconsistent register
-  - Penalize limited variety in sentence structures
-  - Discourage inconsistent organization
-  - Mark down for limited awareness of purpose/audience
-
-When assessing, consider both content and technical accuracy equally:
-- Content: communication, crafting, language choices, match to task
-- Technical: vocabulary, punctuation, sentence variety, grammar accuracy`;
-    }
-
-    return basePrompt;
-  }, [subject, examBoard, questionType, userType, selectedModel]);
+  }, [API_BASE_URL]);
 
   // ======== JSX / UI COMPONENTS ========
   // Quick guide dropdown content
@@ -1362,6 +1266,91 @@ When assessing, consider both content and technical accuracy equally:
       return newCount;
     });
   }, []);
+
+  // Add missing image handling functions
+  const handleImageChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      setImage(e.target.files[0]);
+    }
+  };
+
+  const handleProcessImage = async () => {
+    if (!image) return;
+    
+    setImageLoading(true);
+    
+    try {
+      const reader = new FileReader();
+      const imageBase64 = await new Promise((resolve) => {
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.readAsDataURL(image);
+      });
+      
+      setSuccess({
+        message: "Processing your image... Please wait."
+      });
+      
+      // Use our backend API directly instead of OpenAI client
+      const response = await fetch(`${API_BASE_URL}/api/image/extract`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ image_base64: imageBase64 })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Image processing failed: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      const extractedText = data.text;
+      
+      // Auto-fill the answer field with the extracted text
+      setAnswer(prev => prev ? `${prev}\n${extractedText}` : extractedText);
+      
+      setSuccess({
+        message: "Image processed successfully! Text has been added to your answer."
+      });
+      
+      setTimeout(() => {
+        setSuccess(null);
+      }, 3000);
+    } catch (error) {
+      console.error("Error processing image:", error);
+      setError({
+        type: "image_processing",
+        message: "Failed to process the image. Please try again or enter text manually."
+      });
+    } finally {
+      setImageLoading(false);
+      setImage(null); // Clear the image after processing
+    }
+  };
+
+  // Add missing function to handle custom subject addition
+  const addCustomSubject = () => {
+    if (!customSubject.trim()) return;
+    
+    const newSubject = {
+      value: customSubject.toLowerCase().replace(/\s+/g, ''),
+      label: customSubject.trim()
+    };
+    
+    const updatedCustomSubjects = [...customSubjects, newSubject];
+    setCustomSubjects(updatedCustomSubjects);
+    setAllSubjects([...SUBJECTS, ...updatedCustomSubjects]);
+    setSubject(newSubject.value);
+    setIsAddingSubject(false);
+    setCustomSubject("");
+    
+    setSuccess({
+      message: `Added custom subject: ${newSubject.label}`
+    });
+    setTimeout(() => {
+      setSuccess(null);
+    }, 3000);
+  };
 
   return (
     <motion.div
