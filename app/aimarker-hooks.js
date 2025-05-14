@@ -60,6 +60,20 @@ export const useSubjectDetection = (subjectKeywords, loading) => {
 export const useBackendStatus = (API_BASE_URL) => {
   const checkBackendStatus = useCallback(async (model) => {
     try {
+      // Special case for GitHub Pages to always show the UI
+      if (typeof window !== 'undefined' && window.location.hostname.includes('github.io')) {
+        console.log('Running on GitHub Pages - simulating online status for UI');
+        return { 
+          ok: true, 
+          data: { 
+            status: 'ok', 
+            openaiClient: true, 
+            apiKeyConfigured: true 
+          },
+          status: 'online'
+        };
+      }
+
       let retryCount = 0;
       const maxRetries = 3; // Try up to 4 times total (initial + 3 retries)
       

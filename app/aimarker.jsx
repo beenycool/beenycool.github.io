@@ -45,6 +45,11 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ||
 // Log the API URL for debugging
 console.log('Using API URL:', API_BASE_URL);
 
+// Initialize default backend status
+if (typeof window !== 'undefined') {
+  window.BACKEND_STATUS = window.BACKEND_STATUS || { status: 'checking', lastChecked: null };
+}
+
 // Constants moved to a separate section for easier management
 const SUBJECTS = [
   { value: "english", label: "English" },
@@ -118,11 +123,12 @@ const copyFeedbackToClipboard = (feedback) => {
 
 // Enhanced Backend Status Checker Component
 const BackendStatusChecker = ({ onStatusChange }) => {
-  const [status, setStatus] = useState('checking'); // 'checking', 'online', 'offline', 'error', 'rate_limited'
+  const [status, setStatus] = useState('checking'); // 'checking', 'online', 'offline', 'error', 'rate_limited', 'waking_up'
   const [statusDetail, setStatusDetail] = useState(null);
   const [lastChecked, setLastChecked] = useState(null);
   const [isWakingUp, setIsWakingUp] = useState(false);
   const [wakeupProgress, setWakeupProgress] = useState(0);
+  const [wakeupAttempts, setWakeupAttempts] = useState(0);
   const wakeupTimerRef = useRef(null);
   const { checkBackendStatus } = useBackendStatus(API_BASE_URL);
   
@@ -167,6 +173,15 @@ const BackendStatusChecker = ({ onStatusChange }) => {
         }
         
         if (onStatusChange) onStatusChange(result.status || 'error', result.data);
+        
+        // Store status in window object for other components to access
+        if (typeof window !== 'undefined') {
+          window.BACKEND_STATUS = { 
+            status: result.status || 'error', 
+            lastChecked: new Date().toLocaleTimeString() 
+          };
+        }
+        
         return;
       }
       
@@ -174,7 +189,16 @@ const BackendStatusChecker = ({ onStatusChange }) => {
       setStatus('online');
       setStatusDetail(null);
       setIsWakingUp(false);
+      setWakeupAttempts(0);
       clearInterval(wakeupTimerRef.current);
+      
+      // Store status in window object for other components to access
+      if (typeof window !== 'undefined') {
+        window.BACKEND_STATUS = { 
+          status: 'online', 
+          lastChecked: new Date().toLocaleTimeString() 
+        };
+      }
       
       if (onStatusChange) onStatusChange('online', result.data);
       
@@ -189,160 +213,251 @@ const BackendStatusChecker = ({ onStatusChange }) => {
         setStatusDetail(error.message);
       }
       
+      // Store status in window object
+      if (typeof window !== 'undefined') {
+        window.BACKEND_STATUS = { 
+          status: error.name === 'AbortError' ? 'timeout' : 'error',
+          lastChecked: new Date().toLocaleTimeString(),
+          error: error.message
+        };
+      }
+      
       if (onStatusChange) onStatusChange(error.name === 'AbortError' ? 'timeout' : 'error');
     }
   }, [checkBackendStatus, onStatusChange]);
+
+  // Wake up the backend by pinging it multiple times
+  const wakeUpBackend = useCallback(async () => {
+    setWakeupAttempts(prev => prev + 1);
+    setStatus('waking_up');
+    setStatusDetail('Sending wake-up signals to the server...');
+    setIsWakingUp(true);
+    setWakeupProgress(0);
+    
+    // Update window status
+    if (typeof window !== 'undefined') {
+      window.BACKEND_STATUS = { 
+        status: 'waking_up', 
+        lastChecked: new Date().toLocaleTimeString() 
+      };
+    }
+    
+    // Start a progress timer
+    clearInterval(wakeupTimerRef.current);
+    wakeupTimerRef.current = setInterval(() => {
+      setWakeupProgress(prev => {
+        const newProgress = prev + 2;
+        if (newProgress >= 100) {
+          clearInterval(wakeupTimerRef.current);
+          return 100;
+        }
+        return newProgress;
+      });
+    }, 1000);
+    
+    // Make 3 requests in parallel to help wake up the backend faster
+    try {
+      await Promise.all([
+        fetch(`${API_BASE_URL}/api/health?wake=true`, { 
+          signal: AbortSignal.timeout(5000),
+          mode: 'cors',
+          cache: 'no-cache'
+        }),
+        new Promise(resolve => setTimeout(() => {
+          fetch(`${API_BASE_URL}/api/health?wake=true`, { 
+            signal: AbortSignal.timeout(5000),
+            mode: 'cors',
+            cache: 'no-cache'
+          })
+            .finally(resolve);
+        }, 1000)),
+        new Promise(resolve => setTimeout(() => {
+          fetch(`${API_BASE_URL}/api/health?wake=true`, { 
+            signal: AbortSignal.timeout(5000),
+            mode: 'cors',
+            cache: 'no-cache'
+          })
+            .finally(resolve);
+        }, 2000))
+      ]);
+    } catch (error) {
+      console.log('Wake-up requests sent, waiting for backend to respond');
+    }
+    
+    // Check status again after a delay
+    setTimeout(checkStatus, 5000);
+  }, [checkStatus]);
   
-  // Clean up interval on unmount
+  // Check status on component mount
   useEffect(() => {
+    checkStatus();
+    
+    // Set up periodic checks
+    const intervalId = setInterval(checkStatus, 60000); // Check every minute
+    
     return () => {
+      clearInterval(intervalId);
       if (wakeupTimerRef.current) {
         clearInterval(wakeupTimerRef.current);
       }
     };
-  }, []);
-  
-  // Check status on mount and periodically
-  useEffect(() => {
-    checkStatus();
-    
-    // Set up periodic checking
-    const interval = setInterval(checkStatus, 60000); // Check every minute
-    
-    return () => clearInterval(interval);
   }, [checkStatus]);
   
-  // Return status badge component
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button 
-            onClick={checkStatus}
-            className={`inline-flex items-center h-6 px-2 rounded text-xs font-medium ${
-              status === 'checking' ? 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300' :
-              status === 'online' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' :
-              status === 'waking_up' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' :
-              status === 'rate_limited' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400' :
-              status === 'offline' || status === 'timeout' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400' :
-              'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
-            }`}
-          >
-            <span className={`w-2 h-2 rounded-full mr-1.5 ${
-              status === 'checking' ? 'bg-gray-500 dark:bg-gray-400' :
-              status === 'online' ? 'bg-green-500 dark:bg-green-400' :
-              status === 'waking_up' ? 'bg-blue-500 dark:bg-blue-400' :
-              status === 'rate_limited' ? 'bg-amber-500 dark:bg-amber-400' :
-              status === 'offline' || status === 'timeout' ? 'bg-orange-500 dark:bg-orange-400' :
-              'bg-red-500 dark:bg-red-400'
-            }`} />
-            {status === 'checking' ? 'Checking' :
-             status === 'online' ? 'Online' :
-             status === 'waking_up' ? 'Waking Up' :
-             status === 'rate_limited' ? 'Rate Limited' :
-             status === 'offline' || status === 'timeout' ? 'Starting Up' :
-             'Error'}
-          </button>
-        </TooltipTrigger>
-        <TooltipContent className="max-w-xs">
-          <div className="space-y-2">
-            <p className="font-medium">{
-              status === 'checking' ? 'Checking backend status...' :
-              status === 'online' ? 'Backend is online and ready' :
-              status === 'waking_up' ? 'Backend is starting up (may take up to 50 seconds)' :
-              status === 'rate_limited' ? 'API rate limit reached' :
-              status === 'offline' || status === 'timeout' ? 'Backend is starting up after inactivity' :
-              'Backend error detected'
-            }</p>
-            {statusDetail && <p className="text-xs opacity-80">{statusDetail}</p>}
-            {isWakingUp && (
-              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 mt-1">
-                <div className="bg-blue-600 dark:bg-blue-500 h-1.5 rounded-full" style={{ width: `${wakeupProgress}%` }}></div>
-              </div>
-            )}
-            {lastChecked && <p className="text-xs opacity-70">Last checked: {lastChecked}</p>}
-            <p className="text-xs italic">Click to check again</p>
+  // Render a prominent notification when backend is offline
+  if (status === 'offline' || status === 'error' || status === 'waking_up') {
+    return (
+      <div className="mb-4 p-4 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-900 rounded-lg">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center">
+            <AlertTriangle className="h-5 w-5 text-amber-500 mr-2 flex-shrink-0" />
+            <div>
+              <h3 className="font-medium text-amber-800 dark:text-amber-300">
+                {status === 'waking_up' ? 'Backend Server is Starting Up' : 'Backend Server is Offline'}
+              </h3>
+              <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
+                {status === 'waking_up' 
+                  ? 'This can take up to 30-60 seconds as our server is hosted on a free tier which goes to sleep after inactivity.'
+                  : 'The backend server is currently offline. Click the button to wake it up.'}
+              </p>
+            </div>
           </div>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+          
+          <div className="w-full sm:w-auto">
+            <Button
+              onClick={wakeUpBackend}
+              disabled={isWakingUp && wakeupProgress < 95}
+              className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-white"
+            >
+              {isWakingUp ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Waking Up... ({Math.min(wakeupProgress, 95)}%)
+                </>
+              ) : (
+                <>
+                  <Zap className="mr-2 h-4 w-4" />
+                  {wakeupAttempts > 0 ? 'Try Again' : 'Wake Up API'}
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+        
+        {isWakingUp && (
+          <div className="mt-3">
+            <div className="w-full bg-amber-200 dark:bg-amber-800 rounded-full h-2.5">
+              <div 
+                className="bg-amber-500 h-2.5 rounded-full transition-all duration-300" 
+                style={{ width: `${Math.min(wakeupProgress, 95)}%` }}
+              ></div>
+            </div>
+          </div>
+        )}
+        
+        {statusDetail && (
+          <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+            Details: {statusDetail}
+          </p>
+        )}
+        
+        <p className="mt-3 text-xs text-amber-700 dark:text-amber-400 italic">
+          The backend API is hosted on Render's free tier, which automatically spins down after periods of inactivity to save resources. 
+          This is why it may take up to a minute to "wake up" when you first visit the site.
+        </p>
+      </div>
+    );
+  }
+  
+  // Return a minimal status indicator when online to not take up space
+  return (
+    <div className="mb-4 flex items-center text-xs text-gray-500 dark:text-gray-400">
+      <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
+      <span>API Connected</span>
+      {lastChecked && <span className="ml-1">• Last checked: {lastChecked}</span>}
+    </div>
   );
 };
 
 // Add a better success alert component with animations
 const EnhancedAlert = ({ success, error }) => {
+  // If there's no alert to show, return null
   if (!success && !error) return null;
-  
-  if (error) {
-    return (
-      <Alert variant="destructive" className="mb-4 animate-in fade-in slide-in-from-top-5 duration-300">
-        <AlertTriangle className="h-4 w-4" />
-        <AlertTitle>Error</AlertTitle>
-        <AlertDescription className="flex flex-col gap-2">
-          {error.message}
-          {(error.retry || error.type === "network" || error.type === "timeout" || error.type === "api_error") && (
-            <div className="mt-1 flex gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleSubmitForMarking}
-                disabled={loading}
-              >
-                Retry
-              </Button>
-              {error.type === "network" && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => window.open(API_BASE_URL, '_blank')}
-                >
-                  Check Backend
-                </Button>
-              )}
-            </div>
-          )}
-        </AlertDescription>
-      </Alert>
-    );
-  }
-  
+
+  // For success messages
   if (success) {
     return (
-      <Alert className="mb-4 animate-in fade-in slide-in-from-top-5 duration-300 bg-green-50 text-green-800 border-green-200 dark:bg-green-900/20 dark:border-green-900 dark:text-green-300">
-        {success.icon === 'detection' ? (
-          <motion.div
-            initial={{ rotate: -30, scale: 0.9 }}
-            animate={{ rotate: 0, scale: 1 }}
-            transition={{ duration: 0.3 }}
-          >
-            <Zap className="h-4 w-4" />
-          </motion.div>
-        ) : (
-          <CheckCircle2 className="h-4 w-4" />
-        )}
-        <AlertTitle>{success.title || "Success"}</AlertTitle>
-        <AlertDescription className="flex flex-col">
-          <span>{success.message}</span>
-          {success.detail && (
-            <span className="text-xs opacity-80 mt-0.5">{success.detail}</span>
-          )}
-          {success.action && (
-            <div className="mt-1">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={success.action.onClick}
-              >
-                {success.action.label}
-              </Button>
-            </div>
-          )}
+      <Alert className="mb-4 bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-900">
+        <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+        <AlertTitle className="text-green-800 dark:text-green-300 ml-2">Success</AlertTitle>
+        <AlertDescription className="text-green-700 dark:text-green-400 ml-2">
+          {success.message}
         </AlertDescription>
       </Alert>
     );
   }
+
+  // For error messages
+  const isApiError = error.type === 'api_error' || error.message?.includes('API') || error.message?.includes('backend');
+  const isRateLimited = error.message?.includes('rate limit') || error.message?.toLowerCase().includes('too many requests');
   
-  return null;
+  return (
+    <Alert className={`mb-4 ${
+      isRateLimited 
+        ? 'bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-900' 
+        : 'bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-900'
+    }`}>
+      {isRateLimited 
+        ? <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+        : <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+      }
+      <AlertTitle className={`${
+        isRateLimited 
+          ? 'text-amber-800 dark:text-amber-300' 
+          : 'text-red-800 dark:text-red-300'
+        } ml-2 flex items-center gap-2`}
+      >
+        {isApiError ? 'API Error' : isRateLimited ? 'Rate Limited' : 'Error'}
+        {error.code && <span className="text-xs opacity-75">({error.code})</span>}
+      </AlertTitle>
+      <AlertDescription className={`${
+        isRateLimited 
+          ? 'text-amber-700 dark:text-amber-400' 
+          : 'text-red-700 dark:text-red-400'
+        } ml-2 flex flex-col gap-2`}
+      >
+        <span>{error.message}</span>
+        
+        {isApiError && (
+          <span className="text-sm">
+            The backend API service may be offline or starting up. This is normal as we use a free hosting service that goes to sleep after periods of inactivity.
+          </span>
+        )}
+        
+        {error.retry && (
+          <div className="flex items-center gap-2 mt-1">
+            <Button 
+              size="sm" 
+              variant="outline" 
+              className={`text-xs h-7 ${
+                isRateLimited 
+                  ? 'border-amber-200 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900 text-amber-800 dark:text-amber-300' 
+                  : 'border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900 text-red-800 dark:text-red-300'
+              }`}
+              onClick={error.retry === true ? () => window.location.reload() : error.retry}
+            >
+              <RefreshCw className="h-3 w-3 mr-1" /> Try Again
+            </Button>
+            
+            {isApiError && (
+              <span className="text-xs opacity-75">
+                You may need to wait 30-60 seconds for the backend to start up
+              </span>
+            )}
+          </div>
+        )}
+      </AlertDescription>
+    </Alert>
+  );
 };
 
 // Add a progress indicator component
@@ -653,23 +768,49 @@ const useViewport = () => {
 };
 
 // Add QuickGuide component definition before the main component
-const QuickGuide = () => {
+const QuickGuide = ({ onClose }) => {
   return (
-    <Card className="w-full p-4 rounded-lg shadow-lg">
-      <CardHeader>
-        <CardTitle>Quick Guide</CardTitle>
-        <CardDescription>How to use the GCSE AI Marker</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-2">
-          <p><strong>1.</strong> Enter your question and answer in the text boxes.</p>
-          <p><strong>2.</strong> Select the subject, exam board, and question type.</p>
-          <p><strong>3.</strong> Click "Mark Answer" to get AI feedback.</p>
-          <p><strong>4.</strong> Review the feedback and grade provided.</p>
-          <p><strong>5.</strong> Optionally save, share or print your feedback.</p>
+    <div className="mb-6 bg-white dark:bg-gray-900 rounded-lg border shadow-sm overflow-hidden">
+      <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-950 border-b border-blue-100 dark:border-blue-900 p-3">
+        <div className="flex items-center gap-2">
+          <div className="text-lg font-semibold text-blue-800 dark:text-blue-300">Quick Guide</div>
+          <div className="text-sm text-blue-600 dark:text-blue-400">How to use the GCSE AI Marker</div>
         </div>
-      </CardContent>
-    </Card>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900 h-8 w-8 p-0 rounded-full"
+          onClick={onClose}
+        >
+          <X className="h-5 w-5" />
+          <span className="sr-only">Close</span>
+        </Button>
+      </div>
+      <div className="p-4">
+        <ol className="space-y-2">
+          <li className="flex gap-3">
+            <div className="flex-shrink-0 flex items-center justify-center h-6 w-6 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-300 font-medium">1</div>
+            <p className="text-gray-700 dark:text-gray-300">Enter your question and answer in the text boxes.</p>
+          </li>
+          <li className="flex gap-3">
+            <div className="flex-shrink-0 flex items-center justify-center h-6 w-6 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-300 font-medium">2</div>
+            <p className="text-gray-700 dark:text-gray-300">Select the subject, exam board, and question type.</p>
+          </li>
+          <li className="flex gap-3">
+            <div className="flex-shrink-0 flex items-center justify-center h-6 w-6 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-300 font-medium">3</div>
+            <p className="text-gray-700 dark:text-gray-300">Click "Mark Answer" to get AI feedback.</p>
+          </li>
+          <li className="flex gap-3">
+            <div className="flex-shrink-0 flex items-center justify-center h-6 w-6 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-300 font-medium">4</div>
+            <p className="text-gray-700 dark:text-gray-300">Review the feedback and grade provided.</p>
+          </li>
+          <li className="flex gap-3">
+            <div className="flex-shrink-0 flex items-center justify-center h-6 w-6 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-300 font-medium">5</div>
+            <p className="text-gray-700 dark:text-gray-300">Optionally save, share or print your feedback.</p>
+          </li>
+        </ol>
+      </div>
+    </div>
   );
 };
 
@@ -724,10 +865,35 @@ const AIMarker = () => {
   const [markSchemeButtonRef, setMarkSchemeButtonRef] = useState(null);
   const hasManuallySetSubject = useRef(false);
   const backendStatusRef = useRef('checking');
+  const [backendUpdated, setBackendUpdated] = useState(false);
+
+  // Handler for backend status changes
+  const handleBackendStatusChange = useCallback((status, data) => {
+    console.log('Backend status changed:', status, data);
+    backendStatusRef.current = status;
+    setBackendUpdated(prev => !prev); // Toggle to force a re-render
+    
+    // If backend is offline, show appropriate error
+    if (status === 'offline' || status === 'error') {
+      setBackendError(true);
+    } else {
+      setBackendError(false);
+    }
+  }, []);
 
   // Fix: Using custom hooks for subject classification and backend status
   const { classifySubjectAI, debouncedClassifySubject } = useSubjectDetection(subjectKeywords, loading);
   const { checkBackendStatus } = useBackendStatus(API_BASE_URL);
+
+  // Special handling for GitHub Pages environment
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.hostname.includes('github.io')) {
+      console.log('Running on GitHub Pages - setting status to online for UI rendering');
+      backendStatusRef.current = 'online';
+      // Force a re-render
+      setBackendUpdated(prev => !prev);
+    }
+  }, []);
 
   // ======== MAIN FUNCTIONS ========
   // Submit handler
@@ -1774,10 +1940,13 @@ ${getSubjectGuidance(subject, examBoard)}`;
       <TopBar version="2.1.1" backendStatus={backendStatusRef.current} />
       
       <div className="container mx-auto px-4 py-8 max-w-5xl">
-        {showGuide && <QuickGuide />}
+        {showGuide && <QuickGuide onClose={() => setShowGuide(false)} />}
         
         {/* Backend alerts */}
         <EnhancedAlert success={success} error={error} />
+        
+        {/* Backend Status Checker */}
+        <BackendStatusChecker onStatusChange={handleBackendStatusChange} />
         
         {detectedSubject && !hasManuallySetSubject.current && (
           <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-900 rounded-md flex items-center justify-between">
@@ -1833,7 +2002,510 @@ ${getSubjectGuidance(subject, examBoard)}`;
           onOpenChange={setShowKeyboardShortcuts} 
         />
         
-        {/* ... existing code ... */}
+        {/* Main UI content tabs */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
+          {/* Input Panel */}
+          <div className="md:col-span-6 lg:col-span-7">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="answer">Answer</TabsTrigger>
+                <TabsTrigger value="feedback">Feedback</TabsTrigger>
+              </TabsList>
+              <TabsContent value="answer" className="pt-4">
+                {/* Question input */}
+                <div className="mb-4">
+                  <Label htmlFor="question" className="mb-1.5 block">
+                    <span className="flex items-center justify-between">
+                      <span>Question <span className="text-gray-500 dark:text-gray-400 text-xs">(Required)</span></span>
+                      <Badge variant="outline" className="font-normal text-xs">GCSE Level</Badge>
+                    </span>
+                  </Label>
+                  <Textarea
+                    id="question"
+                    placeholder="Enter the question here..."
+                    className="min-h-[60px]"
+                    value={question}
+                    onChange={(e) => setQuestion(e.target.value)}
+                    ref={node => setQuestionInputRef(node)}
+                  />
+                </div>
+                
+                {/* Answer input */}
+                <div className="mb-4">
+                  <Label htmlFor="answer" className="mb-1.5 block">
+                    <span className="flex items-center justify-between">
+                      <span>Your Answer <span className="text-gray-500 dark:text-gray-400 text-xs">(Required)</span></span>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => document.getElementById('image-upload').click()}
+                        className="text-xs h-7 ml-2"
+                        disabled={imageLoading}
+                      >
+                        {imageLoading ? (
+                          <><Loader2 className="mr-1 h-3 w-3 animate-spin" /> Processing...</>
+                        ) : (
+                          <><Upload className="mr-1 h-3 w-3" /> Upload Image</>
+                        )}
+                      </Button>
+                    </span>
+                  </Label>
+                  <input
+                    type="file"
+                    id="image-upload"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleImageChange}
+                    disabled={imageLoading}
+                  />
+                  <Textarea
+                    id="answer"
+                    placeholder="Enter your answer here..."
+                    className="min-h-[150px]"
+                    value={answer}
+                    onChange={(e) => setAnswer(e.target.value)}
+                    ref={node => setAnswerInputRef(node)}
+                  />
+                  {image && !imageLoading && (
+                    <div className="mt-2 flex items-center">
+                      <Badge variant="outline" className="text-xs">
+                        {image.name} ({Math.round(image.size / 1024)} KB)
+                      </Badge>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 w-6 p-0 ml-2"
+                        onClick={() => setImage(null)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs h-7 ml-2"
+                        onClick={handleProcessImage}
+                      >
+                        Process Image
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Meta inputs */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                  {/* Subject selector */}
+                  <div>
+                    <Label htmlFor="subject" className="mb-1.5 block text-sm">Subject</Label>
+                    <Select
+                      value={subject}
+                      onValueChange={(value) => {
+                        if (value === 'custom') {
+                          setIsAddingSubject(true);
+                          return;
+                        }
+                        setSubject(value);
+                        hasManuallySetSubject.current = true;
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a subject" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectLabel>Common Subjects</SelectLabel>
+                          {allSubjects.map((subj) => (
+                            <SelectItem key={subj.value} value={subj.value}>
+                              {subj.label}
+                            </SelectItem>
+                          ))}
+                          <SelectItem value="custom" className="text-blue-600 dark:text-blue-400">
+                            + Add Custom Subject
+                          </SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                    
+                    {isAddingSubject && (
+                      <div className="mt-2 flex">
+                        <Input
+                          ref={customSubjectInputRef}
+                          value={customSubject}
+                          onChange={(e) => setCustomSubject(e.target.value)}
+                          placeholder="Enter subject name"
+                          className="text-sm"
+                        />
+                        <Button
+                          size="sm"
+                          className="ml-2 px-2"
+                          onClick={addCustomSubject}
+                          disabled={!customSubject.trim()}
+                        >
+                          Add
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="ml-1 px-2"
+                          onClick={() => setIsAddingSubject(false)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Exam board selector */}
+                  <div>
+                    <Label htmlFor="examBoard" className="mb-1.5 block text-sm">Exam Board</Label>
+                    <Select
+                      value={examBoard}
+                      onValueChange={setExamBoard}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select an exam board" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {EXAM_BOARDS.map((board) => (
+                          <SelectItem key={board.value} value={board.value}>
+                            {board.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  {/* Question type selector - conditionally show for English/AQA */}
+                  {subject === "english" && examBoard === "aqa" && (
+                    <div>
+                      <Label htmlFor="questionType" className="mb-1.5 block text-sm">Question Type</Label>
+                      <Select
+                        value={questionType}
+                        onValueChange={setQuestionType}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select question type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {QUESTION_TYPES.english.aqa.map((type) => (
+                            <SelectItem key={type.value} value={type.value}>
+                              {type.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  
+                  {/* User type selector */}
+                  <div>
+                    <Label htmlFor="userType" className="mb-1.5 block text-sm">I am a</Label>
+                    <Select
+                      value={userType}
+                      onValueChange={setUserType}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select user type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {USER_TYPES.map((type) => (
+                          <SelectItem key={type.value} value={type.value}>
+                            {type.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                
+                {/* Advanced Options */}
+                <div className="mb-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
+                    className="text-xs"
+                  >
+                    {showAdvancedOptions ? <ChevronUp className="mr-1 h-3 w-3" /> : <ChevronDown className="mr-1 h-3 w-3" />}
+                    Advanced Options
+                  </Button>
+                  
+                  {showAdvancedOptions && (
+                    <div className="mt-3 space-y-4 border p-3 rounded-md bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-800">
+                      {/* Mark scheme section */}
+                      <div>
+                        <div className="flex justify-between items-center mb-1.5">
+                          <Label htmlFor="markScheme" className="text-sm">Mark Scheme <span className="text-gray-500 dark:text-gray-400 text-xs">(Optional)</span></Label>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs h-7"
+                            onClick={generateMarkScheme}
+                            disabled={loading || !question || backendStatusRef.current !== 'online'}
+                            ref={node => setMarkSchemeButtonRef(node)}
+                          >
+                            {loading ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <FilePlus className="mr-1 h-3 w-3" />}
+                            Generate
+                          </Button>
+                        </div>
+                        <Textarea
+                          id="markScheme"
+                          placeholder="Enter mark scheme details..."
+                          className="min-h-[100px]"
+                          value={markScheme}
+                          onChange={(e) => setMarkScheme(e.target.value)}
+                        />
+                      </div>
+                      
+                      {/* Total marks */}
+                      <div>
+                        <Label htmlFor="totalMarks" className="mb-1.5 block text-sm">
+                          Total Marks <span className="text-gray-500 dark:text-gray-400 text-xs">(Optional)</span>
+                        </Label>
+                        <Input
+                          id="totalMarks"
+                          type="number"
+                          placeholder="e.g., 20"
+                          value={totalMarks}
+                          onChange={(e) => setTotalMarks(e.target.value)}
+                          className="max-w-[120px]"
+                          ref={node => setMarksInputRef(node)}
+                        />
+                      </div>
+                      
+                      {/* Text extract - mainly for English */}
+                      {subject === "english" && (
+                        <div>
+                          <Label htmlFor="textExtract" className="mb-1.5 block text-sm">
+                            Text Extract <span className="text-gray-500 dark:text-gray-400 text-xs">(Optional)</span>
+                          </Label>
+                          <Textarea
+                            id="textExtract"
+                            placeholder="Enter any text extract the question refers to..."
+                            className="min-h-[100px]"
+                            value={textExtract}
+                            onChange={(e) => setTextExtract(e.target.value)}
+                          />
+                        </div>
+                      )}
+                      
+                      {/* Relevant material */}
+                      <div>
+                        <Label htmlFor="relevantMaterial" className="mb-1.5 block text-sm">
+                          Relevant Material <span className="text-gray-500 dark:text-gray-400 text-xs">(Optional)</span>
+                        </Label>
+                        <Textarea
+                          id="relevantMaterial"
+                          placeholder="Enter any additional context, notes or material..."
+                          className="min-h-[100px]"
+                          value={relevantMaterial}
+                          onChange={(e) => setRelevantMaterial(e.target.value)}
+                        />
+                      </div>
+                      
+                      {/* AI Model Selection */}
+                      <div>
+                        <Label htmlFor="aiModel" className="mb-1.5 block text-sm">
+                          AI Model <span className="text-gray-500 dark:text-gray-400 text-xs">(Optional)</span>
+                        </Label>
+                        <Select
+                          value={selectedModel}
+                          onValueChange={setSelectedModel}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select AI model" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {AI_MODELS.map((model) => (
+                              <SelectItem key={model.value} value={model.value}>
+                                <div className="flex flex-col">
+                                  <span>{model.label}</span>
+                                  <span className="text-xs text-gray-500 dark:text-gray-400">{model.description}</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Submit button */}
+                <div className="mb-4">
+                  <Button 
+                    onClick={handleSubmitForMarking}
+                    disabled={loading || !answer || backendStatusRef.current !== 'online'}
+                    className="w-full"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Processing...
+                      </>
+                    ) : backendStatusRef.current !== 'online' ? (
+                      <>
+                        <AlertTriangle className="mr-2 h-4 w-4" />
+                        Wake up API first
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="mr-2 h-4 w-4" />
+                        Mark Answer
+                      </>
+                    )}
+                  </Button>
+                  
+                  <div className="flex justify-between mt-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={resetForm}
+                      className="text-xs"
+                      disabled={loading}
+                    >
+                      <RefreshCw className="mr-1 h-3 w-3" />
+                      Reset Form
+                    </Button>
+                    
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setShowKeyboardShortcuts(true)}
+                            className="text-xs"
+                          >
+                            <Keyboard className="mr-1 h-3 w-3" />
+                            Shortcuts
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>View keyboard shortcuts</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                </div>
+              </TabsContent>
+              
+              <TabsContent value="feedback" className="pt-4 relative">
+                <ProgressIndicator loading={loading} progress={processingProgress} />
+                
+                {/* Thinking Box */}
+                {(loading || modelThinking) && selectedModel === "deepseek/deepseek-r1:free" && (
+                  <ModelThinkingBox thinking={modelThinking} loading={loading} />
+                )}
+                
+                {/* Feedback Section */}
+                {feedback ? (
+                  <EnhancedFeedback 
+                    feedback={feedback} 
+                    grade={grade} 
+                    modelName={AI_MODELS.find(m => m.value === selectedModel)?.label || 'AI'}
+                  />
+                ) : (
+                  <div className="min-h-[300px] flex flex-col items-center justify-center text-center p-6 border border-dashed border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900">
+                    <div className="mb-4 p-3 rounded-full bg-gray-100 dark:bg-gray-800">
+                      <HelpCircle className="h-6 w-6 text-gray-400 dark:text-gray-500" />
+                    </div>
+                    <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">No Feedback Yet</h3>
+                    <p className="text-gray-500 dark:text-gray-400 max-w-md mb-6">
+                      Enter your question and answer in the Answer tab, then click "Mark Answer" to receive AI feedback and a GCSE grade.
+                    </p>
+                    
+                    <Button
+                      variant="outline"
+                      onClick={() => setActiveTab("answer")}
+                      className="text-sm"
+                    >
+                      Go to Answer Tab
+                    </Button>
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
+          </div>
+          
+          {/* Help Panel */}
+          <div className="md:col-span-6 lg:col-span-5">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">GCSE Assessment Tools</CardTitle>
+                <CardDescription>
+                  Our AI tool helps you practice and improve your GCSE exam skills
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-start space-x-3">
+                    <div className="mt-0.5 bg-blue-100 dark:bg-blue-900 p-1.5 rounded-full">
+                      <CheckCircle2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-sm text-gray-900 dark:text-gray-100">Expert Marking</h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Get detailed feedback and suggestions from our AI marker</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-start space-x-3">
+                    <div className="mt-0.5 bg-blue-100 dark:bg-blue-900 p-1.5 rounded-full">
+                      <CheckCircle2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-sm text-gray-900 dark:text-gray-100">Subject Specific</h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Tailored to each GCSE subject and exam board requirements</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-start space-x-3">
+                    <div className="mt-0.5 bg-blue-100 dark:bg-blue-900 p-1.5 rounded-full">
+                      <CheckCircle2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-sm text-gray-900 dark:text-gray-100">Practice on Your Schedule</h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">24/7 access to improve your skills whenever you have time</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="mt-6">
+                  <h3 className="font-medium text-sm text-gray-900 dark:text-gray-100 mb-2">Quick Tips</h3>
+                  <ul className="text-sm text-gray-500 dark:text-gray-400 space-y-2">
+                    <li className="flex items-start">
+                      <ChevronRight className="h-4 w-4 mr-1 flex-shrink-0 text-gray-400 dark:text-gray-500" />
+                      <span>Enter both the question and your full answer</span>
+                    </li>
+                    <li className="flex items-start">
+                      <ChevronRight className="h-4 w-4 mr-1 flex-shrink-0 text-gray-400 dark:text-gray-500" />
+                      <span>Select the correct subject and exam board</span>
+                    </li>
+                    <li className="flex items-start">
+                      <ChevronRight className="h-4 w-4 mr-1 flex-shrink-0 text-gray-400 dark:text-gray-500" />
+                      <span>For best results, provide clear and complete answers</span>
+                    </li>
+                    <li className="flex items-start">
+                      <ChevronRight className="h-4 w-4 mr-1 flex-shrink-0 text-gray-400 dark:text-gray-500" />
+                      <span>Wait for the backend to wake up when you first visit the site (may take up to 60 seconds)</span>
+                    </li>
+                  </ul>
+                </div>
+                
+                <div className="mt-6 pt-4 border-t border-gray-100 dark:border-gray-800">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="w-full"
+                    onClick={() => window.open('https://github.com/beenycool/beenycool.github.io/issues', '_blank')}
+                  >
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    Report an Issue or Suggest a Feature
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       </div>
     </div>
   );
