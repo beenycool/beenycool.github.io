@@ -11,12 +11,13 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
-import { Loader2, Upload, AlertTriangle, CheckCircle2, RefreshCw, HelpCircle, ChevronDown, ChevronRight, Save, Share2, ExternalLink, Settings, FilePlus, ChevronUp, Zap, X } from "lucide-react";
+import { Loader2, Upload, AlertTriangle, CheckCircle2, RefreshCw, HelpCircle, ChevronDown, ChevronRight, Save, Share2, ExternalLink, Settings, FilePlus, ChevronUp, Zap, X, Keyboard } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import debounce from 'lodash.debounce';
+import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { 
   Copy, Mail, Twitter, Facebook, Download, 
   Printer, Code
@@ -31,9 +32,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Separator } from "@/components/ui/separator";
-import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 
 // API URL for our backend
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 
@@ -106,11 +104,6 @@ const QUESTION_TYPES = {
       { value: "general", label: "General Assessment" }
     ]
   }
-};
-
-// Helper function to save feedback as PDF - placeholder for actual implementation
-const saveFeedbackAsPdf = () => {
-  alert("PDF download feature will be added in the next update!");
 };
 
 // Helper function to copy feedback to clipboard
@@ -368,6 +361,33 @@ const BackendStatusChecker = ({ onStatusChange }) => {
   );
 };
 
+// Moved from line ~1554 to before debouncedClassifySubject
+const classifySubjectAI = useCallback(async (answerText) => {
+  if (!answerText || answerText.length < 20) return null;
+  
+  try {
+    setProcessingProgress("Analyzing subject...");
+    
+    // Use keyword detection for subject classification
+    for (const [subject, keywords] of Object.entries(subjectKeywords)) {
+      for (const keyword of keywords) {
+        if (answerText.toLowerCase().includes(keyword.toLowerCase())) {
+          setProcessingProgress("");
+          return subject;
+        }
+      }
+    }
+    
+    // Clear the progress message
+    setProcessingProgress("");
+    return null;
+  } catch (err) {
+    console.error("Subject classification error:", err);
+    setProcessingProgress("");
+    return null;
+  }
+}, [subjectKeywords]);
+
 // Improve the debounced classify function with visual indication
 const debouncedClassifySubject = useCallback(
   debounce(async (text) => {
@@ -407,7 +427,7 @@ const EnhancedAlert = ({ success, error }) => {
         <AlertDescription className="flex flex-col gap-2">
           {error.message}
           {(error.retry || error.type === "network" || error.type === "timeout" || error.type === "api_error") && (
-            <div className="mt-1">
+            <div className="mt-1 flex gap-2">
               <Button
                 size="sm"
                 variant="outline"
@@ -416,6 +436,15 @@ const EnhancedAlert = ({ success, error }) => {
               >
                 Retry
               </Button>
+              {error.type === "network" && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => window.open(API_BASE_URL, '_blank')}
+                >
+                  Check Backend
+                </Button>
+              )}
             </div>
           )}
         </AlertDescription>
@@ -437,10 +466,22 @@ const EnhancedAlert = ({ success, error }) => {
         ) : (
           <CheckCircle2 className="h-4 w-4" />
         )}
+        <AlertTitle>{success.title || "Success"}</AlertTitle>
         <AlertDescription className="flex flex-col">
           <span>{success.message}</span>
           {success.detail && (
             <span className="text-xs opacity-80 mt-0.5">{success.detail}</span>
+          )}
+          {success.action && (
+            <div className="mt-1">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={success.action.onClick}
+              >
+                {success.action.label}
+              </Button>
+            </div>
           )}
         </AlertDescription>
       </Alert>
@@ -759,8 +800,7 @@ const useViewport = () => {
 
 // Enhanced AIMarker component with mobile responsiveness
 const AIMarker = () => {
-  // ======== STATE MANAGEMENT ========
-  // Form state
+  // State for form inputs and data
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [subject, setSubject] = useState("english");
@@ -779,6 +819,7 @@ const AIMarker = () => {
   const [textExtract, setTextExtract] = useState("");
   const [relevantMaterial, setRelevantMaterial] = useState("");
   const [modelThinking, setModelThinking] = useState("");
+  const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
   
   // UI state
   const [showGuide, setShowGuide] = useState(false);
@@ -1510,6 +1551,13 @@ ${getSubjectGuidance(subject, examBoard)}`;
         e.preventDefault();
       }
       
+      // Keyboard shortcut for keyboard shortcuts dialog - Ctrl/Cmd + K
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        setShowKeyboardShortcuts(prev => !prev);
+        setShortcutFeedback("Toggled keyboard shortcuts");
+        e.preventDefault();
+      }
+      
       // Clear shortcut feedback after 2 seconds
       setTimeout(() => {
         setShortcutFeedback(null);
@@ -1529,44 +1577,6 @@ ${getSubjectGuidance(subject, examBoard)}`;
 
   // At the top of your component
   const hasManuallySetSubject = useRef(false);
-
-  // Define classifySubjectAI before using it
-  const classifySubjectAI = useCallback(async (answerText) => {
-    if (!openai || !answerText) return null;
-    try {
-      const completion = await openai.chat.completions.create({
-        model: "google/gemini-2.0-flash-exp:free", // or any fast/cheap model
-        messages: [
-          {
-            role: "system",
-            content: "You are a GCSE subject classifier. Given a student's answer, return only the subject from this list: English, Maths, Science, History, Geography, Computer Science, Business Studies. If none match, return 'Other'."
-          },
-          {
-            role: "user",
-            content: answerText
-          }
-        ],
-        max_tokens: 10,
-        temperature: 0
-      });
-      const subjectRaw = completion.choices[0].message.content.trim().toLowerCase();
-      // Map AI output to your subject values
-      const mapping = {
-        "english": "english",
-        "maths": "maths",
-        "science": "science",
-        "history": "history",
-        "geography": "geography",
-        "computer science": "computerScience",
-        "business studies": "businessStudies",
-        "other": null
-      };
-      return mapping[subjectRaw] || null;
-    } catch (err) {
-      // fallback to keyword detection if AI fails
-      return null;
-    }
-  }, [openai]);
 
   useEffect(() => {
     if (!answer || answer.length < 20 || hasManuallySetSubject.current) return;
@@ -1724,6 +1734,10 @@ ${getSubjectGuidance(subject, examBoard)}`;
                   <div className="flex items-center justify-between">
                     <span className="text-gray-700 dark:text-gray-300">Toggle help guide:</span>
                     <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded text-xs">Ctrl+/</kbd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-700 dark:text-gray-300">Keyboard shortcuts dialog:</span>
+                    <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded text-xs">Ctrl+K</kbd>
                   </div>
                 </div>
               </div>
@@ -1987,201 +2001,140 @@ ${getSubjectGuidance(subject, examBoard)}`;
     );
   };
 
-  // ======== JSX / UI COMPONENTS ========
-  // Quick guide dropdown content
-  const QuickGuide = () => {
+  // TopBar component
+  const TopBar = ({ version = "2.1.0", backendStatus }) => {
     return (
-      <motion.div
-        initial={{ opacity: 0, height: 0 }}
-        animate={{ opacity: 1, height: 'auto' }}
-        exit={{ opacity: 0, height: 0 }}
-        transition={{ duration: 0.3 }}
-        className="mb-6"
-      >
-        <Card className="bg-gray-50 border-gray-200 shadow-sm dark:bg-gray-900 dark:border-gray-800 relative">
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={() => setShowGuide(false)}
-            className="absolute right-2 top-2 h-7 w-7 rounded-full p-0"
-            aria-label="Close guide"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </Button>
-          <CardContent className="p-4">
-            <div className="space-y-3">
-              <div>
-                <h3 className="font-semibold text-gray-800 dark:text-gray-200">Quick Guide:</h3>
-                <ul className="mt-2 space-y-1 text-sm">
-                  <li className="flex items-start">
-                    <span className="font-bold text-gray-700 dark:text-gray-300 mr-2">1.</span>
-                    <span className="text-gray-700 dark:text-gray-300">Enter your question and answer in the appropriate fields</span>
-                  </li>
-                  <li className="flex items-start">
-                    <span className="font-bold text-gray-700 dark:text-gray-300 mr-2">2.</span>
-                    <span className="text-gray-700 dark:text-gray-300">Select your subject, exam board, and whether you're a student or teacher</span>
-                  </li>
-                  <li className="flex items-start">
-                    <span className="font-bold text-gray-700 dark:text-gray-300 mr-2">3.</span>
-                    <span className="text-gray-700 dark:text-gray-300">Add marks available and optional mark scheme details</span>
-                  </li>
-                  <li className="flex items-start">
-                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
-                            Upload Handwritten Answer
-                          </label>
-                          <div className="space-y-2">
-                            <label className="flex items-center justify-center w-full h-24 px-4 transition bg-white border-2 border-gray-300 border-dashed rounded-md appearance-none cursor-pointer hover:border-gray-500 focus:outline-none dark:bg-gray-800 dark:border-gray-700 dark:hover:border-gray-600">
-                              <div className="flex flex-col items-center space-y-2">
-                                <Upload className="w-6 h-6 text-gray-400" />
-                                <span className="font-medium text-sm text-gray-600 dark:text-gray-400">
-                                  {image ? image.name : "Drop files or click to upload"}
-                                </span>
-                                {image && (
-                                  <span className="text-xs text-green-600 dark:text-green-400">
-                                    ({(image.size / 1024).toFixed(1)} KB)
-                                  </span>
-                                )}
-                              </div>
-                              <input
-                                type="file"
-                                accept="image/*"
-                                onChange={handleImageChange}
-                                className="hidden"
-                              />
-                            </label>
-                            
-                            {image && (
-                              <Button 
-                                onClick={handleProcessImage}
-                                variant="secondary"
-                                className="w-full"
-                                disabled={imageLoading || loading}
-                              >
-                                {imageLoading ? (
-                                  <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Converting Image...
-                                  </>
-                                ) : (
-                                  <>Process Image</>
-                                )}
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex flex-col sm:flex-row justify-end gap-3 pt-2">
-                <Button
-                  onClick={resetForm}
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="border-gray-300 text-gray-700 dark:border-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-900"
-                  disabled={loading}
+      <div className="flex items-center justify-between py-2 px-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
+        <div className="flex items-center space-x-4">
+          <div className="font-semibold text-xl">AI GCSE Marker</div>
+          <div className="text-xs text-gray-500 dark:text-gray-400 hidden sm:block">v{version}</div>
+          {backendStatus && (
+            <div className="hidden sm:flex items-center space-x-1">
+              <div className={`h-2 w-2 rounded-full ${
+                backendStatus === 'online' ? 'bg-green-500' : 
+                backendStatus === 'rate_limited' ? 'bg-yellow-500' : 
+                'bg-red-500'
+              }`}></div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">{
+                backendStatus === 'online' ? 'API Connected' : 
+                backendStatus === 'rate_limited' ? 'Rate Limited' : 
+                'API Offline'
+              }</div>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center space-x-2">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                  onClick={() => setShowKeyboardShortcuts(true)}
                 >
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Reset
+                  <Keyboard size={18} />
+                  <span className="sr-only">Keyboard shortcuts</span>
                 </Button>
-                
-                <Button
-                  onClick={handleSubmitForMarking}
-                  disabled={loading || !answer}
-                  size="lg"
-                  className="bg-gray-600 hover:bg-gray-700 text-white transition-colors"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Analyzing...
-                    </>
-                  ) : (
-                    'Mark My Answer'
-                  )}
-                </Button>
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="feedback" className="space-y-4 mt-0">
-              {loading ? (
-                <div className="flex items-center justify-center p-8">
-                  <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
-                  <span className="ml-3 text-lg text-gray-600 dark:text-gray-400">
-                    Marking your answer...
-                  </span>
-                </div>
-              ) : feedback ? (
-                <>
-                  {/* Model Thinking Box */}
-                  {selectedModel === "deepseek/deepseek-r1:free" && (loading || modelThinking) && (
-                    <ModelThinkingBox thinking={modelThinking} loading={loading} />
-                  )}
-                  
-                  <EnhancedFeedback 
-                    feedback={feedback} 
-                    grade={grade} 
-                    modelName={AI_MODELS.find(m => m.value === selectedModel)?.label || selectedModel}
-                  />
-                </>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <div className="bg-gray-100 dark:bg-gray-800 rounded-full p-3 mb-4">
-                    <CheckCircle2 className="h-8 w-8 text-gray-400 dark:text-gray-500" />
-                  </div>
-                  <h3 className="text-lg font-medium text-gray-700 dark:text-gray-300 mb-1">No Feedback Yet</h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-500 max-w-md">
-                    Submit your answer for marking to see detailed feedback here. 
-                    Your feedback will include strengths, areas for improvement, and an estimated grade.
-                  </p>
-                </div>
-              )}
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-        
-        <CardFooter className="flex flex-col gap-4 p-4 text-center">
-          <div className="flex items-center justify-center gap-2">
-            <p className="text-xs text-gray-500 dark:text-gray-400 max-w-lg">
-              This AI marker provides guidance based on GCSE criteria but should not replace official marking.
-              Selected model: <span className="font-medium">{AI_MODELS.find(m => m.value === selectedModel)?.label || selectedModel}</span>
-            </p>
-            <BackendStatusChecker 
-              onStatusChange={(status, data) => {
-                // You can handle status changes here if needed
-                if (status === 'offline' || status === 'error') {
-                  setError({
-                    type: 'backend',
-                    message: status === 'offline' 
-                      ? 'Backend service is currently unavailable. Please try again later.' 
-                      : 'Backend error detected. This may affect the application functionality.'
-                  });
-                }
-              }}
-            />
-          </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Keyboard shortcuts</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           
-          <Button
-            variant="link"
-            size="sm"
-            className="text-xs text-gray-600 dark:text-gray-400"
-            onClick={() => window.open('https://www.gov.uk/government/publications/gcse-9-to-1-qualification-level-conditions', '_blank')}
-          >
-            <ExternalLink size={12} className="mr-1" />
-            GCSE Qualification Standards
-          </Button>
-        </CardFooter>
-      </Card>
-    </motion.div>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                  onClick={() => setShowGuide(!showGuide)}
+                  ref={node => setHelpButtonRef(node)}
+                >
+                  <HelpCircle size={18} />
+                  <span className="sr-only">Help</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Help & tips</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+      <TopBar version="2.1.1" backendStatus={backendStatusRef.current} />
+      
+      <div className="container mx-auto px-4 py-8 max-w-5xl">
+        {showGuide && <QuickGuide />}
+        
+        {/* Backend alerts */}
+        <EnhancedAlert success={success} error={error} />
+        
+        {detectedSubject && !hasManuallySetSubject.current && (
+          <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-900 rounded-md flex items-center justify-between">
+            <div className="flex items-center">
+              <CheckCircle2 className="h-5 w-5 text-blue-500 mr-2" />
+              <span className="text-sm text-blue-700 dark:text-blue-300">
+                Subject detected: <strong>{
+                  allSubjects.find(s => s.value === detectedSubject)?.label || 'Unknown'
+                }</strong>
+              </span>
+            </div>
+            <div className="flex space-x-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="text-xs h-7 border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900"
+                onClick={() => {
+                  setSubject(detectedSubject);
+                  hasManuallySetSubject.current = true;
+                }}
+              >
+                Accept
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="text-xs h-7 text-gray-500"
+                onClick={() => setDetectedSubject(null)}
+              >
+                Dismiss
+              </Button>
+            </div>
+          </div>
+        )}
+        
+        {/* Keyboard shortcuts feedback */}
+        <AnimatePresence>
+          {shortcutFeedback && (
+            <motion.div 
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="fixed top-4 right-4 bg-black bg-opacity-80 text-white px-3 py-2 rounded shadow-lg z-50 text-sm"
+            >
+              {shortcutFeedback}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Keyboard Shortcuts Dialog */}
+        <KeyboardShortcuts 
+          open={showKeyboardShortcuts} 
+          onOpenChange={setShowKeyboardShortcuts} 
+        />
+        
+        {/* ... existing code ... */}
+      </div>
+    </div>
   );
 };
 
 export default AIMarker;
-
