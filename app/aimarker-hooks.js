@@ -61,14 +61,25 @@ export const useBackendStatus = (API_BASE_URL) => {
   const checkBackendStatus = useCallback(async (model) => {
     try {
       // Special case for GitHub Pages to always show the UI
-      if (typeof window !== 'undefined' && window.location.hostname.includes('github.io')) {
-        console.log('Running on GitHub Pages - simulating online status for UI');
+      if (typeof window !== 'undefined' && 
+          (window.location.hostname.includes('github.io') || 
+           window.location.hostname === 'beenycool.github.io')) {
+        console.log('Running on GitHub Pages - simulating online status for UI rendering');
+        // Always return online status for GitHub Pages to ensure UI renders
+        if (typeof window !== 'undefined') {
+          window.BACKEND_STATUS = { 
+            status: 'online', 
+            lastChecked: new Date().toLocaleTimeString(),
+            isGitHubPages: true
+          };
+        }
         return { 
           ok: true, 
           data: { 
             status: 'ok', 
             openaiClient: true, 
-            apiKeyConfigured: true 
+            apiKeyConfigured: true,
+            isGitHubPages: true
           },
           status: 'online'
         };
