@@ -2381,10 +2381,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
           <div className="lg:col-span-5">
             <Card className="h-full">
               <CardHeader>
-                <CardTitle className="text-lg">GCSE Assessment Tools</CardTitle>
-                <CardDescription>
-                  Our AI tool helps you practice and improve your GCSE exam skills
-                </CardDescription>
+                <CardTitle className="text-lg">Assessment Tools</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-6">
