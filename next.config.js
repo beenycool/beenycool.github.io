@@ -23,6 +23,10 @@ const nextConfig = {
     }
     return config;
   },
+  // Use React server-components condition to avoid duplicate React issues
+  experimental: {
+    esmExternals: 'loose'
+  }
 }
 
 module.exports = nextConfig; 
