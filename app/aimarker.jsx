@@ -35,6 +35,15 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useSubjectDetection, useBackendStatus } from './aimarker-hooks';
 import { ThemeToggle } from "@/components/theme-toggle";
+import { toast } from "sonner";
+import { Info, Maximize, Minimize, Moon, Sun, UploadCloud, User } from "lucide-react"; // Added Maximize, Minimize, Moon, Sun, UploadCloud, User
+import { useHotkeys } from "react-hotkeys-hook";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import {
+  Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger, SheetFooter, SheetClose
+} from "@/components/ui/sheet";
+import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
 
 // API URL for our backend
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 
@@ -803,6 +812,9 @@ const AIMarker = () => {
   const hasManuallySetSubject = useRef(false);
   const backendStatusRef = useRef('checking');
   const [backendUpdated, setBackendUpdated] = useState(false);
+  const [autoMaxTokens, setAutoMaxTokens] = useState(true);
+  const [maxTokens, setMaxTokens] = useState(2048);
+  const [isHelpPanelOpen, setIsHelpPanelOpen] = useState(true); // New state for retractable panel
 
   // Handler for backend status changes
   const handleBackendStatusChange = useCallback((status, data) => {
@@ -2380,78 +2392,84 @@ ${getSubjectGuidance(subject, examBoard)}`;
           {/* Help Panel */}
           <div className="lg:col-span-5">
             <Card className="h-full">
-              <CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between py-3">
                 <CardTitle className="text-lg">Assessment Tools</CardTitle>
+                <Button variant="ghost" size="icon" onClick={() => setIsHelpPanelOpen(!isHelpPanelOpen)} className="p-1">
+                  {isHelpPanelOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                  <span className="sr-only">{isHelpPanelOpen ? 'Collapse' : 'Expand'} Help Panel</span>
+                </Button>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-6">
-                  <div className="space-y-4">
-                    <div className="flex items-start space-x-3">
-                      <div className="mt-0.5 bg-primary/10 p-1.5 rounded-full">
-                        <CheckCircle2 className="h-4 w-4 text-primary" />
+              {isHelpPanelOpen && (
+                <CardContent>
+                  <div className="space-y-6">
+                    <div className="space-y-4">
+                      <div className="flex items-start space-x-3">
+                        <div className="mt-0.5 bg-primary/10 p-1.5 rounded-full">
+                          <CheckCircle2 className="h-4 w-4 text-primary" />
+                        </div>
+                        <div>
+                          <h3 className="font-medium text-sm">Expert Marking</h3>
+                          <p className="text-sm text-muted-foreground">Get detailed feedback and suggestions from our AI marker</p>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="font-medium text-sm">Expert Marking</h3>
-                        <p className="text-sm text-muted-foreground">Get detailed feedback and suggestions from our AI marker</p>
+                      
+                      <div className="flex items-start space-x-3">
+                        <div className="mt-0.5 bg-primary/10 p-1.5 rounded-full">
+                          <CheckCircle2 className="h-4 w-4 text-primary" />
+                        </div>
+                        <div>
+                          <h3 className="font-medium text-sm">Subject Specific</h3>
+                          <p className="text-sm text-muted-foreground">Tailored to each GCSE subject and exam board requirements</p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-start space-x-3">
+                        <div className="mt-0.5 bg-primary/10 p-1.5 rounded-full">
+                          <CheckCircle2 className="h-4 w-4 text-primary" />
+                        </div>
+                        <div>
+                          <h3 className="font-medium text-sm">Practice on Your Schedule</h3>
+                          <p className="text-sm text-muted-foreground">24/7 access to improve your skills whenever you have time</p>
+                        </div>
                       </div>
                     </div>
                     
-                    <div className="flex items-start space-x-3">
-                      <div className="mt-0.5 bg-primary/10 p-1.5 rounded-full">
-                        <CheckCircle2 className="h-4 w-4 text-primary" />
-                      </div>
-                      <div>
-                        <h3 className="font-medium text-sm">Subject Specific</h3>
-                        <p className="text-sm text-muted-foreground">Tailored to each GCSE subject and exam board requirements</p>
-                      </div>
+                    <div>
+                      <h3 className="font-medium text-sm mb-2">Quick Tips</h3>
+                      <ul className="text-sm text-muted-foreground space-y-2">
+                        <li className="flex items-start">
+                          <ChevronRight className="h-4 w-4 mr-1 flex-shrink-0 text-muted-foreground" />
+                          <span>Enter both the question and your full answer</span>
+                        </li>
+                        <li className="flex items-start">
+                          <ChevronRight className="h-4 w-4 mr-1 flex-shrink-0 text-muted-foreground" />
+                          <span>Select the correct subject and exam board</span>
+                        </li>
+                        <li className="flex items-start">
+                          <ChevronRight className="h-4 w-4 mr-1 flex-shrink-0 text-muted-foreground" />
+                          <span>For best results, provide clear and complete answers</span>
+                        </li>
+                        <li className="flex items-start">
+                          <ChevronRight className="h-4 w-4 mr-1 flex-shrink-0 text-muted-foreground" />
+                          <span>Wait for the backend to wake up when you first visit the site (may take up to 60 seconds)</span>
+                        </li>
+                      </ul>
                     </div>
                     
-                    <div className="flex items-start space-x-3">
-                      <div className="mt-0.5 bg-primary/10 p-1.5 rounded-full">
-                        <CheckCircle2 className="h-4 w-4 text-primary" />
-                      </div>
-                      <div>
-                        <h3 className="font-medium text-sm">Practice on Your Schedule</h3>
-                        <p className="text-sm text-muted-foreground">24/7 access to improve your skills whenever you have time</p>
-                      </div>
+                    <div className="pt-4 border-t border-border">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="w-full"
+                        onClick={() => window.open('https://github.com/beenycool/beenycool.github.io/issues', '_blank')}
+                      >
+                        <ExternalLink className="mr-2 h-4 w-4" />
+                        Report an Issue or Suggest a Feature
+                      </Button>
                     </div>
                   </div>
-                  
-                  <div>
-                    <h3 className="font-medium text-sm mb-2">Quick Tips</h3>
-                    <ul className="text-sm text-muted-foreground space-y-2">
-                      <li className="flex items-start">
-                        <ChevronRight className="h-4 w-4 mr-1 flex-shrink-0 text-muted-foreground" />
-                        <span>Enter both the question and your full answer</span>
-                      </li>
-                      <li className="flex items-start">
-                        <ChevronRight className="h-4 w-4 mr-1 flex-shrink-0 text-muted-foreground" />
-                        <span>Select the correct subject and exam board</span>
-                      </li>
-                      <li className="flex items-start">
-                        <ChevronRight className="h-4 w-4 mr-1 flex-shrink-0 text-muted-foreground" />
-                        <span>For best results, provide clear and complete answers</span>
-                      </li>
-                      <li className="flex items-start">
-                        <ChevronRight className="h-4 w-4 mr-1 flex-shrink-0 text-muted-foreground" />
-                        <span>Wait for the backend to wake up when you first visit the site (may take up to 60 seconds)</span>
-                      </li>
-                    </ul>
-                  </div>
-                  
-                  <div className="pt-4 border-t border-border">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="w-full"
-                      onClick={() => window.open('https://github.com/beenycool/beenycool.github.io/issues', '_blank')}
-                    >
-                      <ExternalLink className="mr-2 h-4 w-4" />
-                      Report an Issue or Suggest a Feature
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
+                </CardContent>
+              )}
             </Card>
           </div>
         </div>
