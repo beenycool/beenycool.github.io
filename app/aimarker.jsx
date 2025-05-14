@@ -125,9 +125,12 @@ const checkBackendStatus = async (model) => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 12000); // Increased timeout to 12 seconds
         
+        console.log(`Checking backend health at ${API_BASE_URL}/api/health`);
+        
         const response = await fetch(`${API_BASE_URL}/api/health?timestamp=${Date.now()}`, {
           method: 'GET',
           signal: controller.signal,
+          mode: 'cors',
           headers: {
             'Cache-Control': 'no-cache, no-store, must-revalidate',
             'Pragma': 'no-cache',
@@ -1030,6 +1033,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
             headers: {
               'Content-Type': 'application/json',
             },
+            mode: 'cors',
             body: JSON.stringify({ image_base64: imageBase64 })
           });
           
@@ -1111,6 +1115,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
               headers: {
                 'Content-Type': 'application/json',
               },
+              mode: 'cors',
               body: JSON.stringify({
                 model: selectedModel,
                 messages: [
@@ -1275,6 +1280,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
               headers: {
                 'Content-Type': 'application/json',
               },
+              mode: 'cors',
               body: JSON.stringify({
                 model: selectedModel,
                 messages: [
@@ -1607,6 +1613,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
         headers: {
           'Content-Type': 'application/json',
         },
+        mode: 'cors',
         body: JSON.stringify({ image_base64: imageBase64 })
       });
       
@@ -1808,6 +1815,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
         headers: {
           'Content-Type': 'application/json',
         },
+        mode: 'cors',
         body: JSON.stringify({ image_base64: imageBase64 })
       });
       
@@ -1889,6 +1897,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
           headers: {
             'Content-Type': 'application/json',
           },
+          mode: 'cors',
           body: JSON.stringify({
             model: "google/gemini-pro:free", // Use a faster model for mark scheme generation
             messages: [
