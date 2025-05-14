@@ -1682,6 +1682,8 @@ ${getSubjectGuidance(subject, examBoard)}`;
       return;
     }
     
+    setError(null); // Clear general error messages
+    setSuccess(null); // Clear general success messages
     setLoading(true);
     setSuccess({
       message: "Generating mark scheme with relevant Assessment Objectives..."
@@ -1907,6 +1909,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
                 onClick={() => {
                   setSubject(detectedSubject);
                   hasManuallySetSubject.current = true;
+                  setDetectedSubject(null); // Add this line to hide the notification
                 }}
               >
                 Accept
