@@ -1,6 +1,16 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f8fafc" },
+    { media: "(prefers-color-scheme: dark)", color: "#0f172a" }
+  ]
+};
 
 export const metadata: Metadata = {
   title: "GCSE AI Marker | Intelligent Exam Grading",
@@ -37,11 +47,6 @@ export const metadata: Metadata = {
     description: "AI-powered GCSE exam preparation tool with instant feedback",
     images: ["https://beenycool.github.io/og-image.png"],
   },
-  viewport: "width=device-width, initial-scale=1, maximum-scale=1",
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f8fafc" },
-    { media: "(prefers-color-scheme: dark)", color: "#0f172a" }
-  ],
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
