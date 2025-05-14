@@ -78,7 +78,6 @@ const AI_MODELS = [
   { value: "deepseek/deepseek-r1:free", label: "Thinking Model (takes longer)", description: "More thorough reasoning process" },
   { value: "deepseek/deepseek-chat-v3-0324:free", label: "Good All-Rounder", description: "Balanced speed and quality" },
   { value: "google/gemini-2.0-flash-exp:free", label: "Fast Response", description: "Quick responses, suitable for shorter answers" },
-  { value: "anthropic/claude-3-sonnet", label: "Claude 3 Sonnet", description: "Good analysis with advanced reasoning" },
 ];
 
 const subjectKeywords = {
@@ -225,155 +224,90 @@ const BackendStatusChecker = ({ onStatusChange }) => {
       if (onStatusChange) onStatusChange(error.name === 'AbortError' ? 'timeout' : 'error');
     }
   }, [checkBackendStatus, onStatusChange]);
-
-  // Wake up the backend by pinging it multiple times
-  const wakeUpBackend = useCallback(async () => {
-    setWakeupAttempts(prev => prev + 1);
-    setStatus('waking_up');
-    setStatusDetail('Sending wake-up signals to the server...');
-    setIsWakingUp(true);
-    setWakeupProgress(0);
-    
-    // Update window status
-    if (typeof window !== 'undefined') {
-      window.BACKEND_STATUS = { 
-        status: 'waking_up', 
-        lastChecked: new Date().toLocaleTimeString() 
-      };
-    }
-    
-    // Start a progress timer
-    clearInterval(wakeupTimerRef.current);
-    wakeupTimerRef.current = setInterval(() => {
-      setWakeupProgress(prev => {
-        const newProgress = prev + 2;
-        if (newProgress >= 100) {
-          clearInterval(wakeupTimerRef.current);
-          return 100;
-        }
-        return newProgress;
-      });
-    }, 1000);
-    
-    // Make 3 requests in parallel to help wake up the backend faster
-    try {
-      await Promise.all([
-        fetch(`${API_BASE_URL}/api/health?wake=true`, { 
-          signal: AbortSignal.timeout(5000),
-          mode: 'cors',
-          cache: 'no-cache'
-        }),
-        new Promise(resolve => setTimeout(() => {
-          fetch(`${API_BASE_URL}/api/health?wake=true`, { 
-            signal: AbortSignal.timeout(5000),
-            mode: 'cors',
-            cache: 'no-cache'
-          })
-            .finally(resolve);
-        }, 1000)),
-        new Promise(resolve => setTimeout(() => {
-          fetch(`${API_BASE_URL}/api/health?wake=true`, { 
-            signal: AbortSignal.timeout(5000),
-            mode: 'cors',
-            cache: 'no-cache'
-          })
-            .finally(resolve);
-        }, 2000))
-      ]);
-    } catch (error) {
-      console.log('Wake-up requests sent, waiting for backend to respond');
-    }
-    
-    // Check status again after a delay
-    setTimeout(checkStatus, 5000);
-  }, [checkStatus]);
   
-  // Check status on component mount
+  // Automatic status check on component mount
   useEffect(() => {
     checkStatus();
     
-    // Set up periodic checks
-    const intervalId = setInterval(checkStatus, 60000); // Check every minute
+    // Set up interval to check status every 60 seconds
+    const intervalId = setInterval(() => {
+      checkStatus();
+    }, 60000);
     
     return () => {
       clearInterval(intervalId);
-      if (wakeupTimerRef.current) {
-        clearInterval(wakeupTimerRef.current);
-      }
+      clearInterval(wakeupTimerRef.current);
     };
   }, [checkStatus]);
   
+  // Manual refresh handler
+  const handleRefresh = useCallback(() => {
+    checkStatus();
+  }, [checkStatus]);
+  
+  // Skip rendering if online
+  if (status === 'online') return null;
+  
   // Render a prominent notification when backend is offline
-  if (status === 'offline' || status === 'error' || status === 'waking_up') {
-    return (
-      <div className="mb-4 p-4 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-900 rounded-lg">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center">
-            <AlertTriangle className="h-5 w-5 text-amber-500 mr-2 flex-shrink-0" />
-            <div>
-              <h3 className="font-medium text-amber-800 dark:text-amber-300">
-                {status === 'waking_up' ? 'Backend Server is Starting Up' : 'Backend Server is Offline'}
-              </h3>
-              <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
-                {status === 'waking_up' 
-                  ? 'This can take up to 30-60 seconds as our server is hosted on a free tier which goes to sleep after inactivity.'
-                  : 'The backend server is currently offline. Click the button to wake it up.'}
-              </p>
-            </div>
-          </div>
-          
-          <div className="w-full sm:w-auto">
-            <Button
-              onClick={wakeUpBackend}
-              disabled={isWakingUp && wakeupProgress < 95}
-              className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-white"
-            >
-              {isWakingUp ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Waking Up... ({Math.min(wakeupProgress, 95)}%)
-                </>
-              ) : (
-                <>
-                  <Zap className="mr-2 h-4 w-4" />
-                  {wakeupAttempts > 0 ? 'Try Again' : 'Wake Up API'}
-                </>
-              )}
-            </Button>
+  return (
+    <div className="mb-4 p-4 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-900 rounded-lg">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center">
+          <AlertTriangle className="h-5 w-5 text-amber-500 mr-2 flex-shrink-0" />
+          <div>
+            <h3 className="font-medium text-amber-800 dark:text-amber-300">
+              {status === 'waking_up' ? 'Backend Server is Starting Up' : 'Backend Server is Offline'}
+            </h3>
+            <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
+              {status === 'waking_up' 
+                ? 'This can take up to 30-60 seconds as our server is hosted on a free tier which goes to sleep after inactivity.'
+                : 'The backend server is currently offline. Click the button to wake it up.'}
+            </p>
           </div>
         </div>
         
-        {isWakingUp && (
-          <div className="mt-3">
-            <div className="w-full bg-amber-200 dark:bg-amber-800 rounded-full h-2.5">
-              <div 
-                className="bg-amber-500 h-2.5 rounded-full transition-all duration-300" 
-                style={{ width: `${Math.min(wakeupProgress, 95)}%` }}
-              ></div>
-            </div>
-          </div>
-        )}
-        
-        {statusDetail && (
-          <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
-            Details: {statusDetail}
-          </p>
-        )}
-        
-        <p className="mt-3 text-xs text-amber-700 dark:text-amber-400 italic">
-          The backend API is hosted on Render's free tier, which automatically spins down after periods of inactivity to save resources. 
-          This is why it may take up to a minute to "wake up" when you first visit the site.
-        </p>
+        <div className="w-full sm:w-auto">
+          <Button
+            onClick={handleRefresh}
+            disabled={isWakingUp && wakeupProgress < 95}
+            className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-white"
+          >
+            {isWakingUp ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Waking Up... ({Math.min(wakeupProgress, 95)}%)
+              </>
+            ) : (
+              <>
+                <Zap className="mr-2 h-4 w-4" />
+                {wakeupAttempts > 0 ? 'Try Again' : 'Wake Up API'}
+              </>
+            )}
+          </Button>
+        </div>
       </div>
-    );
-  }
-  
-  // Return a minimal status indicator when online to not take up space
-  return (
-    <div className="mb-4 flex items-center text-xs text-gray-500 dark:text-gray-400">
-      <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
-      <span>API Connected</span>
-      {lastChecked && <span className="ml-1">• Last checked: {lastChecked}</span>}
+      
+      {isWakingUp && (
+        <div className="mt-3">
+          <div className="w-full bg-amber-200 dark:bg-amber-800 rounded-full h-2.5">
+            <div 
+              className="bg-amber-500 h-2.5 rounded-full transition-all duration-300" 
+              style={{ width: `${Math.min(wakeupProgress, 95)}%` }}
+            ></div>
+          </div>
+        </div>
+      )}
+      
+      {statusDetail && (
+        <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+          Details: {statusDetail}
+        </p>
+      )}
+      
+      <p className="mt-3 text-xs text-amber-700 dark:text-amber-400 italic">
+        The backend API is hosted on Render's free tier, which automatically spins down after periods of inactivity to save resources. 
+        This is why it may take up to a minute to "wake up" when you first visit the site.
+      </p>
     </div>
   );
 };
@@ -816,6 +750,8 @@ const QuickGuide = ({ onClose }) => {
 
 // Enhanced AIMarker component with mobile responsiveness
 const AIMarker = () => {
+  console.log('AIMarker component is rendering', { window: typeof window !== 'undefined' ? window.location.hostname : 'SSR' });
+  
   // State for form inputs and data
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
@@ -887,11 +823,17 @@ const AIMarker = () => {
 
   // Special handling for GitHub Pages environment
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.location.hostname.includes('github.io')) {
-      console.log('Running on GitHub Pages - setting status to online for UI rendering');
-      backendStatusRef.current = 'online';
-      // Force a re-render
-      setBackendUpdated(prev => !prev);
+    if (typeof window !== 'undefined') {
+      const isGitHubPagesHost = window.location.hostname.includes('github.io') || 
+                               window.location.hostname === 'beenycool.github.io';
+      setIsGitHubPages(isGitHubPagesHost);
+      
+      if (isGitHubPagesHost) {
+        console.log('Running on GitHub Pages - setting status to online for UI rendering');
+        backendStatusRef.current = 'online';
+        // Force a re-render
+        setBackendUpdated(prev => !prev);
+      }
     }
   }, []);
 
