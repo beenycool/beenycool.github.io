@@ -74,7 +74,6 @@ const USER_TYPES = [
 ];
 
 const AI_MODELS = [
-  { value: "google/gemini-2.5-pro-exp-03-25", label: "Gemini 2.5 Pro (smartest, 1rpm limit)", description: "Best quality but limited to 1 request per minute" },
   { value: "deepseek/deepseek-r1:free", label: "Thinking Model (takes longer)", description: "More thorough reasoning process" },
   { value: "deepseek/deepseek-chat-v3-0324:free", label: "Good All-Rounder", description: "Balanced speed and quality" },
   { value: "google/gemini-2.0-flash-exp:free", label: "Fast Response", description: "Quick responses, suitable for shorter answers" },
@@ -790,7 +789,7 @@ const AIMarker = () => {
   const [lastRequestTime, setLastRequestTime] = useState(0);
   const [dailyRequests, setDailyRequests] = useState(0);
   const [lastRequestDate, setLastRequestDate] = useState(new Date().toDateString());
-  const [selectedModel, setSelectedModel] = useState("google/gemini-2.5-pro-exp-03-25");
+  const [selectedModel, setSelectedModel] = useState("deepseek/deepseek-chat-v3-0324:free");
   const [imageLoading, setImageLoading] = useState(false);
   const [backendError, setBackendError] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
