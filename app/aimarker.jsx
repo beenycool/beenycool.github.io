@@ -835,7 +835,7 @@ const AIMarker = () => {
         setBackendUpdated(prev => !prev);
       }
     }
-  }, []);
+  }, [setIsGitHubPages]);
 
   // ======== MAIN FUNCTIONS ========
   // Submit handler
