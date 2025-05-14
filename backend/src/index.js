@@ -37,36 +37,31 @@ if (!allowedOrigins.includes('https://beenycool.github.io')) {
 logger.info(`Server starting with allowed origins:`, allowedOrigins);
 logger.info(`OpenRouter API Key exists: ${!!process.env.OPENROUTER_API_KEY}`);
 
-// Improved CORS setup
-app.use(cors({
-  origin: function(origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, etc)
     if (!origin) return callback(null, true);
     
     // Check if origin is allowed
-    if (allowedOrigins.indexOf(origin) === -1) {
-      logger.error(`CORS blocked request from origin: ${origin}`);
-      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
-      return callback(new Error(msg), false);
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      logger.info(`Origin ${origin} not allowed by CORS`);
+      // Still allow the request to proceed but log it
+      callback(null, true);
     }
-    
-    logger.debug(`CORS allowed request from origin: ${origin}`);
-    return callback(null, true);
   },
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-stainless-timeout', 'x-stainless-os', 'x-stainless-arch', 'x-stainless-runtime', 'x-stainless-runtime-version', 'x-stainless-package-version', 'x-stainless-retry-count'],
-  credentials: true,
-  maxAge: 86400 // 24 hours
-}));
-
-// Add explicit handling for OPTIONS requests (preflight)
-app.options('*', cors({
-  origin: allowedOrigins,
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-stainless-timeout', 'x-stainless-os', 'x-stainless-arch', 'x-stainless-runtime', 'x-stainless-runtime-version', 'x-stainless-package-version', 'x-stainless-retry-count'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
   maxAge: 86400
-}));
+}
+
+// Improved CORS setup
+app.use(cors(corsOptions));
+
+// Add explicit handling for OPTIONS requests (preflight)
+app.options('*', cors(corsOptions));
 
 // Also add a simple middleware to ensure CORS headers are always set
 app.use((req, res, next) => {
