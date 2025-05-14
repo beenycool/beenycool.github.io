@@ -65,7 +65,7 @@ export default function RootLayout({
         <meta httpEquiv="Permissions-Policy" content="interest-cohort=(), browsing-topics=()" />
         <link rel="icon" href="/favicon.ico" sizes="any" />
       </head>
-      <body className="font-sans antialiased min-h-screen bg-background">
+      <body className="min-h-screen bg-background text-foreground font-sans antialiased">
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
