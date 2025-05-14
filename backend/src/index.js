@@ -34,7 +34,21 @@ if (!allowedOrigins.includes('https://beenycool.github.io')) {
   allowedOrigins.push('https://beenycool.github.io');
 }
 
-logger.info(`Server starting with allowed origins:`, allowedOrigins);
+// Remove any entries without protocol
+const filteredOrigins = allowedOrigins.filter(origin => 
+  origin.startsWith('http://') || origin.startsWith('https://')
+);
+
+// Add missing protocol to entries if needed
+for (const origin of allowedOrigins) {
+  if (!origin.startsWith('http://') && !origin.startsWith('https://') && origin !== '') {
+    if (!filteredOrigins.includes(`https://${origin}`)) {
+      filteredOrigins.push(`https://${origin}`);
+    }
+  }
+}
+
+logger.info(`Server starting with allowed origins:`, filteredOrigins);
 logger.info(`OpenRouter API Key exists: ${!!process.env.OPENROUTER_API_KEY}`);
 
 const corsOptions = {
@@ -43,7 +57,7 @@ const corsOptions = {
     if (!origin) return callback(null, true);
     
     // Check if origin is allowed
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    if (filteredOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
       logger.info(`Origin ${origin} not allowed by CORS`);
@@ -66,11 +80,11 @@ app.options('*', cors(corsOptions));
 // Also add a simple middleware to ensure CORS headers are always set
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (origin && allowedOrigins.includes(origin)) {
+  if (origin && filteredOrigins.includes(origin)) {
     res.header('Access-Control-Allow-Origin', origin);
   } else {
     // If no origin header or unknown origin, set to the first allowed origin
-    res.header('Access-Control-Allow-Origin', allowedOrigins[0]);
+    res.header('Access-Control-Allow-Origin', filteredOrigins[0]);
   }
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-stainless-timeout, x-stainless-os', 'x-stainless-arch', 'x-stainless-runtime', 'x-stainless-runtime-version', 'x-stainless-package-version', 'x-stainless-retry-count');
@@ -341,8 +355,8 @@ app.get('/api/cors-test', (req, res) => {
   res.status(200).json({
     message: 'CORS test successful',
     receivedOrigin: origin,
-    corsAllowed: allowedOrigins.includes(origin),
-    allowedOrigins: allowedOrigins,
+    corsAllowed: filteredOrigins.includes(origin),
+    allowedOrigins: filteredOrigins,
     headers: {
       sent: {
         'Access-Control-Allow-Origin': res.getHeader('Access-Control-Allow-Origin'),
