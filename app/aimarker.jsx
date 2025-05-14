@@ -34,6 +34,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useSubjectDetection, useBackendStatus } from './aimarker-hooks';
+import { ThemeToggle } from "@/components/theme-toggle";
 
 // API URL for our backend
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 
@@ -249,7 +250,7 @@ const BackendStatusChecker = ({ onStatusChange }) => {
   
   // Render a prominent notification when backend is offline
   return (
-    <div className="mb-4 p-4 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-900 rounded-lg">
+    <div className="mb-4 p-4 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg shadow-sm">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center">
           <AlertTriangle className="h-5 w-5 text-amber-500 mr-2 flex-shrink-0" />
@@ -1817,10 +1818,10 @@ ${getSubjectGuidance(subject, examBoard)}`;
   // TopBar component
   const TopBar = ({ version = "2.1.0", backendStatus }) => {
     return (
-      <div className="flex items-center justify-between py-2 px-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
+      <div className="sticky top-0 z-10 flex items-center justify-between py-2 px-4 border-b border-border bg-card shadow-sm backdrop-blur-sm bg-opacity-90">
         <div className="flex items-center space-x-4">
           <div className="font-semibold text-xl">AI GCSE Marker</div>
-          <div className="text-xs text-gray-500 dark:text-gray-400 hidden sm:block">v{version}</div>
+          <div className="text-xs text-muted-foreground hidden sm:block">v{version}</div>
           {backendStatus && (
             <div className="hidden sm:flex items-center space-x-1">
               <div className={`h-2 w-2 rounded-full ${
@@ -1828,7 +1829,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
                 backendStatus === 'rate_limited' ? 'bg-yellow-500' : 
                 'bg-red-500'
               }`}></div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">{
+              <div className="text-xs text-muted-foreground">{
                 backendStatus === 'online' ? 'API Connected' : 
                 backendStatus === 'rate_limited' ? 'Rate Limited' : 
                 'API Offline'
@@ -1837,13 +1838,14 @@ ${getSubjectGuidance(subject, examBoard)}`;
           )}
         </div>
         <div className="flex items-center space-x-2">
+          <ThemeToggle />
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button 
                   variant="ghost" 
                   size="sm" 
-                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                  className="text-muted-foreground hover:text-foreground"
                   onClick={() => setShowKeyboardShortcuts(true)}
                 >
                   <Keyboard size={18} />
@@ -1862,7 +1864,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
                 <Button 
                   variant="ghost" 
                   size="sm" 
-                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                  className="text-muted-foreground hover:text-foreground"
                   onClick={() => setShowGuide(!showGuide)}
                   ref={node => setHelpButtonRef(node)}
                 >
@@ -1881,10 +1883,10 @@ ${getSubjectGuidance(subject, examBoard)}`;
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+    <div className="min-h-screen bg-background text-foreground">
       <TopBar version="2.1.1" backendStatus={backendStatusRef.current} />
       
-      <div className="container mx-auto px-4 py-8 max-w-5xl">
+      <div className="container mx-auto px-4 py-6 max-w-6xl">
         {showGuide && <QuickGuide onClose={() => setShowGuide(false)} />}
         
         {/* Backend alerts */}
@@ -1894,10 +1896,10 @@ ${getSubjectGuidance(subject, examBoard)}`;
         <BackendStatusChecker onStatusChange={handleBackendStatusChange} />
         
         {detectedSubject && !hasManuallySetSubject.current && (
-          <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-900 rounded-md flex items-center justify-between">
+          <div className="mb-4 p-3 bg-primary/10 border border-primary/20 rounded-md flex items-center justify-between">
             <div className="flex items-center">
-              <CheckCircle2 className="h-5 w-5 text-blue-500 mr-2" />
-              <span className="text-sm text-blue-700 dark:text-blue-300">
+              <CheckCircle2 className="h-5 w-5 text-primary mr-2" />
+              <span className="text-sm text-primary">
                 Subject detected: <strong>{
                   allSubjects.find(s => s.value === detectedSubject)?.label || 'Unknown'
                 }</strong>
@@ -1907,7 +1909,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
               <Button 
                 variant="outline" 
                 size="sm" 
-                className="text-xs h-7 border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900"
+                className="text-xs h-7 border-primary/20 hover:bg-primary/10"
                 onClick={() => {
                   setSubject(detectedSubject);
                   hasManuallySetSubject.current = true;
@@ -1919,7 +1921,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
               <Button 
                 variant="ghost" 
                 size="sm" 
-                className="text-xs h-7 text-gray-500"
+                className="text-xs h-7 text-muted-foreground"
                 onClick={() => setDetectedSubject(null)}
               >
                 Dismiss
@@ -1935,7 +1937,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
-              className="fixed top-4 right-4 bg-black bg-opacity-80 text-white px-3 py-2 rounded shadow-lg z-50 text-sm"
+              className="fixed top-4 right-4 bg-background border border-border shadow-md text-foreground px-3 py-2 rounded-md z-50 text-sm"
             >
               {shortcutFeedback}
             </motion.div>
@@ -1949,22 +1951,23 @@ ${getSubjectGuidance(subject, examBoard)}`;
         />
         
         {/* Main UI content tabs */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Input Panel */}
-          <div className="md:col-span-6 lg:col-span-7">
+          <div className="lg:col-span-7 space-y-4">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="answer">Answer</TabsTrigger>
                 <TabsTrigger value="feedback">Feedback</TabsTrigger>
               </TabsList>
-              <TabsContent value="answer" className="pt-4">
+              <TabsContent value="answer" className="pt-4 space-y-4">
                 {/* Question input */}
-                <div className="mb-4">
-                  <Label htmlFor="question" className="mb-1.5 block">
-                    <span className="flex items-center justify-between">
-                      <span>Question <span className="text-gray-500 dark:text-gray-400 text-xs">(Required)</span></span>
-                      <Badge variant="outline" className="font-normal text-xs">GCSE Level</Badge>
-                    </span>
+                <div className="space-y-2">
+                  <Label htmlFor="question" className="flex items-center justify-between">
+                    <div>
+                      <span>Question</span>
+                      <span className="text-muted-foreground text-xs ml-1">(Required)</span>
+                    </div>
+                    <Badge variant="outline" className="font-normal text-xs">GCSE Level</Badge>
                   </Label>
                   <Textarea
                     id="question"
@@ -1977,25 +1980,26 @@ ${getSubjectGuidance(subject, examBoard)}`;
                 </div>
                 
                 {/* Answer input */}
-                <div className="mb-4">
-                  <Label htmlFor="answer" className="mb-1.5 block">
-                    <span className="flex items-center justify-between">
-                      <span>Your Answer <span className="text-gray-500 dark:text-gray-400 text-xs">(Required)</span></span>
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => document.getElementById('image-upload').click()}
-                        className="text-xs h-7 ml-2"
-                        disabled={imageLoading}
-                      >
-                        {imageLoading ? (
-                          <><Loader2 className="mr-1 h-3 w-3 animate-spin" /> Processing...</>
-                        ) : (
-                          <><Upload className="mr-1 h-3 w-3" /> Upload Image</>
-                        )}
-                      </Button>
-                    </span>
-                  </Label>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="answer">
+                      <span>Your Answer</span>
+                      <span className="text-muted-foreground text-xs ml-1">(Required)</span>
+                    </Label>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => document.getElementById('image-upload').click()}
+                      className="text-xs h-7 ml-2"
+                      disabled={imageLoading}
+                    >
+                      {imageLoading ? (
+                        <><Loader2 className="mr-1 h-3 w-3 animate-spin" /> Processing...</>
+                      ) : (
+                        <><Upload className="mr-1 h-3 w-3" /> Upload Image</>
+                      )}
+                    </Button>
+                  </div>
                   <input
                     type="file"
                     id="image-upload"
@@ -2038,10 +2042,10 @@ ${getSubjectGuidance(subject, examBoard)}`;
                 </div>
                 
                 {/* Meta inputs */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Subject selector */}
-                  <div>
-                    <Label htmlFor="subject" className="mb-1.5 block text-sm">Subject</Label>
+                  <div className="space-y-2">
+                    <Label htmlFor="subject" className="text-sm">Subject</Label>
                     <Select
                       value={subject}
                       onValueChange={(value) => {
@@ -2064,7 +2068,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
                               {subj.label}
                             </SelectItem>
                           ))}
-                          <SelectItem value="custom" className="text-blue-600 dark:text-blue-400">
+                          <SelectItem value="custom" className="text-primary">
                             + Add Custom Subject
                           </SelectItem>
                         </SelectGroup>
@@ -2101,8 +2105,8 @@ ${getSubjectGuidance(subject, examBoard)}`;
                   </div>
                   
                   {/* Exam board selector */}
-                  <div>
-                    <Label htmlFor="examBoard" className="mb-1.5 block text-sm">Exam Board</Label>
+                  <div className="space-y-2">
+                    <Label htmlFor="examBoard" className="text-sm">Exam Board</Label>
                     <Select
                       value={examBoard}
                       onValueChange={setExamBoard}
@@ -2122,8 +2126,8 @@ ${getSubjectGuidance(subject, examBoard)}`;
                   
                   {/* Question type selector - conditionally show for English/AQA */}
                   {subject === "english" && examBoard === "aqa" && (
-                    <div>
-                      <Label htmlFor="questionType" className="mb-1.5 block text-sm">Question Type</Label>
+                    <div className="space-y-2">
+                      <Label htmlFor="questionType" className="text-sm">Question Type</Label>
                       <Select
                         value={questionType}
                         onValueChange={setQuestionType}
@@ -2143,8 +2147,8 @@ ${getSubjectGuidance(subject, examBoard)}`;
                   )}
                   
                   {/* User type selector */}
-                  <div>
-                    <Label htmlFor="userType" className="mb-1.5 block text-sm">I am a</Label>
+                  <div className="space-y-2">
+                    <Label htmlFor="userType" className="text-sm">I am a</Label>
                     <Select
                       value={userType}
                       onValueChange={setUserType}
@@ -2164,7 +2168,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
                 </div>
                 
                 {/* Advanced Options */}
-                <div className="mb-4">
+                <div className="space-y-2">
                   <Button
                     variant="outline"
                     size="sm"
@@ -2176,11 +2180,11 @@ ${getSubjectGuidance(subject, examBoard)}`;
                   </Button>
                   
                   {showAdvancedOptions && (
-                    <div className="mt-3 space-y-4 border p-3 rounded-md bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-800">
+                    <div className="mt-3 space-y-4 border p-4 rounded-md bg-muted/30 border-border">
                       {/* Mark scheme section */}
-                      <div>
-                        <div className="flex justify-between items-center mb-1.5">
-                          <Label htmlFor="markScheme" className="text-sm">Mark Scheme <span className="text-gray-500 dark:text-gray-400 text-xs">(Optional)</span></Label>
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <Label htmlFor="markScheme" className="text-sm">Mark Scheme <span className="text-muted-foreground text-xs">(Optional)</span></Label>
                           <Button
                             variant="outline"
                             size="sm"
@@ -2203,9 +2207,9 @@ ${getSubjectGuidance(subject, examBoard)}`;
                       </div>
                       
                       {/* Total marks */}
-                      <div>
-                        <Label htmlFor="totalMarks" className="mb-1.5 block text-sm">
-                          Total Marks <span className="text-gray-500 dark:text-gray-400 text-xs">(Optional)</span>
+                      <div className="space-y-2">
+                        <Label htmlFor="totalMarks" className="text-sm">
+                          Total Marks <span className="text-muted-foreground text-xs">(Optional)</span>
                         </Label>
                         <Input
                           id="totalMarks"
@@ -2220,9 +2224,9 @@ ${getSubjectGuidance(subject, examBoard)}`;
                       
                       {/* Text extract - mainly for English */}
                       {subject === "english" && (
-                        <div>
-                          <Label htmlFor="textExtract" className="mb-1.5 block text-sm">
-                            Text Extract <span className="text-gray-500 dark:text-gray-400 text-xs">(Optional)</span>
+                        <div className="space-y-2">
+                          <Label htmlFor="textExtract" className="text-sm">
+                            Text Extract <span className="text-muted-foreground text-xs">(Optional)</span>
                           </Label>
                           <Textarea
                             id="textExtract"
@@ -2235,9 +2239,9 @@ ${getSubjectGuidance(subject, examBoard)}`;
                       )}
                       
                       {/* Relevant material */}
-                      <div>
-                        <Label htmlFor="relevantMaterial" className="mb-1.5 block text-sm">
-                          Relevant Material <span className="text-gray-500 dark:text-gray-400 text-xs">(Optional)</span>
+                      <div className="space-y-2">
+                        <Label htmlFor="relevantMaterial" className="text-sm">
+                          Relevant Material <span className="text-muted-foreground text-xs">(Optional)</span>
                         </Label>
                         <Textarea
                           id="relevantMaterial"
@@ -2249,9 +2253,9 @@ ${getSubjectGuidance(subject, examBoard)}`;
                       </div>
                       
                       {/* AI Model Selection */}
-                      <div>
-                        <Label htmlFor="aiModel" className="mb-1.5 block text-sm">
-                          AI Model <span className="text-gray-500 dark:text-gray-400 text-xs">(Optional)</span>
+                      <div className="space-y-2">
+                        <Label htmlFor="aiModel" className="text-sm">
+                          AI Model <span className="text-muted-foreground text-xs">(Optional)</span>
                         </Label>
                         <Select
                           value={selectedModel}
@@ -2262,10 +2266,10 @@ ${getSubjectGuidance(subject, examBoard)}`;
                           </SelectTrigger>
                           <SelectContent>
                             {AI_MODELS.map((model) => (
-                              <SelectItem key={model.value} value={model.value}>
+                              <SelectItem key={model.value} value={model.value} className="py-2">
                                 <div className="flex flex-col">
                                   <span>{model.label}</span>
-                                  <span className="text-xs text-gray-500 dark:text-gray-400">{model.description}</span>
+                                  <span className="text-xs text-muted-foreground">{model.description}</span>
                                 </div>
                               </SelectItem>
                             ))}
@@ -2277,7 +2281,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
                 </div>
                 
                 {/* Submit button */}
-                <div className="mb-4">
+                <div className="space-y-2">
                   <Button 
                     onClick={handleSubmitForMarking}
                     disabled={loading || !answer || backendStatusRef.current !== 'online'}
@@ -2301,7 +2305,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
                     )}
                   </Button>
                   
-                  <div className="flex justify-between mt-2">
+                  <div className="flex justify-between">
                     <Button
                       variant="outline"
                       size="sm"
@@ -2351,12 +2355,12 @@ ${getSubjectGuidance(subject, examBoard)}`;
                     modelName={AI_MODELS.find(m => m.value === selectedModel)?.label || 'AI'}
                   />
                 ) : (
-                  <div className="min-h-[300px] flex flex-col items-center justify-center text-center p-6 border border-dashed border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900">
-                    <div className="mb-4 p-3 rounded-full bg-gray-100 dark:bg-gray-800">
-                      <HelpCircle className="h-6 w-6 text-gray-400 dark:text-gray-500" />
+                  <div className="min-h-[300px] flex flex-col items-center justify-center text-center p-6 border border-dashed border-border rounded-lg bg-muted/20">
+                    <div className="mb-4 p-3 rounded-full bg-muted">
+                      <HelpCircle className="h-6 w-6 text-muted-foreground" />
                     </div>
-                    <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">No Feedback Yet</h3>
-                    <p className="text-gray-500 dark:text-gray-400 max-w-md mb-6">
+                    <h3 className="text-lg font-medium mb-2">No Feedback Yet</h3>
+                    <p className="text-muted-foreground max-w-md mb-6">
                       Enter your question and answer in the Answer tab, then click "Mark Answer" to receive AI feedback and a GCSE grade.
                     </p>
                     
@@ -2374,8 +2378,8 @@ ${getSubjectGuidance(subject, examBoard)}`;
           </div>
           
           {/* Help Panel */}
-          <div className="md:col-span-6 lg:col-span-5">
-            <Card>
+          <div className="lg:col-span-5">
+            <Card className="h-full">
               <CardHeader>
                 <CardTitle className="text-lg">GCSE Assessment Tools</CardTitle>
                 <CardDescription>
@@ -2383,70 +2387,72 @@ ${getSubjectGuidance(subject, examBoard)}`;
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  <div className="flex items-start space-x-3">
-                    <div className="mt-0.5 bg-blue-100 dark:bg-blue-900 p-1.5 rounded-full">
-                      <CheckCircle2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <div className="space-y-6">
+                  <div className="space-y-4">
+                    <div className="flex items-start space-x-3">
+                      <div className="mt-0.5 bg-primary/10 p-1.5 rounded-full">
+                        <CheckCircle2 className="h-4 w-4 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="font-medium text-sm">Expert Marking</h3>
+                        <p className="text-sm text-muted-foreground">Get detailed feedback and suggestions from our AI marker</p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="font-medium text-sm text-gray-900 dark:text-gray-100">Expert Marking</h3>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Get detailed feedback and suggestions from our AI marker</p>
+                    
+                    <div className="flex items-start space-x-3">
+                      <div className="mt-0.5 bg-primary/10 p-1.5 rounded-full">
+                        <CheckCircle2 className="h-4 w-4 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="font-medium text-sm">Subject Specific</h3>
+                        <p className="text-sm text-muted-foreground">Tailored to each GCSE subject and exam board requirements</p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-start space-x-3">
+                      <div className="mt-0.5 bg-primary/10 p-1.5 rounded-full">
+                        <CheckCircle2 className="h-4 w-4 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="font-medium text-sm">Practice on Your Schedule</h3>
+                        <p className="text-sm text-muted-foreground">24/7 access to improve your skills whenever you have time</p>
+                      </div>
                     </div>
                   </div>
                   
-                  <div className="flex items-start space-x-3">
-                    <div className="mt-0.5 bg-blue-100 dark:bg-blue-900 p-1.5 rounded-full">
-                      <CheckCircle2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <div>
-                      <h3 className="font-medium text-sm text-gray-900 dark:text-gray-100">Subject Specific</h3>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Tailored to each GCSE subject and exam board requirements</p>
-                    </div>
+                  <div>
+                    <h3 className="font-medium text-sm mb-2">Quick Tips</h3>
+                    <ul className="text-sm text-muted-foreground space-y-2">
+                      <li className="flex items-start">
+                        <ChevronRight className="h-4 w-4 mr-1 flex-shrink-0 text-muted-foreground" />
+                        <span>Enter both the question and your full answer</span>
+                      </li>
+                      <li className="flex items-start">
+                        <ChevronRight className="h-4 w-4 mr-1 flex-shrink-0 text-muted-foreground" />
+                        <span>Select the correct subject and exam board</span>
+                      </li>
+                      <li className="flex items-start">
+                        <ChevronRight className="h-4 w-4 mr-1 flex-shrink-0 text-muted-foreground" />
+                        <span>For best results, provide clear and complete answers</span>
+                      </li>
+                      <li className="flex items-start">
+                        <ChevronRight className="h-4 w-4 mr-1 flex-shrink-0 text-muted-foreground" />
+                        <span>Wait for the backend to wake up when you first visit the site (may take up to 60 seconds)</span>
+                      </li>
+                    </ul>
                   </div>
                   
-                  <div className="flex items-start space-x-3">
-                    <div className="mt-0.5 bg-blue-100 dark:bg-blue-900 p-1.5 rounded-full">
-                      <CheckCircle2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <div>
-                      <h3 className="font-medium text-sm text-gray-900 dark:text-gray-100">Practice on Your Schedule</h3>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">24/7 access to improve your skills whenever you have time</p>
-                    </div>
+                  <div className="pt-4 border-t border-border">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="w-full"
+                      onClick={() => window.open('https://github.com/beenycool/beenycool.github.io/issues', '_blank')}
+                    >
+                      <ExternalLink className="mr-2 h-4 w-4" />
+                      Report an Issue or Suggest a Feature
+                    </Button>
                   </div>
-                </div>
-                
-                <div className="mt-6">
-                  <h3 className="font-medium text-sm text-gray-900 dark:text-gray-100 mb-2">Quick Tips</h3>
-                  <ul className="text-sm text-gray-500 dark:text-gray-400 space-y-2">
-                    <li className="flex items-start">
-                      <ChevronRight className="h-4 w-4 mr-1 flex-shrink-0 text-gray-400 dark:text-gray-500" />
-                      <span>Enter both the question and your full answer</span>
-                    </li>
-                    <li className="flex items-start">
-                      <ChevronRight className="h-4 w-4 mr-1 flex-shrink-0 text-gray-400 dark:text-gray-500" />
-                      <span>Select the correct subject and exam board</span>
-                    </li>
-                    <li className="flex items-start">
-                      <ChevronRight className="h-4 w-4 mr-1 flex-shrink-0 text-gray-400 dark:text-gray-500" />
-                      <span>For best results, provide clear and complete answers</span>
-                    </li>
-                    <li className="flex items-start">
-                      <ChevronRight className="h-4 w-4 mr-1 flex-shrink-0 text-gray-400 dark:text-gray-500" />
-                      <span>Wait for the backend to wake up when you first visit the site (may take up to 60 seconds)</span>
-                    </li>
-                  </ul>
-                </div>
-                
-                <div className="mt-6 pt-4 border-t border-gray-100 dark:border-gray-800">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="w-full"
-                    onClick={() => window.open('https://github.com/beenycool/beenycool.github.io/issues', '_blank')}
-                  >
-                    <ExternalLink className="mr-2 h-4 w-4" />
-                    Report an Issue or Suggest a Feature
-                  </Button>
                 </div>
               </CardContent>
             </Card>
