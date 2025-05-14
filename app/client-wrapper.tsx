@@ -1,13 +1,12 @@
-'use client';
+"use client";
 
 import dynamic from 'next/dynamic';
 
 // Use dynamic import with ssr: false to prevent server-side rendering
-const AIMarker = dynamic(() => import('@/app/aimarker'), { 
+const AIMarkerComponent = dynamic(() => import('./aimarker'), {
   ssr: false,
-  loading: () => <div className="flex items-center justify-center min-h-[50vh]">Loading AI Marker...</div>
 });
 
-export default function ClientWrapper() {
-  return <AIMarker />;
+export default function AIMarkerClientWrapper() {
+  return <AIMarkerComponent />;
 }

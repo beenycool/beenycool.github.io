@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { useSubjectDetection, useBackendStatus } from './aimarker-hooks';
 
 // API URL for our backend
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 
@@ -114,104 +115,6 @@ const copyFeedbackToClipboard = (feedback) => {
   }
 };
 
-// Improved backend status checker with retry mechanism
-const checkBackendStatus = async (model) => {
-  try {
-    let retryCount = 0;
-    const maxRetries = 3; // Try up to 4 times total (initial + 3 retries)
-    
-    while (retryCount <= maxRetries) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 12000); // Increased timeout to 12 seconds
-        
-        console.log(`Checking backend health at ${API_BASE_URL}/api/health`);
-        
-        const response = await fetch(`${API_BASE_URL}/api/health?timestamp=${Date.now()}`, {
-          method: 'GET',
-          signal: controller.signal,
-          mode: 'cors',
-          headers: {
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0'
-          }
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (!response.ok) {
-          throw new Error(`Backend health check failed: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        console.log('Backend health check data:', data);
-        
-        // Check if any model is available
-        if (data.openaiClient !== true || data.apiKeyConfigured !== true) {
-          return { 
-            ok: false, 
-            error: 'The backend API service is not properly configured. Please try again later.',
-            status: 'error',
-            data
-          };
-        }
-        
-        // Check if the selected model is available (if provided)
-        if (model) {
-          // Check for rate limiting or model availability
-          if (model === "google/gemini-2.5-pro-exp-03-25" && data.rateLimited === true) {
-            return {
-              ok: false,
-              error: 'Gemini 2.5 Pro is rate limited. Please try again in a minute or choose another model.',
-              status: 'rate_limited',
-              data
-            };
-          }
-        }
-        
-        return { 
-          ok: true, 
-          data,
-          status: 'online' 
-        };
-      } catch (error) {
-        if (retryCount === maxRetries) {
-          // Don't retry if we've hit max retries, just throw the error
-          throw error;
-        }
-        
-        const waitTime = 2000 * (retryCount + 1); // Progressive backoff
-        console.log(`Retry attempt ${retryCount + 1} for backend health check in ${waitTime}ms`);
-        
-        // Wait before retrying
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-        retryCount++;
-      }
-    }
-  } catch (error) {
-    console.error("Backend health check failed:", error);
-    
-    let errorMessage = error.message;
-    let status = 'error';
-    
-    if (error.name === 'AbortError') {
-      errorMessage = 'Backend did not respond in time. Render\'s free tier servers may take up to 50 seconds to wake up.';
-      status = 'timeout';
-    } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-      errorMessage = 'Network connection to backend failed. Please check your internet connection and try again in a moment.';
-      status = 'network';
-    }
-    
-    return { 
-      ok: false, 
-      error: errorMessage,
-      status
-    };
-  }
-};
-
 // Enhanced Backend Status Checker Component
 const BackendStatusChecker = ({ onStatusChange }) => {
   const [status, setStatus] = useState('checking'); // 'checking', 'online', 'offline', 'error', 'rate_limited'
@@ -220,6 +123,7 @@ const BackendStatusChecker = ({ onStatusChange }) => {
   const [isWakingUp, setIsWakingUp] = useState(false);
   const [wakeupProgress, setWakeupProgress] = useState(0);
   const wakeupTimerRef = useRef(null);
+  const { checkBackendStatus } = useBackendStatus(API_BASE_URL);
   
   const checkStatus = useCallback(async () => {
     try {
@@ -286,7 +190,7 @@ const BackendStatusChecker = ({ onStatusChange }) => {
       
       if (onStatusChange) onStatusChange(error.name === 'AbortError' ? 'timeout' : 'error');
     }
-  }, [API_BASE_URL, onStatusChange]);
+  }, [checkBackendStatus, onStatusChange]);
   
   // Clean up interval on unmount
   useEffect(() => {
@@ -363,60 +267,6 @@ const BackendStatusChecker = ({ onStatusChange }) => {
     </TooltipProvider>
   );
 };
-
-// Moved from line ~1554 to before debouncedClassifySubject
-const classifySubjectAI = useCallback(async (answerText) => {
-  if (!answerText || answerText.length < 20) return null;
-  
-  try {
-    setProcessingProgress("Analyzing subject...");
-    
-    // Use keyword detection for subject classification
-    for (const [subject, keywords] of Object.entries(subjectKeywords)) {
-      for (const keyword of keywords) {
-        if (answerText.toLowerCase().includes(keyword.toLowerCase())) {
-          setProcessingProgress("");
-          return subject;
-        }
-      }
-    }
-    
-    // Clear the progress message
-    setProcessingProgress("");
-    return null;
-  } catch (err) {
-    console.error("Subject classification error:", err);
-    setProcessingProgress("");
-    return null;
-  }
-}, [subjectKeywords]);
-
-// Improve the debounced classify function with visual indication
-const debouncedClassifySubject = useCallback(
-  debounce(async (text) => {
-    if (loading) return; // Don't run while loading
-    
-    const detected = await classifySubjectAI(text);
-    if (detected && detected !== subject && !hasManuallySetSubject.current) {
-      // Store the previous subject to show a nice transition
-      const prevSubject = allSubjects.find(s => s.value === subject)?.label || '';
-      const newSubject = allSubjects.find(s => s.value === detected)?.label || '';
-      
-      setSubject(detected);
-      setDetectedSubject(detected);
-      
-      // Show a success message with nice animation
-      setSuccess({
-        message: `Subject automatically detected as ${newSubject}`,
-        detail: prevSubject ? `Changed from ${prevSubject}` : null,
-        icon: 'detection'
-      });
-      
-      setTimeout(() => setSuccess(null), 3000);
-    }
-  }, 1000),
-  [classifySubjectAI, subject, allSubjects, loading]
-);
 
 // Add a better success alert component with animations
 const EnhancedAlert = ({ success, error }) => {
@@ -850,8 +700,12 @@ const AIMarker = () => {
   const [answerInputRef, setAnswerInputRef] = useState(null);
   const [marksInputRef, setMarksInputRef] = useState(null);
   const [markSchemeButtonRef, setMarkSchemeButtonRef] = useState(null);
-  const [backendStatusRef] = useState({current: null});
   const hasManuallySetSubject = useRef(false);
+  const backendStatusRef = useRef('checking');
+
+  // Fix: Using custom hooks for subject classification and backend status
+  const { classifySubjectAI, debouncedClassifySubject } = useSubjectDetection(subjectKeywords, loading);
+  const { checkBackendStatus } = useBackendStatus(API_BASE_URL);
 
   // ======== MAIN FUNCTIONS ========
   // Submit handler
@@ -1407,7 +1261,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
   }, [
     answer, 
     examBoard, 
-    image, 
+    checkBackendStatus,
     lastRequestDate, 
     lastRequestTime, 
     markScheme, 
@@ -1420,6 +1274,30 @@ ${getSubjectGuidance(subject, examBoard)}`;
     userType,
     questionType
   ]);
+
+  // Effect for analyzing answer content - fixed to properly use the hook
+  useEffect(() => {
+    if (!answer || answer.length < 20 || hasManuallySetSubject.current) return;
+    
+    // Call the debounced function with all required parameters
+    debouncedClassifySubject(
+      answer, 
+      subject, 
+      hasManuallySetSubject, 
+      allSubjects, 
+      setSubject, 
+      setDetectedSubject, 
+      setSuccess
+    );
+    
+    // Cleanup function
+    return () => {
+      // This pattern ensures the debounce function is properly canceled
+      if (typeof debouncedClassifySubject.cancel === 'function') {
+        debouncedClassifySubject.cancel();
+      }
+    };
+  }, [answer, debouncedClassifySubject, subject, allSubjects]);
 
   // ======== EFFECTS & INITIALIZATION ========
   // Initialize OpenAI client
@@ -1578,209 +1456,6 @@ ${getSubjectGuidance(subject, examBoard)}`;
       customSubjectInputRef.current.focus();
     }
   }, [isAddingSubject]);
-
-  // Effect for analyzing answer content
-  useEffect(() => {
-    if (!answer || answer.length < 20 || hasManuallySetSubject.current) return;
-    debouncedClassifySubject(answer);
-    return () => debouncedClassifySubject.cancel();
-  }, [answer, debouncedClassifySubject]);
-
-  // ======== HELPER FUNCTIONS ========
-  // Process image upload
-  const processImageUpload = useCallback(async (imageFile) => {
-    setImageLoading(true);
-    if (!imageFile) return null;
-    
-    try {
-      const reader = new FileReader();
-      const imageBase64 = await new Promise((resolve) => {
-        reader.onload = () => resolve(reader.result.split(',')[1]);
-        reader.readAsDataURL(imageFile);
-      });
-      
-      setSuccess({
-        message: "Processing your image... Please wait."
-      });
-      
-      // Use our backend API directly instead of OpenAI client
-      const response = await fetch(`${API_BASE_URL}/api/image/extract`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        mode: 'cors',
-        body: JSON.stringify({ image_base64: imageBase64 })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Image processing failed: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      const extractedText = data.text;
-      
-      // Auto-fill the answer field with the extracted text
-      setAnswer(prev => prev ? `${prev}\n${extractedText}` : extractedText);
-      
-      setSuccess({
-        message: "Image processed successfully! Text has been added to your answer."
-      });
-      
-      setTimeout(() => {
-        setSuccess(null);
-      }, 3000);
-      
-      return extractedText;
-    } catch (error) {
-      console.error("Error processing image:", error);
-      setError({
-        type: "image_processing",
-        message: "Failed to process the image. Please try again or enter text manually."
-      });
-      return null;
-    } finally {
-      setImageLoading(false);
-      setImage(null); // Clear the image after processing
-    }
-  }, [API_BASE_URL]);
-
-  // ======== JSX / UI COMPONENTS ========
-  // Quick guide dropdown content
-  const QuickGuide = () => {
-    return (
-      <motion.div
-        initial={{ opacity: 0, height: 0 }}
-        animate={{ opacity: 1, height: 'auto' }}
-        exit={{ opacity: 0, height: 0 }}
-        transition={{ duration: 0.3 }}
-        className="mb-6"
-      >
-        <Card className="bg-gray-50 border-gray-200 shadow-sm dark:bg-gray-900 dark:border-gray-800 relative">
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={() => setShowGuide(false)}
-            className="absolute right-2 top-2 h-7 w-7 rounded-full p-0"
-            aria-label="Close guide"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </Button>
-          <CardContent className="p-4">
-            <div className="space-y-3">
-              <div>
-                <h3 className="font-semibold text-gray-800 dark:text-gray-200">Quick Guide:</h3>
-                <ul className="mt-2 space-y-1 text-sm">
-                  <li className="flex items-start">
-                    <span className="font-bold text-gray-700 dark:text-gray-300 mr-2">1.</span>
-                    <span className="text-gray-700 dark:text-gray-300">Enter your question and answer in the appropriate fields</span>
-                  </li>
-                  <li className="flex items-start">
-                    <span className="font-bold text-gray-700 dark:text-gray-300 mr-2">2.</span>
-                    <span className="text-gray-700 dark:text-gray-300">Select your subject, exam board, and whether you're a student or teacher</span>
-                  </li>
-                  <li className="flex items-start">
-                    <span className="font-bold text-gray-700 dark:text-gray-300 mr-2">3.</span>
-                    <span className="text-gray-700 dark:text-gray-300">Add marks available and optional mark scheme details</span>
-                  </li>
-                  <li className="flex items-start">
-                    <span className="font-bold text-gray-700 dark:text-gray-300 mr-2">4.</span>
-                    <span className="text-gray-700 dark:text-gray-300">Choose your preferred AI model (each has different strengths)</span>
-                  </li>
-                  <li className="flex items-start">
-                    <span className="font-bold text-gray-700 dark:text-gray-300 mr-2">5.</span>
-                    <span className="text-gray-700 dark:text-gray-300">Click 'Mark My Answer' to receive detailed feedback</span>
-                  </li>
-                </ul>
-              </div>
-              
-              <div>
-                <h3 className="font-semibold text-gray-800 dark:text-gray-200">Tips:</h3>
-                <ul className="mt-2 space-y-1 text-sm">
-                  <li className="flex items-start">
-                    <span className="text-gray-700 dark:text-gray-300 mr-2">•</span>
-                    <span className="text-gray-700 dark:text-gray-300">For handwritten answers, upload a clear photo and click 'Process Image'</span>
-                  </li>
-                  <li className="flex items-start">
-                    <span className="text-gray-700 dark:text-gray-300 mr-2">•</span>
-                    <span className="text-gray-700 dark:text-gray-300">The subject may be auto-detected from keywords in your answer</span>
-                  </li>
-                  <li className="flex items-start">
-                    <span className="text-gray-700 dark:text-gray-300 mr-2">•</span>
-                    <span className="text-gray-700 dark:text-gray-300">Try different AI models to see which gives you the best feedback</span>
-                  </li>
-                  <li className="flex items-start">
-                    <span className="text-gray-700 dark:text-gray-300 mr-2">•</span>
-                    <span className="text-gray-700 dark:text-gray-300">Feedback includes strengths, areas for improvement and an estimated grade</span>
-                  </li>
-                </ul>
-              </div>
-              
-              <div>
-                <h3 className="font-semibold text-gray-800 dark:text-gray-200">Keyboard Shortcuts:</h3>
-                <div className="mt-2 grid grid-cols-2 gap-y-1 gap-x-4 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-700 dark:text-gray-300">Submit for marking:</span>
-                    <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded text-xs">Ctrl+Enter</kbd>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-700 dark:text-gray-300">Reset form:</span>
-                    <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded text-xs">Ctrl+Shift+R</kbd>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-700 dark:text-gray-300">Toggle advanced options:</span>
-                    <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded text-xs">Ctrl+.</kbd>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-700 dark:text-gray-300">Toggle help guide:</span>
-                    <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded text-xs">Ctrl+/</kbd>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-700 dark:text-gray-300">Keyboard shortcuts dialog:</span>
-                    <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded text-xs">Ctrl+K</kbd>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
-    );
-  };
-
-  // Replace all onValueChange={setSubject} with:
-  const handleSubjectChange = (value) => {
-    hasManuallySetSubject.current = true;
-    setSubject(value);
-  };
-
-  // On mount, sync from localStorage
-  useEffect(() => {
-    const storedDate = localStorage.getItem('lastRequestDate');
-    const storedRequests = parseInt(localStorage.getItem('dailyRequests') || '0', 10);
-    const today = new Date().toDateString();
-    if (storedDate !== today) {
-      localStorage.setItem('lastRequestDate', today);
-      localStorage.setItem('dailyRequests', '0');
-      setDailyRequests(0);
-      setLastRequestDate(today);
-    } else {
-      setDailyRequests(storedRequests);
-      setLastRequestDate(storedDate);
-    }
-  }, []);
-
-  // When updating
-  useEffect(() => {
-    setDailyRequests(prev => {
-      const newCount = prev + 1;
-      localStorage.setItem('dailyRequests', newCount.toString());
-      return newCount;
-    });
-  }, []);
 
   // Add missing image handling functions
   const handleImageChange = (e) => {
