@@ -771,6 +771,7 @@ const AIMarker = () => {
   const [relevantMaterial, setRelevantMaterial] = useState("");
   const [modelThinking, setModelThinking] = useState("");
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
+  const [isGitHubPages, setIsGitHubPages] = useState(false);
   
   // UI state
   const [showGuide, setShowGuide] = useState(false);
@@ -828,7 +829,7 @@ const AIMarker = () => {
       setIsGitHubPages(isGitHubPagesHost);
       
       if (isGitHubPagesHost) {
-        console.log('Running on GitHub Pages - setting status to online for UI rendering');
+        console.log('Running on GitHub Pages - simulating online status for UI rendering');
         backendStatusRef.current = 'online';
         // Force a re-render
         setBackendUpdated(prev => !prev);
@@ -1401,7 +1402,8 @@ ${getSubjectGuidance(subject, examBoard)}`;
     relevantMaterial, 
     totalMarks, 
     userType,
-    questionType
+    questionType,
+    image
   ]);
 
   // Effect for analyzing answer content - fixed to properly use the hook

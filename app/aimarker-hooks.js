@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from 'react';
+import { useCallback, useRef, useEffect } from 'react';
 import debounce from 'lodash.debounce';
 
 // Properly defined hooks with clean function context
@@ -26,9 +26,13 @@ export const useSubjectDetection = (subjectKeywords, loading) => {
     }
   }, [subjectKeywords]);
 
-  // Debounced version of the classification function
-  const debouncedClassifySubject = useCallback(
-    debounce(async (text, subject, hasManuallySetSubject, allSubjects, setSubject, setDetectedSubject, setSuccess) => {
+  // Create a ref to store the debounced function
+  // This way, the same function instance persists across renders
+  const debouncedFnRef = useRef(null);
+
+  // Initialize the debounced function on mount or when dependencies change
+  useEffect(() => {
+    debouncedFnRef.current = debounce(async (text, subject, hasManuallySetSubject, allSubjects, setSubject, setDetectedSubject, setSuccess) => {
       if (loading) return; // Don't run while loading
       
       const detected = await classifySubjectAI(text);
@@ -49,9 +53,22 @@ export const useSubjectDetection = (subjectKeywords, loading) => {
         
         setTimeout(() => setSuccess(null), 3000);
       }
-    }, 1000),
-    [classifySubjectAI, loading]
-  );
+    }, 1000);
+
+    // Cleanup debounced function on unmount or before recreation
+    return () => {
+      if (debouncedFnRef.current) {
+        debouncedFnRef.current.cancel();
+      }
+    };
+  }, [classifySubjectAI, loading, subjectKeywords]);
+
+  // Wrapper function that calls the current debounced function
+  const debouncedClassifySubject = useCallback((...args) => {
+    if (debouncedFnRef.current) {
+      return debouncedFnRef.current(...args);
+    }
+  }, []);
 
   return { classifySubjectAI, debouncedClassifySubject };
 };
