@@ -6,9 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "export": "next export",
     "lint": "next lint",
-    "serve": "npx serve@latest out"
+    "static-build": "next build",
+    "serve": "npx serve@latest out",
+    "build-and-serve": "npm run static-build && npm run serve"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.5",
