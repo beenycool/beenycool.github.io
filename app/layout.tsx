@@ -37,6 +37,16 @@ export const metadata: Metadata = {
     description: "AI-powered GCSE exam preparation tool with instant feedback",
     images: ["https://beenycool.github.io/og-image.png"],
   },
+  viewport: "width=device-width, initial-scale=1, maximum-scale=1",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f8fafc" },
+    { media: "(prefers-color-scheme: dark)", color: "#0f172a" }
+  ],
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "GCSE AI Marker",
+  },
 };
 
 export default function RootLayout({
@@ -48,8 +58,9 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <head>
         <meta httpEquiv="Permissions-Policy" content="interest-cohort=(), browsing-topics=()" />
+        <link rel="icon" href="/favicon.ico" sizes="any" />
       </head>
-      <body className="font-sans antialiased">
+      <body className="font-sans antialiased min-h-screen bg-background">
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
