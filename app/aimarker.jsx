@@ -1,5 +1,6 @@
 "use client";
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import * as React from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import 'katex/dist/katex.min.css'; // Add import for KaTeX CSS
@@ -649,6 +650,27 @@ const useViewport = () => {
   }, []);
   
   return viewportSize;
+};
+
+// Add QuickGuide component definition before the main component
+const QuickGuide = () => {
+  return (
+    <Card className="w-full p-4 rounded-lg shadow-lg">
+      <CardHeader>
+        <CardTitle>Quick Guide</CardTitle>
+        <CardDescription>How to use the GCSE AI Marker</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-2">
+          <p><strong>1.</strong> Enter your question and answer in the text boxes.</p>
+          <p><strong>2.</strong> Select the subject, exam board, and question type.</p>
+          <p><strong>3.</strong> Click "Mark Answer" to get AI feedback.</p>
+          <p><strong>4.</strong> Review the feedback and grade provided.</p>
+          <p><strong>5.</strong> Optionally save, share or print your feedback.</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
 };
 
 // Enhanced AIMarker component with mobile responsiveness

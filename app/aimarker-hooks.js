@@ -3,7 +3,7 @@
 import { useCallback } from 'react';
 import debounce from 'lodash.debounce';
 
-// Fix 1: Move global hooks into a proper React function context
+// Properly defined hooks with clean function context
 export const useSubjectDetection = (subjectKeywords, loading) => {
   // Hook to classify subject from text
   const classifySubjectAI = useCallback(async (answerText) => {
@@ -56,7 +56,7 @@ export const useSubjectDetection = (subjectKeywords, loading) => {
   return { classifySubjectAI, debouncedClassifySubject };
 };
 
-// Fix 2: Extracting backend status checker logic
+// Backend status checker hook
 export const useBackendStatus = (API_BASE_URL) => {
   const checkBackendStatus = useCallback(async (model) => {
     try {
