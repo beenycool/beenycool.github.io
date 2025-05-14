@@ -850,6 +850,8 @@ const AIMarker = () => {
   const [answerInputRef, setAnswerInputRef] = useState(null);
   const [marksInputRef, setMarksInputRef] = useState(null);
   const [markSchemeButtonRef, setMarkSchemeButtonRef] = useState(null);
+  const [backendStatusRef] = useState({current: null});
+  const hasManuallySetSubject = useRef(false);
 
   // ======== MAIN FUNCTIONS ========
   // Submit handler
@@ -1408,9 +1410,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
     image, 
     lastRequestDate, 
     lastRequestTime, 
-    dailyRequests, 
     markScheme, 
-    openai, 
     question, 
     selectedModel, 
     subject, 
@@ -1418,9 +1418,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
     relevantMaterial, 
     totalMarks, 
     userType,
-    questionType,
-    getSubjectGuidance,
-    API_BASE_URL
+    questionType
   ]);
 
   // ======== EFFECTS & INITIALIZATION ========
@@ -1581,9 +1579,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
     }
   }, [isAddingSubject]);
 
-  // At the top of your component
-  const hasManuallySetSubject = useRef(false);
-
+  // Effect for analyzing answer content
   useEffect(() => {
     if (!answer || answer.length < 20 || hasManuallySetSubject.current) return;
     debouncedClassifySubject(answer);
