@@ -89,6 +89,13 @@ const AI_MODELS = [
   { value: "google/gemini-2.0-flash-exp:free", label: "Fast Response", description: "Quick responses, suitable for shorter answers" },
 ];
 
+// Add fallback models for when primary models are rate limited
+const FALLBACK_MODELS = {
+  "google/gemini-2.0-flash-exp:free": "deepseek/deepseek-chat-v3-0324:free",
+  "deepseek/deepseek-chat-v3-0324:free": "deepseek/deepseek-r1:free",
+  "deepseek/deepseek-r1:free": "google/gemini-2.0-flash-exp:free"
+};
+
 const subjectKeywords = {
   english: ['shakespeare', 'poem', 'poetry', 'novel', 'character', 'theme', 'literature'],
   maths: ['equation', 'solve', 'calculate', 'algebra', 'geometry', 'trigonometry', 'formula'],
@@ -1900,7 +1907,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
     });
     
     let retryCount = 0;
-    const maxRetries = 2; // Try up to 3 times total (initial + 2 retries)
+    const maxRetries = 3; // Try up to 4 times total (initial + 3 retries)
     let success = false;
     
     // Create a more robust system prompt for better mark scheme generation
@@ -1944,6 +1951,16 @@ Please provide a detailed mark scheme that includes:
 4. Examples of good responses
 5. Criteria for different grade levels`;
 
+    // Array of models to try in order if rate limiting occurs
+    let modelsToTry = [
+      "google/gemini-2.0-flash-exp:free",  // Start with fastest model
+      "deepseek/deepseek-chat-v3-0324:free",
+      "deepseek/deepseek-r1:free"
+    ];
+    
+    // Keep track of which models we've tried and failed with
+    const failedModels = new Set();
+
     while (retryCount <= maxRetries && !success) {
       try {
         // Only log the attempt number if it's a retry
@@ -1953,15 +1970,33 @@ Please provide a detailed mark scheme that includes:
           });
         }
         
-        console.log(`Attempt ${retryCount + 1}/${maxRetries + 1} to generate mark scheme`);
+        // Select the appropriate model for this attempt
+        const currentModel = modelsToTry[retryCount % modelsToTry.length];
+        
+        // Skip models we've already tried and failed with
+        if (failedModels.has(currentModel)) {
+          retryCount++;
+          continue;
+        }
+        
+        console.log(`Attempt ${retryCount + 1}/${maxRetries + 1} to generate mark scheme using ${currentModel}`);
         console.log(`Backend URL: ${API_BASE_URL}`);
+        
+        // Update UI to show which model we're using
+        setSuccess({
+          message: `Generating mark scheme with ${AI_MODELS.find(m => m.value === currentModel)?.label || currentModel}...`
+        });
         
         // Use a combined approach with just user prompt
         console.log("Using combined user prompt approach");
         console.log("User prompt first 100 chars:", userPrompt.substring(0, 100) + "...");
         const requestBody = {
-          model: "google/gemini-2.0-flash-exp:free",
+          model: currentModel,
           messages: [
+            {
+              role: "system",
+              content: systemPrompt
+            },
             {
               role: "user",
               content: userPrompt
@@ -1972,17 +2007,43 @@ Please provide a detailed mark scheme that includes:
         
         console.log("Request body:", JSON.stringify(requestBody, null, 2));
         
+        // Set a timeout for the request
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+        
         const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(requestBody),
+          signal: controller.signal
         });
+        
+        clearTimeout(timeoutId);
         
         const responseText = await response.clone().text();
         console.log("Response status:", response.status);
         console.log("Response raw:", responseText);
+        
+        // Check for rate limiting errors specifically
+        const isRateLimited = responseText.includes("rate-limit") || 
+                              responseText.includes("429") || 
+                              response.status === 429;
+        
+        if (isRateLimited) {
+          console.log(`Model ${currentModel} is rate limited, will try another model`);
+          failedModels.add(currentModel); // Mark this model as failed
+          
+          // Try the fallback model next
+          const fallbackModel = FALLBACK_MODELS[currentModel];
+          if (fallbackModel && !failedModels.has(fallbackModel)) {
+            // Move the fallback model to the front of the queue
+            modelsToTry = [fallbackModel, ...modelsToTry.filter(m => m !== fallbackModel)];
+          }
+          
+          throw new Error(`Rate limit reached for ${currentModel}. Trying alternative model.`);
+        }
         
         if (!response.ok) {
           let errorMessage = "Unknown error";
@@ -2016,30 +2077,72 @@ Please provide a detailed mark scheme that includes:
           markSchemeContent = responseData.text || responseData.answer || responseData.response;
         } else if (typeof responseData === "string") {
           markSchemeContent = responseData;
+        } else if (responseData.error) {
+          // Handle error object in response
+          throw new Error(`API error: ${responseData.error.message || JSON.stringify(responseData.error)}`);
         } else {
           console.log("Unknown response format:", responseData);
-          markSchemeContent = "Failed to extract proper content. Raw response: " + JSON.stringify(responseData);
+          throw new Error("Failed to extract proper content from response");
         }
         
-        setMarkScheme(markSchemeContent || "");
+        if (!markSchemeContent || markSchemeContent.trim() === "") {
+          throw new Error("Received empty mark scheme content");
+        }
+        
+        setMarkScheme(markSchemeContent);
         success = true;
         setSuccess({
-          message: "Mark scheme generated successfully!"
+          message: `Mark scheme generated successfully with ${AI_MODELS.find(m => m.value === currentModel)?.label || currentModel}!`
         });
         
       } catch (error) {
         console.error("Error generating mark scheme:", error);
         console.error("Error details:", error);
         
+        // Check if we've tried all models and still failed
+        if (failedModels.size >= modelsToTry.length) {
+          setError({
+            type: "rate_limit",
+            message: "All available models are currently rate limited. Please try again in a few minutes.",
+            retry: () => {
+              setTimeout(() => {
+                generateMarkScheme();
+              }, 5000);
+            }
+          });
+          break;
+        }
+        
         if (retryCount < maxRetries) {
           retryCount++;
-          // Wait a bit before retrying (500ms, 1000ms)
-          await new Promise(resolve => setTimeout(resolve, 500 * retryCount));
+          // Wait a bit before retrying (500ms, 1000ms, 2000ms)
+          const delay = 500 * Math.pow(2, retryCount - 1);
+          await new Promise(resolve => setTimeout(resolve, delay));
         } else {
-          setError({
-            type: "api",
-            message: `Failed to generate mark scheme: ${error.message}. Backend service may be starting up or experiencing issues.`
-          });
+          // Provide a more helpful error message based on the error type
+          if (error.name === 'AbortError') {
+            setError({
+              type: "timeout",
+              message: "Request timed out. The server took too long to respond.",
+              retry: () => generateMarkScheme()
+            });
+          } else if (error.message.includes("rate-limit") || error.message.includes("429")) {
+            setError({
+              type: "rate_limit",
+              message: "All models are currently rate limited. Please try again in a few minutes.",
+              retry: () => {
+                setTimeout(() => {
+                  generateMarkScheme();
+                }, 5000);
+              }
+            });
+          } else {
+            setError({
+              type: "api",
+              message: `Failed to generate mark scheme: ${error.message}. Backend service may be starting up or experiencing issues.`,
+              retry: () => generateMarkScheme()
+            });
+          }
           break;
         }
       }
