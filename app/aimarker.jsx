@@ -1719,7 +1719,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
     }, 3000);
   };
 
-  // Improve the mark scheme generation function
+  // Improve the mark scheme generation function with debugging
   const generateMarkScheme = async () => {
     if (!question) {
       setError({
@@ -1728,6 +1728,9 @@ ${getSubjectGuidance(subject, examBoard)}`;
       });
       return;
     }
+    
+    console.log("Starting mark scheme generation for:", question);
+    console.log("Subject:", subject, "Exam board:", examBoard);
     
     setError(null); // Clear general error messages
     setSuccess(null); // Clear general success messages
@@ -1741,39 +1744,74 @@ ${getSubjectGuidance(subject, examBoard)}`;
     
     while (retryCount <= maxRetries) {
       try {
+        console.log(`Attempt ${retryCount + 1}/${maxRetries + 1} to generate mark scheme`);
+        console.log("Backend URL:", API_BASE_URL);
+        
+        // Fix: Instead of using system prompt, which might not be supported properly,
+        // Include the instructions in the user message directly
+        const instructions = `As an expert GCSE examiner for ${examBoard.toUpperCase()} ${subject}, create a mark scheme for this question.
+Include assessment objectives, level descriptors, and marking criteria.
+Focus on ${subject}-specific requirements, key concepts, and grade boundaries.
+Format with bullet points and clear structure.`;
+
+        const userPrompt = `${instructions}
+
+Here is the question:
+"${question}"
+
+Please provide a detailed mark scheme that includes:
+1. Relevant assessment objectives (AOs)
+2. Clear level descriptors with mark bands
+3. Key concepts students should include
+4. Examples of good responses
+5. Criteria for different grade levels`;
+        
+        console.log("Using combined user prompt approach");
+        console.log("User prompt first 100 chars:", userPrompt.substring(0, 100) + "...");
+        
+        const requestBody = {
+          model: "google/gemini-pro:free", // Use a faster model for mark scheme generation
+          messages: [
+            {
+              role: "user",
+              content: userPrompt
+            }
+          ],
+          max_tokens: 1500
+        };
+        
+        console.log("Request body (without system prompt):", JSON.stringify(requestBody, null, 2));
+        
         const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           mode: 'cors',
-          body: JSON.stringify({
-            model: "google/gemini-pro:free", // Use a faster model for mark scheme generation
-            messages: [
-              {
-                role: "system",
-                content: `You are an expert in GCSE ${subject} for the ${examBoard.toUpperCase()} exam board. Generate a concise mark scheme with relevant Assessment Objectives (AOs) for the following question. Format using bullet points and include key marking criteria.`
-              },
-              {
-                role: "user",
-                content: question
-              }
-            ],
-            max_tokens: 1500
-          })
+          body: JSON.stringify(requestBody)
         });
         
+        console.log("Response status:", response.status, response.statusText);
+        
         if (!response.ok) {
-          throw new Error(`HTTP error: ${response.status}`);
+          const errorText = await response.text();
+          console.error("Error response:", errorText);
+          throw new Error(`HTTP error: ${response.status}. ${errorText}`);
         }
         
         const data = await response.json();
+        console.log("Response data:", data);
+        
         const generatedMarkScheme = data?.choices?.[0]?.message?.content || "No mark scheme generated. Please try again.";
+        console.log("Generated mark scheme (first 100 chars):", generatedMarkScheme.substring(0, 100) + "...");
         
         setMarkScheme(generatedMarkScheme);
         setSuccess({
           message: "Mark scheme generated successfully!"
         });
+        
+        // Add the mark scheme to toast for visibility during debugging
+        toast.success("Mark scheme generated successfully!");
         
         setTimeout(() => {
           setSuccess(null);
@@ -1782,17 +1820,32 @@ ${getSubjectGuidance(subject, examBoard)}`;
         break; // Success, exit the retry loop
       } catch (error) {
         console.error("Error generating mark scheme:", error);
+        console.error("Error details:", {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        });
         
         if (retryCount === maxRetries) {
+          const errorMessage = `Failed to generate mark scheme: ${error.message}. Backend service may be starting up or experiencing issues.`;
+          console.error(errorMessage);
+          
           setError({
             type: "api_error",
-            message: `Failed to generate mark scheme. Backend service may be starting up. Please try again in a minute.`,
+            message: errorMessage,
             retry: true
           });
+          
+          // Add error to toast for visibility during debugging
+          toast.error(errorMessage);
         } else {
+          const retryMessage = `Retrying mark scheme generation (${retryCount + 1}/${maxRetries})...`;
+          console.log(retryMessage);
+          
           setSuccess({
-            message: `Retrying mark scheme generation (${retryCount + 1}/${maxRetries})...`
+            message: retryMessage
           });
+          
           // Wait before retrying
           await new Promise(resolve => setTimeout(resolve, 3000 * (retryCount + 1)));
         }
@@ -1802,6 +1855,104 @@ ${getSubjectGuidance(subject, examBoard)}`;
     }
     
     setLoading(false);
+    console.log("Mark scheme generation process completed");
+  };
+
+  // Test function for debugging mark scheme generation
+  const testMarkSchemeGeneration = async () => {
+    if (!question) {
+      toast.error("Please enter a question first");
+      return;
+    }
+    
+    console.log("=== TEST MARK SCHEME GENERATION STARTED ===");
+    console.log("Question:", question);
+    console.log("Subject:", subject);
+    console.log("Exam board:", examBoard);
+    console.log("Backend URL:", API_BASE_URL);
+    
+    setSuccess({
+      message: "Testing mark scheme generation... Check console for details"
+    });
+    
+    // Create a simplified test prompt
+    const testPrompt = `Create a mark scheme for this GCSE ${subject} question: "${question}"`;
+    console.log("Using simplified test prompt:", testPrompt);
+    
+    try {
+      // First test a minimal direct call to ensure API connection works
+      toast.info("Making direct API connection test...");
+      const testResponse = await fetch(`${API_BASE_URL}/api/health`, {
+        method: 'GET',
+        mode: 'cors'
+      });
+      
+      console.log("API health check response:", testResponse.status, testResponse.statusText);
+      
+      if (!testResponse.ok) {
+        throw new Error(`API health check failed with status ${testResponse.status}`);
+      }
+      
+      console.log("Health check successful, proceeding with mark scheme test");
+      toast.success("API connection verified");
+      
+      // Now test the actual mark scheme generation with a simplified payload
+      toast.info("Testing mark scheme generation...");
+      const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        mode: 'cors',
+        body: JSON.stringify({
+          model: "google/gemini-pro:free",
+          messages: [
+            {
+              role: "user",
+              content: testPrompt
+            }
+          ],
+          max_tokens: 500 // Using a smaller value for faster response
+        })
+      });
+      
+      console.log("Test response status:", response.status, response.statusText);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Test response error:", errorText);
+        throw new Error(`API request failed: ${response.status}. ${errorText}`);
+      }
+      
+      const data = await response.json();
+      console.log("Test response data:", data);
+      
+      if (data.choices && data.choices[0] && data.choices[0].message) {
+        const content = data.choices[0].message.content;
+        console.log("Test mark scheme (first 100 chars):", content.substring(0, 100) + "...");
+        toast.success("Test successful! Check console for details");
+        
+        // Set a preview of the test result
+        setMarkScheme("TEST RESULT:\n\n" + content);
+      } else {
+        throw new Error("Received unexpected response format from API");
+      }
+      
+    } catch (error) {
+      console.error("Test mark scheme generation error:", error);
+      console.error("Error details:", {
+        message: error.message,
+        stack: error.stack
+      });
+      
+      toast.error(`Test failed: ${error.message}`);
+      setError({
+        type: "test_error",
+        message: `Mark scheme generation test failed: ${error.message}`
+      });
+    } finally {
+      console.log("=== TEST MARK SCHEME GENERATION COMPLETED ===");
+    }
   };
 
   // Add this component for displaying the Model Thinking Process
@@ -1908,6 +2059,81 @@ ${getSubjectGuidance(subject, examBoard)}`;
     );
   };
 
+  // Add API status checker function
+  const checkAPIStatus = async () => {
+    console.log("=== API STATUS CHECK STARTED ===");
+    console.log("Backend URL:", API_BASE_URL);
+    
+    setSuccess({
+      message: "Checking API status..."
+    });
+    
+    try {
+      // Check API health
+      toast.info("Checking API health...");
+      const healthResponse = await fetch(`${API_BASE_URL}/api/health`, {
+        method: 'GET',
+        mode: 'cors'
+      }).catch(error => {
+        console.error("Health check failed:", error);
+        throw new Error(`Health check failed: ${error.message}`);
+      });
+      
+      console.log("Health response status:", healthResponse.status, healthResponse.statusText);
+      
+      if (!healthResponse.ok) {
+        throw new Error(`API health check failed with status ${healthResponse.status}`);
+      }
+      
+      const healthData = await healthResponse.json().catch(() => ({}));
+      console.log("Health data:", healthData);
+      
+      // Check available models
+      toast.info("Checking available models...");
+      const modelsResponse = await fetch(`${API_BASE_URL}/api/models`, {
+        method: 'GET',
+        mode: 'cors'
+      }).catch(error => {
+        console.error("Models check failed:", error);
+        throw new Error(`Models check failed: ${error.message}`);
+      });
+      
+      console.log("Models response status:", modelsResponse.status, modelsResponse.statusText);
+      
+      if (!modelsResponse.ok) {
+        throw new Error(`API models check failed with status ${modelsResponse.status}`);
+      }
+      
+      const modelsData = await modelsResponse.json().catch(() => ({}));
+      console.log("Available models:", modelsData);
+      
+      // Display API status info in a toast
+      let statusInfo = `✅ API is online
+🔌 Connection: ${healthData.status || "Unknown"}
+🔄 Version: ${healthData.version || "Unknown"}`;
+
+      if (modelsData && modelsData.data) {
+        statusInfo += `\n🤖 Models: ${modelsData.data.length || 0} available`;
+      }
+      
+      toast.success(statusInfo, { duration: 5000 });
+      setSuccess({
+        message: "API status check completed successfully"
+      });
+      
+    } catch (error) {
+      console.error("API status check error:", error);
+      
+      toast.error(`API Status Check Failed: ${error.message}`);
+      setError({
+        type: "api_status_error",
+        message: `API status check failed: ${error.message}. Check console for details.`
+      });
+    } finally {
+      console.log("=== API STATUS CHECK COMPLETED ===");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <TopBar version="2.1.1" backendStatus={backendStatusRef.current} />
@@ -1920,6 +2146,34 @@ ${getSubjectGuidance(subject, examBoard)}`;
         
         {/* Backend Status Checker */}
         <BackendStatusChecker onStatusChange={handleBackendStatusChange} />
+        
+        {/* Debug API status section */}
+        <div className="mb-4 p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <div className="text-sm font-medium">API Status Debugging</div>
+              <div className={`ml-2 h-2 w-2 rounded-full ${
+                backendStatusRef.current === 'online' ? 'bg-green-500' : 
+                backendStatusRef.current === 'checking' ? 'bg-yellow-500' : 
+                'bg-red-500'
+              }`}></div>
+              <div className="ml-1 text-xs text-muted-foreground">{backendStatusRef.current}</div>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="text-xs h-7"
+              onClick={checkAPIStatus}
+            >
+              <RefreshCw className="mr-1 h-3 w-3" />
+              Check API Status
+            </Button>
+          </div>
+          <div className="text-xs text-muted-foreground mt-2">
+            Backend URL: {API_BASE_URL} <br />
+            Last Updated: {new Date().toLocaleTimeString()}
+          </div>
+        </div>
         
         {detectedSubject && !hasManuallySetSubject.current && (
           <div className="mb-4 p-3 bg-primary/10 border border-primary/20 rounded-md flex items-center justify-between">
@@ -2211,17 +2465,29 @@ ${getSubjectGuidance(subject, examBoard)}`;
                       <div className="space-y-2">
                         <div className="flex justify-between items-center">
                           <Label htmlFor="markScheme" className="text-sm">Mark Scheme <span className="text-muted-foreground text-xs">(Optional)</span></Label>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-xs h-7"
-                            onClick={generateMarkScheme}
-                            disabled={loading || !question || backendStatusRef.current !== 'online'}
-                            ref={node => setMarkSchemeButtonRef(node)}
-                          >
-                            {loading ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <FilePlus className="mr-1 h-3 w-3" />}
-                            Generate
-                          </Button>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs h-7"
+                              onClick={() => testMarkSchemeGeneration()}
+                              disabled={loading || !question || backendStatusRef.current !== 'online'}
+                            >
+                              <Code className="mr-1 h-3 w-3" />
+                              Test Gen
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs h-7"
+                              onClick={generateMarkScheme}
+                              disabled={loading || !question || backendStatusRef.current !== 'online'}
+                              ref={node => setMarkSchemeButtonRef(node)}
+                            >
+                              {loading ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <FilePlus className="mr-1 h-3 w-3" />}
+                              Generate
+                            </Button>
+                          </div>
                         </div>
                         <Textarea
                           id="markScheme"
