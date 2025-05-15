@@ -2217,7 +2217,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
                   </Button>
                   
                   {showAdvancedOptions && (
-                    <div className="mt-3 space-y-4 border p-4 rounded-md bg-muted/30 border-border">
+                    <div className="mt-3 space-y-4 border p-4 rounded-md bg-muted border-border">
                       {/* Mark scheme section */}
                       <div className="space-y-2">
                         <div className="flex justify-between items-center">
@@ -2353,25 +2353,6 @@ ${getSubjectGuidance(subject, examBoard)}`;
                       <RefreshCw className="mr-1 h-3 w-3" />
                       Reset Form
                     </Button>
-                    
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setShowKeyboardShortcuts(true)}
-                            className="text-xs"
-                          >
-                            <Keyboard className="mr-1 h-3 w-3" />
-                            Shortcuts
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>View keyboard shortcuts</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
                   </div>
                 </div>
               </TabsContent>
