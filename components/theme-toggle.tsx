@@ -26,7 +26,7 @@ export function ThemeToggle() {
           </Button>
         </TooltipTrigger>
         <TooltipContent>
-          <p>Light/Dark</p>
+          {/* Removed Light/Dark text */}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
