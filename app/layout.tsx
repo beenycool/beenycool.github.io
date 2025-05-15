@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+import { NavigationHeader } from "@/components/navigation-header";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -72,6 +73,7 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
+          <NavigationHeader />
           {children}
         </ThemeProvider>
       </body>
