@@ -1990,7 +1990,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
         {/* Main UI content tabs */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Input Panel */}
-          <div className="lg:col-span-7 space-y-4">
+          <div className="lg:col-span-12 space-y-4">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="answer">Answer</TabsTrigger>
@@ -2413,36 +2413,6 @@ ${getSubjectGuidance(subject, examBoard)}`;
               </TabsContent>
             </Tabs>
           </div>
-          
-          {/* Help Panel - This entire div section will be removed */}
-          {/* 
-          <div className="lg:col-span-5">
-            <Card className="h-full">
-              <CardHeader className="flex flex-row items-center justify-between py-3">
-                <CardTitle className="text-lg">Assessment Tools</CardTitle>
-                <Button variant="ghost" size="icon" onClick={() => setIsHelpPanelOpen(!isHelpPanelOpen)} className="p-1">
-                  {isHelpPanelOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
-                  <span className="sr-only">{isHelpPanelOpen ? 'Collapse' : 'Expand'} Help Panel</span>
-                </Button>
-              </CardHeader>
-              {isHelpPanelOpen && (
-                <CardContent>
-                  <div className="space-y-6">
-                    <div className="space-y-4">
-                      // ... content of Expert Marking, Subject Specific, Practice on Your Schedule ...
-                    </div>
-                    
-                    // ... Original Quick Tips location ...
-                    
-                    <div className="pt-4 border-t border-border">
-                      // ... Report an Issue button ...
-                    </div>
-                  </div>
-                </CardContent>
-              )}
-            </Card>
-          </div>
-          */}
         </div>
       </div>
     </div>
