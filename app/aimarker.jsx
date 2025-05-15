@@ -1769,19 +1769,63 @@ ${getSubjectGuidance(subject, examBoard)}`;
         }),
       });
       
-      console.log("Test response status:", response.status, await response.clone().text());
+      // Log the raw response for debugging
+      const responseText = await response.clone().text();
+      console.log("Test response status:", response.status);
+      console.log("Test response raw:", responseText);
       
       if (!response.ok) {
-        const errorData = await response.json();
-        console.error("Test response error:", JSON.stringify(errorData));
-        throw new Error(`API request failed: ${response.status}. ${JSON.stringify(errorData)}`);
+        let errorMessage = "Unknown error";
+        try {
+          const errorData = JSON.parse(responseText);
+          errorMessage = JSON.stringify(errorData);
+          console.error("Test response error:", errorMessage);
+        } catch (parseError) {
+          errorMessage = responseText || response.statusText;
+          console.error("Test response error (text):", errorMessage);
+        }
+        
+        throw new Error(`API request failed: ${response.status}. ${errorMessage}`);
       }
       
-      const data = await response.json();
-      console.log("Test response success:", data);
+      // Try to parse the response as JSON, with fallback handling
+      let testData;
+      try {
+        testData = JSON.parse(responseText);
+        console.log("Test response parsed successfully:", testData);
+      } catch (parseError) {
+        console.error("Failed to parse response as JSON:", parseError);
+        throw new Error(`Failed to parse API response as JSON: ${parseError.message}`);
+      }
+      
+      // Handle different response formats
+      let markSchemeContent = "";
+      
+      if (testData.content) {
+        // Format 1: { content: "..." }
+        markSchemeContent = testData.content;
+        console.log("Using content field from response");
+      } else if (testData.choices && testData.choices[0] && testData.choices[0].message) {
+        // Format 2: { choices: [{ message: { content: "..." } }] }
+        markSchemeContent = testData.choices[0].message.content;
+        console.log("Using choices[0].message.content field from response");
+      } else if (testData.text || testData.answer || testData.response) {
+        // Format 3: Some other common field names
+        markSchemeContent = testData.text || testData.answer || testData.response;
+        console.log("Using text/answer/response field from response");
+      } else if (typeof testData === "string") {
+        // Format 4: Direct string response
+        markSchemeContent = testData;
+        console.log("Using direct string response");
+      } else {
+        // Unknown format - log the full response and use stringified version
+        console.log("Unknown response format:", testData);
+        markSchemeContent = "Failed to extract mark scheme content. Full response: " + JSON.stringify(testData);
+      }
       
       // Update the mark scheme field
-      setMarkScheme(data.content);
+      console.log("Extracted mark scheme content (first 100 chars):", markSchemeContent.substring(0, 100) + "...");
+      setMarkScheme(markSchemeContent);
       setSuccess({
         message: "Test mark scheme generated successfully!"
       });
@@ -1798,7 +1842,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
     }
   };
 
-  // Improve the mark scheme generation function with debugging
+  // Improve the mark scheme generation function with more robust response handling
   const generateMarkScheme = async () => {
     if (!question) {
       setError({
@@ -1886,16 +1930,48 @@ Please provide a detailed mark scheme that includes:
           body: JSON.stringify(requestBody),
         });
         
-        console.log("Response status:", response.status, await response.clone().text());
+        const responseText = await response.clone().text();
+        console.log("Response status:", response.status);
+        console.log("Response raw:", responseText);
         
         if (!response.ok) {
-          const errorData = await response.json();
-          console.error("Error response:", JSON.stringify(errorData));
-          throw new Error(`HTTP error: ${response.status}. ${JSON.stringify(errorData)}`);
+          let errorMessage = "Unknown error";
+          try {
+            const errorData = JSON.parse(responseText);
+            errorMessage = JSON.stringify(errorData);
+          } catch (parseError) {
+            errorMessage = responseText || response.statusText;
+          }
+          
+          throw new Error(`HTTP error: ${response.status}. ${errorMessage}`);
         }
         
-        const data = await response.json();
-        setMarkScheme(data.content || "");
+        // Handle different response formats
+        let responseData;
+        try {
+          responseData = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error("Failed to parse response as JSON:", parseError);
+          throw new Error(`Failed to parse API response as JSON: ${parseError.message}`);
+        }
+        
+        // Extract content from various possible response formats
+        let markSchemeContent = "";
+        
+        if (responseData.content) {
+          markSchemeContent = responseData.content;
+        } else if (responseData.choices && responseData.choices[0] && responseData.choices[0].message) {
+          markSchemeContent = responseData.choices[0].message.content;
+        } else if (responseData.text || responseData.answer || responseData.response) {
+          markSchemeContent = responseData.text || responseData.answer || responseData.response;
+        } else if (typeof responseData === "string") {
+          markSchemeContent = responseData;
+        } else {
+          console.log("Unknown response format:", responseData);
+          markSchemeContent = "Failed to extract proper content. Raw response: " + JSON.stringify(responseData);
+        }
+        
+        setMarkScheme(markSchemeContent || "");
         success = true;
         setSuccess({
           message: "Mark scheme generated successfully!"
