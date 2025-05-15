@@ -103,7 +103,7 @@ const MODEL_RATE_LIMITS = {
   "google/gemini-2.5-pro-exp-03-25": 60000, // 1 minute
   "google/gemini-2.0-flash-exp:free": 10000, // 10 seconds
   "deepseek/deepseek-chat-v3-0324:free": 10000, // 10 seconds
-  "microsoft/mai-ds-r1:free": 15000 // 15 seconds
+  "microsoft/mai-ds-r1:free": 10000 // 15 seconds
 };
 
 // Define specific models for specific tasks
