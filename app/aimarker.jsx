@@ -551,7 +551,7 @@ const printFeedback = (feedbackElement) => {
 };
 
 // Enhanced Feedback UI component
-const EnhancedFeedback = ({ feedback, grade, modelName }) => {
+const EnhancedFeedback = ({ feedback, grade, modelName, achievedMarks, totalMarks }) => {
   const feedbackRef = useRef(null);
   const [shareMessage, setShareMessage] = useState(null);
   
@@ -599,6 +599,11 @@ const EnhancedFeedback = ({ feedback, grade, modelName }) => {
               by {modelName}
             </span>
           </h3>
+          {achievedMarks && totalMarks && (
+            <div className="ml-2 px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 text-xs font-medium rounded-full">
+              {achievedMarks}/{totalMarks} marks
+            </div>
+          )}
         </div>
         
         <div className="flex items-center gap-1.5">
@@ -808,6 +813,7 @@ const AIMarker = () => {
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
   const [isGitHubPages, setIsGitHubPages] = useState(false);
   const [tier, setTier] = useState("higher"); // Default to higher tier
+  const [achievedMarks, setAchievedMarks] = useState(null); // Add state for achieved marks
   
   // UI state
   const [showGuide, setShowGuide] = useState(false);
@@ -885,6 +891,7 @@ const AIMarker = () => {
     setError(null);
     setSuccess(null);
     setModelThinking("");
+    setAchievedMarks(null); // Reset achieved marks
     
     // Validate inputs
     if (!answer) {
@@ -897,6 +904,7 @@ const AIMarker = () => {
     
     // Check if backend is reachable
     setLoading(true);
+    setActiveTab("feedback"); // Switch to feedback tab immediately to show progress
     setSuccess({
       message: "Checking backend status..."
     });
@@ -989,6 +997,11 @@ b) 2-3 specific strengths with examples
 c) 2-3 areas for improvement with ${userType === 'teacher' ? 'marking criteria' : 'actionable suggestions'}
 d) One specific ${userType === 'teacher' ? 'assessment note' : '"next step" for the student'}
 e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number`;
+
+      // Add marks achieved format if total marks are provided
+      if (totalMarks) {
+        basePrompt += `\nf) Marks achieved in the format: [MARKS:Y/${totalMarks}] where Y is the number of marks achieved`;
+      }
 
       // Add math-specific LaTeX formatting instructions
       if (subject === "maths") {
@@ -1270,6 +1283,14 @@ ${getSubjectGuidance(subject, examBoard)}`;
               if (gradeMatch && gradeMatch[1]) {
                 setGrade(gradeMatch[1]);
               }
+              
+              // Extract marks if total marks were provided
+              if (totalMarks) {
+                const marksMatch = finalFeedback.match(/\[MARKS:(\d+)\/(\d+)\]/);
+                if (marksMatch && marksMatch[1]) {
+                  setAchievedMarks(marksMatch[1]);
+                }
+              }
             } catch (error) {
               console.error("Streaming error:", error);
               
@@ -1356,6 +1377,14 @@ ${getSubjectGuidance(subject, examBoard)}`;
               const gradeMatch = content.match(/\[GRADE:(\d)\]/);
               if (gradeMatch && gradeMatch[1]) {
                 setGrade(gradeMatch[1]);
+              }
+              
+              // Extract marks if total marks were provided
+              if (totalMarks) {
+                const marksMatch = content.match(/\[MARKS:(\d+)\/(\d+)\]/);
+                if (marksMatch && marksMatch[1]) {
+                  setAchievedMarks(marksMatch[1]);
+                }
               }
               
               // Successfully received response, no need to retry
@@ -2613,24 +2642,36 @@ Please provide a detailed mark scheme that includes:
                     feedback={feedback} 
                     grade={grade} 
                     modelName={AI_MODELS.find(m => m.value === selectedModel)?.label || 'AI'}
+                    achievedMarks={achievedMarks}
+                    totalMarks={totalMarks}
                   />
                 ) : (
                   <div className="min-h-[300px] flex flex-col items-center justify-center text-center p-6 border border-dashed border-border rounded-lg bg-muted/20">
                     <div className="mb-4 p-3 rounded-full bg-muted">
-                      <HelpCircle className="h-6 w-6 text-muted-foreground" />
+                      {loading ? (
+                        <Loader2 className="h-6 w-6 text-primary animate-spin" />
+                      ) : (
+                        <HelpCircle className="h-6 w-6 text-muted-foreground" />
+                      )}
                     </div>
-                    <h3 className="text-lg font-medium mb-2">No Feedback Yet</h3>
+                    <h3 className="text-lg font-medium mb-2">
+                      {loading ? "Generating Feedback..." : "No Feedback Yet"}
+                    </h3>
                     <p className="text-muted-foreground max-w-md mb-6">
-                      Enter your question and answer in the Answer tab, then click "Mark Answer" to receive AI feedback and a GCSE grade.
+                      {loading 
+                        ? "Please wait while the AI analyzes your answer. This may take up to 90 seconds depending on the model selected."
+                        : "Enter your question and answer in the Answer tab, then click \"Mark Answer\" to receive AI feedback and a GCSE grade."}
                     </p>
                     
-                    <Button
-                      variant="outline"
-                      onClick={() => setActiveTab("answer")}
-                      className="text-sm"
-                    >
-                      Go to Answer Tab
-                    </Button>
+                    {!loading && (
+                      <Button
+                        variant="outline"
+                        onClick={() => setActiveTab("answer")}
+                        className="text-sm"
+                      >
+                        Go to Answer Tab
+                      </Button>
+                    )}
                   </div>
                 )}
               </TabsContent>
