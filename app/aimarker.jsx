@@ -63,8 +63,8 @@ if (typeof window !== 'undefined') {
 // Constants moved to a separate section for easier management
 const SUBJECTS = [
   { value: "english", label: "English" },
-  { value: "maths", label: "Maths" },
-  { value: "science", label: "Science" },
+  { value: "maths", label: "Maths", hasTiers: true },
+  { value: "science", label: "Science", hasTiers: true },
   { value: "history", label: "History" },
   { value: "geography", label: "Geography" },
   { value: "computerScience", label: "Computer Science" },
@@ -807,6 +807,7 @@ const AIMarker = () => {
   const [modelThinking, setModelThinking] = useState("");
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
   const [isGitHubPages, setIsGitHubPages] = useState(false);
+  const [tier, setTier] = useState("higher"); // Default to higher tier
   
   // UI state
   const [showGuide, setShowGuide] = useState(false);
@@ -974,20 +975,20 @@ const AIMarker = () => {
 - Clarity and structure of response
 - Use of evidence/examples
 - Depth of analysis (where applicable)
-- Technical accuracy (spelling, grammar, terminology)
+- Technical accuracy (spelling, grammar, terminology)`;
 
-2. FEEDBACK STRUCTURE:
+      // Add tier information for tiered subjects
+      const currentSubject = allSubjects.find(s => s.value === subject);
+      if (currentSubject?.hasTiers) {
+        basePrompt += `\n- This is a ${tier.toUpperCase()} tier question`;
+      }
+
+      basePrompt += `\n\n2. FEEDBACK STRUCTURE:
 a) Summary of performance (1-2 sentences)
 b) 2-3 specific strengths with examples
 c) 2-3 areas for improvement with ${userType === 'teacher' ? 'marking criteria' : 'actionable suggestions'}
 d) One specific ${userType === 'teacher' ? 'assessment note' : '"next step" for the student'}
-e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number
-
-3. TONE & STYLE:
-- ${userType === 'teacher' ? 'Professional and assessment-focused' : 'Approachable and encouraging'}
-- Specific praise ("Excellent use of terminology when...")
-- Constructive criticism ${userType === 'teacher' ? '("This meets level 3 criteria because...")' : '("Consider expanding on...")'}
-- Avoid vague statements - always reference the answer`;
+e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number`;
 
       // Add math-specific LaTeX formatting instructions
       if (subject === "maths") {
@@ -1106,6 +1107,12 @@ ${getSubjectGuidance(subject, examBoard)}`;
     if (totalMarks) content += `\n\nMarks Available: ${totalMarks}`;
     if (textExtract) content += `\n\nText Extract: ${textExtract}`;
     if (relevantMaterial) content += `\n\nRelevant Material: ${relevantMaterial}`;
+    
+    // Add tier information for tiered subjects
+    const currentSubject = allSubjects.find(s => s.value === subject);
+    if (currentSubject?.hasTiers) {
+      content += `\n\nTier: ${tier.toUpperCase()}`;
+    }
     
     // Add specific question type information
     if (subject === "english" && examBoard === "aqa" && questionType !== "general") {
@@ -1441,7 +1448,8 @@ ${getSubjectGuidance(subject, examBoard)}`;
     totalMarks, 
     userType,
     questionType,
-    image
+    image,
+    tier
   ]);
 
   // Effect for analyzing answer content - fixed to properly use the hook
@@ -1868,11 +1876,27 @@ ${getSubjectGuidance(subject, examBoard)}`;
     
     // Create a more robust system prompt for better mark scheme generation
     const systemPrompt = `
-You are an expert GCSE examiner for ${examBoard.toUpperCase()} ${subject}.
-Your task is to create comprehensive mark schemes for GCSE questions.
-Focus on ${subject}-specific requirements and assessment criteria.
-Follow exam board guidelines and standards for ${examBoard.toUpperCase()}.
-Provide detailed marking criteria with clear level descriptors.
+You are an expert GCSE examiner for ${examBoard.toUpperCase()} ${subject} with years of experience in assessment and curriculum design.
+
+ROLE:
+- You create official mark schemes that align precisely with ${examBoard.toUpperCase()}'s assessment objectives and grade descriptors
+- You understand the specific requirements and nuances of ${subject} at GCSE level
+- You have deep knowledge of how mark schemes are structured and applied by examiners
+
+MARK SCHEME STRUCTURE:
+1. Assessment Objectives - List the specific AOs being tested (e.g., AO1: Knowledge and understanding)
+2. Mark Bands - Create clear level descriptors with specific mark ranges (e.g., Level 1: 1-3 marks)
+3. Grade Boundaries - Indicate approximate grade boundaries where relevant
+4. Key Content Points - Identify essential knowledge/concepts students must demonstrate
+5. Command Word Analysis - Explain what the question command word requires (e.g., "Explain" vs "Evaluate")
+6. Exemplar Responses - Brief examples of answers at different levels
+
+GUIDANCE:
+- Be precise and use subject-specific terminology appropriate for ${examBoard.toUpperCase()}
+- Include both content and skills assessment criteria
+- Ensure mark schemes are accessible to teachers while maintaining rigor
+- Format with clear headings, bullet points, and structured sections
+- Consider both higher and foundation tier requirements if applicable
 `;
 
     // Create a user prompt with the question and specific instructions
@@ -2341,6 +2365,31 @@ Please provide a detailed mark scheme that includes:
                       </SelectContent>
                     </Select>
                   </div>
+                  
+                  {/* Tier selector - only for subjects with tiers */}
+                  {allSubjects.find(s => s.value === subject)?.hasTiers && (
+                    <div className="space-y-2">
+                      <Label className="text-sm">Tier</Label>
+                      <div className="flex space-x-2">
+                        <Button
+                          variant={tier === "higher" ? "default" : "outline"}
+                          size="sm"
+                          className="flex-1"
+                          onClick={() => setTier("higher")}
+                        >
+                          Higher
+                        </Button>
+                        <Button
+                          variant={tier === "foundation" ? "default" : "outline"}
+                          size="sm"
+                          className="flex-1"
+                          onClick={() => setTier("foundation")}
+                        >
+                          Foundation
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                   
                   {/* Question type selector - conditionally show for English/AQA */}
                   {subject === "english" && examBoard === "aqa" && (
