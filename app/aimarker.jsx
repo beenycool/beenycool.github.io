@@ -1890,7 +1890,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Keyboard shortcuts</p>
+                {/* Removed text content */}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -1910,7 +1910,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Help & tips</p>
+                {/* Removed text content */}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
