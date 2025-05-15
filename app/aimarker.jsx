@@ -1515,12 +1515,19 @@ ${getSubjectGuidance(subject, examBoard)}`;
             setAllSubjects([...SUBJECTS, ...formData.customSubjects]);
           }
           
-          setSuccess({
-            message: "Previous work restored from your last session"
-          });
-          setTimeout(() => {
-            setSuccess(null);
-          }, 3000);
+          // Only show the success message if we actually restored data that matters
+          if (formData.question || formData.answer) {
+            setSuccess({
+              message: "Previous work restored from your last session"
+            });
+            
+            // Auto-hide message after 3 seconds
+            const timer = setTimeout(() => {
+              setSuccess(null);
+            }, 3000);
+            
+            return () => clearTimeout(timer);
+          }
         }
       } catch (error) {
         console.error("Error loading saved form data:", error);
@@ -1876,44 +1883,26 @@ ${getSubjectGuidance(subject, examBoard)}`;
         </div>
         <div className="flex items-center space-x-2">
           <ThemeToggle />
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="text-muted-foreground hover:text-foreground"
-                  onClick={() => setShowKeyboardShortcuts(true)}
-                >
-                  <Keyboard size={18} />
-                  <span className="sr-only">Keyboard shortcuts</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {/* Removed text content */}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="text-muted-foreground hover:text-foreground"
+            onClick={() => setShowKeyboardShortcuts(true)}
+          >
+            <Keyboard size={18} />
+            <span className="sr-only">Keyboard shortcuts</span>
+          </Button>
           
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="text-muted-foreground hover:text-foreground"
-                  onClick={() => setShowGuide(!showGuide)}
-                  ref={node => setHelpButtonRef(node)}
-                >
-                  <HelpCircle size={18} />
-                  <span className="sr-only">Help</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {/* Removed text content */}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="text-muted-foreground hover:text-foreground"
+            onClick={() => setShowGuide(!showGuide)}
+            ref={node => setHelpButtonRef(node)}
+          >
+            <HelpCircle size={18} />
+            <span className="sr-only">Help</span>
+          </Button>
         </div>
       </div>
     );
