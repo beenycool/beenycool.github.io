@@ -1719,145 +1719,6 @@ ${getSubjectGuidance(subject, examBoard)}`;
     }, 3000);
   };
 
-  // Improve the mark scheme generation function with debugging
-  const generateMarkScheme = async () => {
-    if (!question) {
-      setError({
-        type: "validation",
-        message: "Please enter a question first to generate a mark scheme"
-      });
-      return;
-    }
-    
-    console.log("Starting mark scheme generation for:", question);
-    console.log("Subject:", subject, "Exam board:", examBoard);
-    
-    setError(null); // Clear general error messages
-    setSuccess(null); // Clear general success messages
-    setLoading(true);
-    setSuccess({
-      message: "Generating mark scheme with relevant Assessment Objectives..."
-    });
-    
-    let retryCount = 0;
-    const maxRetries = 2; // Try up to 3 times total (initial + 2 retries)
-    
-    while (retryCount <= maxRetries) {
-      try {
-        console.log(`Attempt ${retryCount + 1}/${maxRetries + 1} to generate mark scheme`);
-        console.log("Backend URL:", API_BASE_URL);
-        
-        // Fix: Instead of using system prompt, which might not be supported properly,
-        // Include the instructions in the user message directly
-        const instructions = `As an expert GCSE examiner for ${examBoard.toUpperCase()} ${subject}, create a mark scheme for this question.
-Include assessment objectives, level descriptors, and marking criteria.
-Focus on ${subject}-specific requirements, key concepts, and grade boundaries.
-Format with bullet points and clear structure.`;
-
-        const userPrompt = `${instructions}
-
-Here is the question:
-"${question}"
-
-Please provide a detailed mark scheme that includes:
-1. Relevant assessment objectives (AOs)
-2. Clear level descriptors with mark bands
-3. Key concepts students should include
-4. Examples of good responses
-5. Criteria for different grade levels`;
-        
-        console.log("Using combined user prompt approach");
-        console.log("User prompt first 100 chars:", userPrompt.substring(0, 100) + "...");
-        
-        const requestBody = {
-          model: "google/gemini-2.0-flash-exp:free", // Use the correct model for mark scheme generation
-          messages: [
-            {
-              role: "user",
-              content: userPrompt
-            }
-          ],
-          max_tokens: 1500
-        };
-        
-        console.log("Request body (using google/gemini-2.0-flash-exp:free):", JSON.stringify(requestBody, null, 2));
-        
-        const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          mode: 'cors',
-          body: JSON.stringify(requestBody)
-        });
-        
-        console.log("Response status:", response.status, response.statusText);
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error("Error response:", errorText);
-          throw new Error(`HTTP error: ${response.status}. ${errorText}`);
-        }
-        
-        const data = await response.json();
-        console.log("Response data:", data);
-        
-        const generatedMarkScheme = data?.choices?.[0]?.message?.content || "No mark scheme generated. Please try again.";
-        console.log("Generated mark scheme (first 100 chars):", generatedMarkScheme.substring(0, 100) + "...");
-        
-        setMarkScheme(generatedMarkScheme);
-        setSuccess({
-          message: "Mark scheme generated successfully!"
-        });
-        
-        // Add the mark scheme to toast for visibility during debugging
-        toast.success("Mark scheme generated successfully!");
-        
-        setTimeout(() => {
-          setSuccess(null);
-        }, 3000);
-        
-        break; // Success, exit the retry loop
-      } catch (error) {
-        console.error("Error generating mark scheme:", error);
-        console.error("Error details:", {
-          message: error.message,
-          stack: error.stack,
-          name: error.name
-        });
-        
-        if (retryCount === maxRetries) {
-          const errorMessage = `Failed to generate mark scheme: ${error.message}. Backend service may be starting up or experiencing issues.`;
-          console.error(errorMessage);
-          
-          setError({
-            type: "api_error",
-            message: errorMessage,
-            retry: true
-          });
-          
-          // Add error to toast for visibility during debugging
-          toast.error(errorMessage);
-        } else {
-          const retryMessage = `Retrying mark scheme generation (${retryCount + 1}/${maxRetries})...`;
-          console.log(retryMessage);
-          
-          setSuccess({
-            message: retryMessage
-          });
-          
-          // Wait before retrying
-          await new Promise(resolve => setTimeout(resolve, 3000 * (retryCount + 1)));
-        }
-        
-        retryCount++;
-      }
-    }
-    
-    setLoading(false);
-    console.log("Mark scheme generation process completed");
-  };
-
   // Test function for debugging mark scheme generation
   const testMarkSchemeGeneration = async () => {
     if (!question) {
@@ -1880,79 +1741,186 @@ Please provide a detailed mark scheme that includes:
     console.log("Using simplified test prompt:", testPrompt);
     
     try {
-      // First test a minimal direct call to ensure API connection works
-      toast.info("Making direct API connection test...");
-      const testResponse = await fetch(`${API_BASE_URL}/api/health`, {
-        method: 'GET',
-        mode: 'cors'
-      });
+      // First check if the API is responsive
+      const healthCheck = await fetch(`${API_BASE_URL}/api/health`);
+      console.log("API health check response:", healthCheck.status, await healthCheck.text());
       
-      console.log("API health check response:", testResponse.status, testResponse.statusText);
-      
-      if (!testResponse.ok) {
-        throw new Error(`API health check failed with status ${testResponse.status}`);
+      if (healthCheck.status !== 200) {
+        throw new Error(`API health check failed with status ${healthCheck.status}`);
       }
       
       console.log("Health check successful, proceeding with mark scheme test");
-      toast.success("API connection verified");
       
-      // Now test the actual mark scheme generation with a simplified payload
-      toast.info("Testing mark scheme generation...");
-      const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
+      // Make a direct request to the backend
+      const response = await fetch(`${API_BASE_URL}/api/generate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        mode: 'cors',
         body: JSON.stringify({
-          model: "google/gemini-2.0-flash-exp:free", // Use the correct model
+          model: "google/gemini-2.0-flash-exp:free",
           messages: [
             {
               role: "user",
               content: testPrompt
             }
           ],
-          max_tokens: 500 // Using a smaller value for faster response
-        })
+          max_tokens: 1500
+        }),
       });
       
-      console.log("Test response status:", response.status, response.statusText);
+      console.log("Test response status:", response.status, await response.clone().text());
       
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Test response error:", errorText);
-        throw new Error(`API request failed: ${response.status}. ${errorText}`);
+        const errorData = await response.json();
+        console.error("Test response error:", JSON.stringify(errorData));
+        throw new Error(`API request failed: ${response.status}. ${JSON.stringify(errorData)}`);
       }
       
       const data = await response.json();
-      console.log("Test response data:", data);
+      console.log("Test response success:", data);
       
-      if (data.choices && data.choices[0] && data.choices[0].message) {
-        const content = data.choices[0].message.content;
-        console.log("Test mark scheme (first 100 chars):", content.substring(0, 100) + "...");
-        toast.success("Test successful! Check console for details");
-        
-        // Set a preview of the test result
-        setMarkScheme("TEST RESULT:\n\n" + content);
-      } else {
-        throw new Error("Received unexpected response format from API");
-      }
-      
+      // Update the mark scheme field
+      setMarkScheme(data.content);
+      setSuccess({
+        message: "Test mark scheme generated successfully!"
+      });
     } catch (error) {
       console.error("Test mark scheme generation error:", error);
-      console.error("Error details:", {
-        message: error.message,
-        stack: error.stack
-      });
-      
-      toast.error(`Test failed: ${error.message}`);
+      console.error("Error details:", error);
       setError({
-        type: "test_error",
-        message: `Mark scheme generation test failed: ${error.message}`
+        type: "api",
+        message: `Test mark scheme generation failed: ${error.message}`
       });
     } finally {
       console.log("=== TEST MARK SCHEME GENERATION COMPLETED ===");
+      setLoading(false);
     }
+  };
+
+  // Improve the mark scheme generation function with debugging
+  const generateMarkScheme = async () => {
+    if (!question) {
+      setError({
+        type: "validation",
+        message: "Please enter a question first to generate a mark scheme"
+      });
+      return;
+    }
+    
+    console.log("Starting mark scheme generation for:", question);
+    console.log("Subject:", subject, "Exam board:", examBoard);
+    
+    setError(null); // Clear general error messages
+    setSuccess(null); // Clear general success messages
+    setLoading(true);
+    setSuccess({
+      message: "Generating mark scheme with relevant Assessment Objectives..."
+    });
+    
+    let retryCount = 0;
+    const maxRetries = 2; // Try up to 3 times total (initial + 2 retries)
+    let success = false;
+    
+    // Create a more robust system prompt for better mark scheme generation
+    const systemPrompt = `
+You are an expert GCSE examiner for ${examBoard.toUpperCase()} ${subject}.
+Your task is to create comprehensive mark schemes for GCSE questions.
+Focus on ${subject}-specific requirements and assessment criteria.
+Follow exam board guidelines and standards for ${examBoard.toUpperCase()}.
+Provide detailed marking criteria with clear level descriptors.
+`;
+
+    // Create a user prompt with the question and specific instructions
+    const userPrompt = `As an expert GCSE examiner for ${examBoard.toUpperCase()} ${subject}, create a mark scheme for this question.
+Include assessment objectives, level descriptors, and marking criteria.
+Focus on ${subject}-specific requirements, key concepts, and grade boundaries.
+Format with bullet points and clear structure.
+
+Here is the question:
+"${question}"
+
+Please provide a detailed mark scheme that includes:
+1. Relevant assessment objectives (AOs)
+2. Clear level descriptors with mark bands
+3. Key concepts students should include
+4. Examples of good responses
+5. Criteria for different grade levels`;
+
+    while (retryCount <= maxRetries && !success) {
+      try {
+        // Only log the attempt number if it's a retry
+        if (retryCount > 0) {
+          setSuccess({
+            message: `Retrying mark scheme generation (${retryCount}/${maxRetries})...`
+          });
+        }
+        
+        console.log(`Attempt ${retryCount + 1}/${maxRetries + 1} to generate mark scheme`);
+        console.log(`Backend URL: ${API_BASE_URL}`);
+        
+        // Try different prompt approaches based on retry count
+        let requestBody;
+        
+        // Use a combined approach with just user prompt
+        console.log("Using combined user prompt approach");
+        console.log("User prompt first 100 chars:", userPrompt.substring(0, 100) + "...");
+        requestBody = {
+          model: "google/gemini-2.0-flash-exp:free",
+          messages: [
+            {
+              role: "user",
+              content: userPrompt
+            }
+          ],
+          max_tokens: 1500
+        };
+        
+        console.log("Request body (without system prompt):", JSON.stringify(requestBody, null, 2));
+        
+        const response = await fetch(`${API_BASE_URL}/api/generate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
+        });
+        
+        console.log("Response status:", response.status, await response.clone().text());
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error("Error response:", JSON.stringify(errorData));
+          throw new Error(`HTTP error: ${response.status}. ${JSON.stringify(errorData)}`);
+        }
+        
+        const data = await response.json();
+        setMarkScheme(data.content || "");
+        success = true;
+        setSuccess({
+          message: "Mark scheme generated successfully!"
+        });
+        
+      } catch (error) {
+        console.error("Error generating mark scheme:", error);
+        console.error("Error details:", error);
+        
+        if (retryCount < maxRetries) {
+          retryCount++;
+          // Wait a bit before retrying (500ms, 1000ms)
+          await new Promise(resolve => setTimeout(resolve, 500 * retryCount));
+        } else {
+          setError({
+            type: "api",
+            message: `Failed to generate mark scheme: ${error.message}. Backend service may be starting up or experiencing issues.`
+          });
+          break;
+        }
+      }
+    }
+    
+    console.log("Mark scheme generation process completed");
+    setLoading(false);
   };
 
   // Add this component for displaying the Model Thinking Process
