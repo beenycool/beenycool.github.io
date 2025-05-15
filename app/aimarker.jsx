@@ -1770,7 +1770,7 @@ Please provide a detailed mark scheme that includes:
         console.log("User prompt first 100 chars:", userPrompt.substring(0, 100) + "...");
         
         const requestBody = {
-          model: "google/gemini-pro:free", // Use a faster model for mark scheme generation
+          model: "google/gemini-2.0-flash-exp:free", // Use the correct model for mark scheme generation
           messages: [
             {
               role: "user",
@@ -1780,7 +1780,7 @@ Please provide a detailed mark scheme that includes:
           max_tokens: 1500
         };
         
-        console.log("Request body (without system prompt):", JSON.stringify(requestBody, null, 2));
+        console.log("Request body (using google/gemini-2.0-flash-exp:free):", JSON.stringify(requestBody, null, 2));
         
         const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
           method: 'POST',
@@ -1905,7 +1905,7 @@ Please provide a detailed mark scheme that includes:
         },
         mode: 'cors',
         body: JSON.stringify({
-          model: "google/gemini-pro:free",
+          model: "google/gemini-2.0-flash-exp:free", // Use the correct model
           messages: [
             {
               role: "user",
