@@ -20,19 +20,19 @@
 }
 
 .dark {
-  --background: #000000;
-  --foreground: #E5E7EB;
-  --card: #111111;
-  --card-foreground: #E5E7EB;
-  --primary: #3B82F6;
+  --background: #0f172a;
+  --foreground: #f1f5f9;
+  --card: #1e293b;
+  --card-foreground: #f8fafc;
+  --primary: #60a5fa;
   --primary-foreground: #FFFFFF;
-  --secondary: #1F2937;
-  --secondary-foreground: #E5E7EB;
-  --accent: #374151;
-  --accent-foreground: #E5E7EB;
-  --border: #374151;
-  --input: #374151;
-  --ring: #3B82F6;
+  --secondary: #334155;
+  --secondary-foreground: #f1f5f9;
+  --accent: #1e40af;
+  --accent-foreground: #f8fafc;
+  --border: #475569;
+  --input: #334155;
+  --ring: #60a5fa;
 }
 
 @layer base {
@@ -45,7 +45,7 @@
   }
 
   .dark body {
-    background-image: linear-gradient(to bottom, #000000, #020617);
+    background-image: linear-gradient(to bottom, #0f172a, #020617);
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -58,6 +58,25 @@
   
   input, textarea, select {
     @apply bg-background;
+  }
+}
+
+@layer components {
+  /* Ensure dropdown components have solid backgrounds */
+  [data-radix-popper-content-wrapper] {
+    backdrop-filter: none !important;
+  }
+
+  /* Fix for Select and Dropdown components to ensure solid backgrounds */
+  [data-slot="select-content"],
+  [data-slot="select-viewport"] {
+    background-color: var(--card);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  }
+
+  /* Ensure sheet content is opaque */
+  [data-slot="sheet-content"] {
+    background-color: var(--card);
   }
 }
 
