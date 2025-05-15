@@ -1903,13 +1903,10 @@ Please provide a detailed mark scheme that includes:
         console.log(`Attempt ${retryCount + 1}/${maxRetries + 1} to generate mark scheme`);
         console.log(`Backend URL: ${API_BASE_URL}`);
         
-        // Try different prompt approaches based on retry count
-        let requestBody;
-        
         // Use a combined approach with just user prompt
         console.log("Using combined user prompt approach");
         console.log("User prompt first 100 chars:", userPrompt.substring(0, 100) + "...");
-        requestBody = {
+        const requestBody = {
           model: "google/gemini-2.0-flash-exp:free",
           messages: [
             {
@@ -1920,7 +1917,7 @@ Please provide a detailed mark scheme that includes:
           max_tokens: 1500
         };
         
-        console.log("Request body (without system prompt):", JSON.stringify(requestBody, null, 2));
+        console.log("Request body:", JSON.stringify(requestBody, null, 2));
         
         const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
           method: 'POST',
@@ -2103,81 +2100,6 @@ Please provide a detailed mark scheme that includes:
     );
   };
 
-  // Add API status checker function
-  const checkAPIStatus = async () => {
-    console.log("=== API STATUS CHECK STARTED ===");
-    console.log("Backend URL:", API_BASE_URL);
-    
-    setSuccess({
-      message: "Checking API status..."
-    });
-    
-    try {
-      // Check API health
-      toast.info("Checking API health...");
-      const healthResponse = await fetch(`${API_BASE_URL}/api/health`, {
-        method: 'GET',
-        mode: 'cors'
-      }).catch(error => {
-        console.error("Health check failed:", error);
-        throw new Error(`Health check failed: ${error.message}`);
-      });
-      
-      console.log("Health response status:", healthResponse.status, healthResponse.statusText);
-      
-      if (!healthResponse.ok) {
-        throw new Error(`API health check failed with status ${healthResponse.status}`);
-      }
-      
-      const healthData = await healthResponse.json().catch(() => ({}));
-      console.log("Health data:", healthData);
-      
-      // Check available models
-      toast.info("Checking available models...");
-      const modelsResponse = await fetch(`${API_BASE_URL}/api/models`, {
-        method: 'GET',
-        mode: 'cors'
-      }).catch(error => {
-        console.error("Models check failed:", error);
-        throw new Error(`Models check failed: ${error.message}`);
-      });
-      
-      console.log("Models response status:", modelsResponse.status, modelsResponse.statusText);
-      
-      if (!modelsResponse.ok) {
-        throw new Error(`API models check failed with status ${modelsResponse.status}`);
-      }
-      
-      const modelsData = await modelsResponse.json().catch(() => ({}));
-      console.log("Available models:", modelsData);
-      
-      // Display API status info in a toast
-      let statusInfo = `✅ API is online
-🔌 Connection: ${healthData.status || "Unknown"}
-🔄 Version: ${healthData.version || "Unknown"}`;
-
-      if (modelsData && modelsData.data) {
-        statusInfo += `\n🤖 Models: ${modelsData.data.length || 0} available`;
-      }
-      
-      toast.success(statusInfo, { duration: 5000 });
-      setSuccess({
-        message: "API status check completed successfully"
-      });
-      
-    } catch (error) {
-      console.error("API status check error:", error);
-      
-      toast.error(`API Status Check Failed: ${error.message}`);
-      setError({
-        type: "api_status_error",
-        message: `API status check failed: ${error.message}. Check console for details.`
-      });
-    } finally {
-      console.log("=== API STATUS CHECK COMPLETED ===");
-    }
-  };
-
   return (
     <div className="min-h-screen bg-background text-foreground">
       <TopBar version="2.1.1" backendStatus={backendStatusRef.current} />
@@ -2190,34 +2112,6 @@ Please provide a detailed mark scheme that includes:
         
         {/* Backend Status Checker */}
         <BackendStatusChecker onStatusChange={handleBackendStatusChange} />
-        
-        {/* Debug API status section */}
-        <div className="mb-4 p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <div className="text-sm font-medium">API Status Debugging</div>
-              <div className={`ml-2 h-2 w-2 rounded-full ${
-                backendStatusRef.current === 'online' ? 'bg-green-500' : 
-                backendStatusRef.current === 'checking' ? 'bg-yellow-500' : 
-                'bg-red-500'
-              }`}></div>
-              <div className="ml-1 text-xs text-muted-foreground">{backendStatusRef.current}</div>
-            </div>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className="text-xs h-7"
-              onClick={checkAPIStatus}
-            >
-              <RefreshCw className="mr-1 h-3 w-3" />
-              Check API Status
-            </Button>
-          </div>
-          <div className="text-xs text-muted-foreground mt-2">
-            Backend URL: {API_BASE_URL} <br />
-            Last Updated: {new Date().toLocaleTimeString()}
-          </div>
-        </div>
         
         {detectedSubject && !hasManuallySetSubject.current && (
           <div className="mb-4 p-3 bg-primary/10 border border-primary/20 rounded-md flex items-center justify-between">
