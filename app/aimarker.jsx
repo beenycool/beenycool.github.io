@@ -84,16 +84,31 @@ const USER_TYPES = [
 ];
 
 const AI_MODELS = [
-  { value: "deepseek/deepseek-r1:free", label: "Thinking Model (takes longer)", description: "More thorough reasoning process" },
+  { value: "google/gemini-2.5-pro-exp-03-25", label: "Premium (Gemini 2.5 Pro)", description: "Best quality, limited to 1 request per minute" },
+  { value: "microsoft/mai-ds-r1:free", label: "Thinking Model (takes longer)", description: "More thorough reasoning process" },
   { value: "deepseek/deepseek-chat-v3-0324:free", label: "Good All-Rounder", description: "Balanced speed and quality" },
   { value: "google/gemini-2.0-flash-exp:free", label: "Fast Response", description: "Quick responses, suitable for shorter answers" },
 ];
 
 // Add fallback models for when primary models are rate limited
 const FALLBACK_MODELS = {
+  "google/gemini-2.5-pro-exp-03-25": "deepseek/deepseek-chat-v3-0324:free",
   "google/gemini-2.0-flash-exp:free": "deepseek/deepseek-chat-v3-0324:free",
-  "deepseek/deepseek-chat-v3-0324:free": "deepseek/deepseek-r1:free",
-  "deepseek/deepseek-r1:free": "google/gemini-2.0-flash-exp:free"
+  "deepseek/deepseek-chat-v3-0324:free": "microsoft/mai-ds-r1:free",
+  "microsoft/mai-ds-r1:free": "google/gemini-2.0-flash-exp:free"
+};
+
+// Define model-specific rate limits (in milliseconds)
+const MODEL_RATE_LIMITS = {
+  "google/gemini-2.5-pro-exp-03-25": 60000, // 1 minute
+  "google/gemini-2.0-flash-exp:free": 10000, // 10 seconds
+  "deepseek/deepseek-chat-v3-0324:free": 10000, // 10 seconds
+  "microsoft/mai-ds-r1:free": 15000 // 15 seconds
+};
+
+// Define specific models for specific tasks
+const TASK_SPECIFIC_MODELS = {
+  "image_processing": "google/gemini-2.0-flash-exp:free"
 };
 
 const subjectKeywords = {
@@ -276,7 +291,7 @@ const BackendStatusChecker = ({ onStatusChange }) => {
             </h3>
             <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
               {status === 'waking_up' 
-                ? 'This can take up to 30-60 seconds as our server is hosted on a free tier which goes to sleep after inactivity.'
+                ? 'This can take up to 30-60 seconds as the server initializes.'
                 : 'The backend server is currently offline. Click the button to wake it up.'}
             </p>
           </div>
@@ -321,7 +336,7 @@ const BackendStatusChecker = ({ onStatusChange }) => {
       )}
       
       <p className="mt-3 text-xs text-amber-700 dark:text-amber-400 italic">
-        The backend API is hosted on Render's free tier, which automatically spins down after periods of inactivity to save resources. 
+        The backend API automatically spins down after periods of inactivity to save resources. 
         This is why it may take up to a minute to "wake up" when you first visit the site.
       </p>
     </div>
@@ -379,7 +394,7 @@ const EnhancedAlert = ({ success, error }) => {
         
         {isApiError && (
           <span className="text-sm">
-            The backend API service may be offline or starting up. This is normal as we use a free hosting service that goes to sleep after periods of inactivity.
+            The backend API service may be offline or starting up. This is normal as the server goes to sleep after periods of inactivity.
           </span>
         )}
         
@@ -839,7 +854,8 @@ const AIMarker = () => {
   const [lastRequestTime, setLastRequestTime] = useState(0);
   const [dailyRequests, setDailyRequests] = useState(0);
   const [lastRequestDate, setLastRequestDate] = useState(new Date().toDateString());
-  const [selectedModel, setSelectedModel] = useState("deepseek/deepseek-chat-v3-0324:free");
+  const [selectedModel, setSelectedModel] = useState("google/gemini-2.5-pro-exp-03-25"); // Default to Gemini 2.5 Pro
+  const [modelLastRequestTimes, setModelLastRequestTimes] = useState({}); // Track last request time for each model
   const [imageLoading, setImageLoading] = useState(false);
   const [backendError, setBackendError] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -922,7 +938,7 @@ const AIMarker = () => {
       setLoading(false);
       setError({
         type: "network",
-        message: `Backend connection error: ${backendStatus.error}. Render's free tier servers may take up to 50 seconds to wake up after inactivity. Please try again in a minute.`,
+        message: `Backend connection error: ${backendStatus.error}. The server may take up to 50 seconds to wake up after inactivity. Please try again in a minute.`,
         retry: true
       });
       return;
@@ -939,23 +955,29 @@ const AIMarker = () => {
       localStorage.setItem('dailyRequests', '0');
     }
     
-    // Special rate limit for Gemini 2.5 Pro
-    if (selectedModel === "google/gemini-2.5-pro-exp-03-25" && now - lastRequestTime < 60000) {
+    // Get the rate limit for the selected model
+    const modelRateLimit = MODEL_RATE_LIMITS[selectedModel] || 10000; // Default to 10 seconds
+    const modelLastRequestTime = modelLastRequestTimes[selectedModel] || 0;
+    const timeSinceLastModelRequest = now - modelLastRequestTime;
+    
+    // Check if we're within the rate limit for this specific model
+    if (timeSinceLastModelRequest < modelRateLimit) {
       setLoading(false);
+      const waitTimeSeconds = Math.ceil((modelRateLimit - timeSinceLastModelRequest) / 1000);
       setError({
         type: "rate_limit",
-        message: "Gemini 2.5 Pro is limited to 1 request per minute. Please wait or select a different model."
+        message: `${AI_MODELS.find(m => m.value === selectedModel)?.label || selectedModel} is limited to 1 request per ${modelRateLimit/1000} seconds. Please wait ${waitTimeSeconds} more seconds or select a different model.`
       });
       return;
-    } else if (selectedModel !== "google/gemini-2.5-pro-exp-03-25" && now - lastRequestTime < 10000) {
+    } else if (now - lastRequestTime < 5000) { // Global rate limit of 5 seconds between any requests
       setLoading(false);
       setError({
         type: "rate_limit",
-        message: "Please wait at least 10 seconds between requests"
+        message: "Please wait at least 5 seconds between requests"
       });
       return;
     }
-    
+
     const getRequestTokens = () => {
       const stored = localStorage.getItem('requestTokens');
       const now = new Date().toDateString();
@@ -1027,7 +1049,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
       }
 
       // Add thinking model specific instructions
-      if (selectedModel === "deepseek/deepseek-r1:free") {
+      if (selectedModel === "microsoft/mai-ds-r1:free" || selectedModel === "deepseek/deepseek-r1:free") {
         basePrompt += `\n\n5. THINKING PROCESS:
 - First, analyze the student's answer carefully and identify key strengths and weaknesses
 - For each section of the answer, evaluate both content accuracy and quality of explanation
@@ -1046,6 +1068,12 @@ ${getSubjectGuidance(subject, examBoard)}`;
       message: "Processing request..."
     });
     setLastRequestTime(now);
+    // Update the last request time for the specific model
+    setModelLastRequestTimes(prev => ({
+      ...prev,
+      [selectedModel]: now
+    }));
+    
     setDailyRequests((prev) => {
       const newCount = prev + 1;
       localStorage.setItem('dailyRequests', newCount.toString());
@@ -1072,6 +1100,9 @@ ${getSubjectGuidance(subject, examBoard)}`;
             message: "Processing your image... Please wait."
           });
           
+          // Always use the image-specific model for image processing
+          const imageProcessingModel = TASK_SPECIFIC_MODELS.image_processing;
+          
           // Use our backend API directly instead of OpenAI client
           const response = await fetch(`${API_BASE_URL}/api/image/extract`, {
             method: 'POST',
@@ -1079,7 +1110,10 @@ ${getSubjectGuidance(subject, examBoard)}`;
               'Content-Type': 'application/json',
             },
             mode: 'cors',
-            body: JSON.stringify({ image_base64: imageBase64 })
+            body: JSON.stringify({ 
+              image_base64: imageBase64,
+              model: imageProcessingModel // Specify the model for image processing
+            })
           });
           
           if (!response.ok) {
@@ -1159,7 +1193,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
 
       while (retryCount <= maxRetries) {
         try {
-          if (selectedModel === "deepseek/deepseek-r1:free") {
+          if (selectedModel === "microsoft/mai-ds-r1:free" || selectedModel === "deepseek/deepseek-r1:free") {
             // Streaming request implementation
             const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
               method: 'POST',
@@ -1442,7 +1476,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
       }
       // Check for network errors
       else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-        errorMessage = 'Network error. Please check your internet connection and try again. Note that Render\'s free tier servers may take up to 50 seconds to wake up after inactivity.';
+        errorMessage = 'Network error. Please check your internet connection and try again. The server may take up to 50 seconds to wake up after inactivity.';
       }
       // Check for server errors
       else if (error.message.includes('500') || error.message.includes('503')) {
@@ -1700,6 +1734,9 @@ ${getSubjectGuidance(subject, examBoard)}`;
         message: "Processing your image... Please wait."
       });
       
+      // Always use the image-specific model for image processing
+      const imageProcessingModel = TASK_SPECIFIC_MODELS.image_processing;
+      
       // Use our backend API directly instead of OpenAI client
       const response = await fetch(`${API_BASE_URL}/api/image/extract`, {
         method: 'POST',
@@ -1707,7 +1744,10 @@ ${getSubjectGuidance(subject, examBoard)}`;
           'Content-Type': 'application/json',
         },
         mode: 'cors',
-        body: JSON.stringify({ image_base64: imageBase64 })
+        body: JSON.stringify({ 
+          image_base64: imageBase64,
+          model: imageProcessingModel // Specify the model for image processing
+        })
       });
       
       if (!response.ok) {
@@ -1902,6 +1942,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
     setError(null); // Clear general error messages
     setSuccess(null); // Clear general success messages
     setLoading(true);
+    setMarkScheme("Generating mark scheme... Please wait."); // Show immediate feedback in the mark scheme field
     setSuccess({
       message: "Generating mark scheme with relevant Assessment Objectives..."
     });
@@ -1933,13 +1974,15 @@ GUIDANCE:
 - Ensure mark schemes are accessible to teachers while maintaining rigor
 - Format with clear headings, bullet points, and structured sections
 - Consider both higher and foundation tier requirements if applicable
+- Use markdown formatting for better readability including tables and bullet points
+- Provide complete responses without truncation
 `;
 
     // Create a user prompt with the question and specific instructions
     const userPrompt = `As an expert GCSE examiner for ${examBoard.toUpperCase()} ${subject}, create a mark scheme for this question.
 Include assessment objectives, level descriptors, and marking criteria.
 Focus on ${subject}-specific requirements, key concepts, and grade boundaries.
-Format with bullet points and clear structure.
+Format with bullet points, tables, and clear structure.
 
 Here is the question:
 "${question}"
@@ -1949,13 +1992,15 @@ Please provide a detailed mark scheme that includes:
 2. Clear level descriptors with mark bands
 3. Key concepts students should include
 4. Examples of good responses
-5. Criteria for different grade levels`;
+5. Criteria for different grade levels
+
+IMPORTANT: Provide a complete and comprehensive mark scheme. Do not truncate your response.`;
 
     // Array of models to try in order if rate limiting occurs
     let modelsToTry = [
       "google/gemini-2.0-flash-exp:free",  // Start with fastest model
       "deepseek/deepseek-chat-v3-0324:free",
-      "deepseek/deepseek-r1:free"
+      "microsoft/mai-ds-r1:free"
     ];
     
     // Keep track of which models we've tried and failed with
@@ -1965,6 +2010,7 @@ Please provide a detailed mark scheme that includes:
       try {
         // Only log the attempt number if it's a retry
         if (retryCount > 0) {
+          setMarkScheme(`Retrying mark scheme generation (attempt ${retryCount + 1}/${maxRetries + 1})...\n\nPrevious attempt failed. Trying with a different model.`);
           setSuccess({
             message: `Retrying mark scheme generation (${retryCount}/${maxRetries})...`
           });
@@ -1983,8 +2029,10 @@ Please provide a detailed mark scheme that includes:
         console.log(`Backend URL: ${API_BASE_URL}`);
         
         // Update UI to show which model we're using
+        const modelLabel = AI_MODELS.find(m => m.value === currentModel)?.label || currentModel;
+        setMarkScheme(`Generating mark scheme with ${modelLabel}...\n\nThis may take up to 30 seconds. Please wait.`);
         setSuccess({
-          message: `Generating mark scheme with ${AI_MODELS.find(m => m.value === currentModel)?.label || currentModel}...`
+          message: `Generating mark scheme with ${modelLabel}...`
         });
         
         // Use a combined approach with just user prompt
@@ -2002,14 +2050,15 @@ Please provide a detailed mark scheme that includes:
               content: userPrompt
             }
           ],
-          max_tokens: 1500
+          max_tokens: 4000, // Increased token limit for more complete mark schemes
+          temperature: 0.7
         };
         
         console.log("Request body:", JSON.stringify(requestBody, null, 2));
         
         // Set a timeout for the request
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 second timeout (increased)
         
         const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
           method: 'POST',
@@ -2034,6 +2083,7 @@ Please provide a detailed mark scheme that includes:
         if (isRateLimited) {
           console.log(`Model ${currentModel} is rate limited, will try another model`);
           failedModels.add(currentModel); // Mark this model as failed
+          setMarkScheme(`${modelLabel} is currently rate limited. Trying another model...`);
           
           // Try the fallback model next
           const fallbackModel = FALLBACK_MODELS[currentModel];
@@ -2092,7 +2142,7 @@ Please provide a detailed mark scheme that includes:
         setMarkScheme(markSchemeContent);
         success = true;
         setSuccess({
-          message: `Mark scheme generated successfully with ${AI_MODELS.find(m => m.value === currentModel)?.label || currentModel}!`
+          message: `Mark scheme generated successfully with ${modelLabel}!`
         });
         
       } catch (error) {
@@ -2101,6 +2151,7 @@ Please provide a detailed mark scheme that includes:
         
         // Check if we've tried all models and still failed
         if (failedModels.size >= modelsToTry.length) {
+          setMarkScheme("Failed to generate mark scheme. All available models are currently rate limited. Please try again in a few minutes.");
           setError({
             type: "rate_limit",
             message: "All available models are currently rate limited. Please try again in a few minutes.",
@@ -2121,12 +2172,14 @@ Please provide a detailed mark scheme that includes:
         } else {
           // Provide a more helpful error message based on the error type
           if (error.name === 'AbortError') {
+            setMarkScheme("Request timed out. The server took too long to respond. Please try again.");
             setError({
               type: "timeout",
               message: "Request timed out. The server took too long to respond.",
               retry: () => generateMarkScheme()
             });
           } else if (error.message.includes("rate-limit") || error.message.includes("429")) {
+            setMarkScheme("All models are currently rate limited. Please try again in a few minutes.");
             setError({
               type: "rate_limit",
               message: "All models are currently rate limited. Please try again in a few minutes.",
@@ -2137,6 +2190,7 @@ Please provide a detailed mark scheme that includes:
               }
             });
           } else {
+            setMarkScheme(`Failed to generate mark scheme: ${error.message}. Please try again.`);
             setError({
               type: "api",
               message: `Failed to generate mark scheme: ${error.message}. Backend service may be starting up or experiencing issues.`,
@@ -2670,7 +2724,21 @@ Please provide a detailed mark scheme that includes:
                         </Label>
                         <Select
                           value={selectedModel}
-                          onValueChange={setSelectedModel}
+                          onValueChange={(value) => {
+                            // Check if we're within the rate limit for the new model
+                            const now = Date.now();
+                            const modelLimit = MODEL_RATE_LIMITS[value] || 10000;
+                            const lastModelRequest = modelLastRequestTimes[value] || 0;
+                            const timeSince = now - lastModelRequest;
+                            
+                            if (timeSince < modelLimit) {
+                              const waitTime = Math.ceil((modelLimit - timeSince) / 1000);
+                              toast.warning(`${AI_MODELS.find(m => m.value === value)?.label || value} was used recently. Please wait ${waitTime} more seconds.`);
+                              return;
+                            }
+                            
+                            setSelectedModel(value);
+                          }}
                         >
                           <SelectTrigger>
                             <SelectValue placeholder="Select AI model" />
@@ -2686,6 +2754,13 @@ Please provide a detailed mark scheme that includes:
                             ))}
                           </SelectContent>
                         </Select>
+                        
+                        {selectedModel === "google/gemini-2.5-pro-exp-03-25" && (
+                          <div className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center">
+                            <AlertTriangle className="h-3 w-3 mr-1" />
+                            <span>Limited to 1 request per minute due to API constraints</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -2735,7 +2810,7 @@ Please provide a detailed mark scheme that includes:
                 <ProgressIndicator loading={loading} progress={processingProgress} />
                 
                 {/* Thinking Box */}
-                {(loading || modelThinking) && selectedModel === "deepseek/deepseek-r1:free" && (
+                {(loading || modelThinking) && selectedModel === "microsoft/mai-ds-r1:free" && (
                   <ModelThinkingBox thinking={modelThinking} loading={loading} />
                 )}
                 
