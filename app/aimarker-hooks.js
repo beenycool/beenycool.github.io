@@ -181,9 +181,8 @@ export const useBackendStatus = (API_BASE_URL) => {
       let errorMessage = error.message;
       let status = 'error';
       
-      if (error.name === 'AbortError') {
-        errorMessage = 'Backend did not respond in time. Render\'s free tier servers may take up to 50 seconds to wake up.';
-        status = 'timeout';
+      if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+        errorMessage = 'Backend did not respond in time. The server may take up to 50 seconds to wake up.';
       } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
         errorMessage = 'Network connection to backend failed. Please check your internet connection and try again in a moment.';
         status = 'network';
