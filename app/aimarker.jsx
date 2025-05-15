@@ -1752,7 +1752,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
       console.log("Health check successful, proceeding with mark scheme test");
       
       // Make a direct request to the backend
-      const response = await fetch(`${API_BASE_URL}/api/generate`, {
+      const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1922,7 +1922,7 @@ Please provide a detailed mark scheme that includes:
         
         console.log("Request body (without system prompt):", JSON.stringify(requestBody, null, 2));
         
-        const response = await fetch(`${API_BASE_URL}/api/generate`, {
+        const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
