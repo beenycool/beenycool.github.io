@@ -752,6 +752,31 @@ const QuickGuide = ({ onClose }) => {
             <p className="text-gray-700 dark:text-gray-300">Optionally save, share or print your feedback.</p>
           </li>
         </ol>
+        <div className="mt-6 pt-4 border-t border-border">
+          <h3 className="font-medium text-base mb-3 text-gray-800 dark:text-gray-200">Quick Tips</h3>
+          <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-2">
+            <li className="flex items-start">
+              <ChevronRight className="h-4 w-4 mr-1.5 mt-0.5 flex-shrink-0" />
+              <span>Enter both the question and your full answer for accurate marking.</span>
+            </li>
+            <li className="flex items-start">
+              <ChevronRight className="h-4 w-4 mr-1.5 mt-0.5 flex-shrink-0" />
+              <span>Select the correct subject and exam board for tailored feedback.</span>
+            </li>
+            <li className="flex items-start">
+              <ChevronRight className="h-4 w-4 mr-1.5 mt-0.5 flex-shrink-0" />
+              <span>For image uploads, ensure the text is clear and readable.</span>
+            </li>
+            <li className="flex items-start">
+              <ChevronRight className="h-4 w-4 mr-1.5 mt-0.5 flex-shrink-0" />
+              <span>The AI models are good, but always cross-reference with official materials.</span>
+            </li>
+             <li className="flex items-start">
+              <ChevronRight className="h-4 w-4 mr-1.5 mt-0.5 flex-shrink-0" />
+              <span>Wait for the backend to wake up when you first visit the site (may take up to 60 seconds)</span>
+            </li>
+          </ul>
+        </div>
       </div>
     </div>
   );
@@ -2389,7 +2414,8 @@ ${getSubjectGuidance(subject, examBoard)}`;
             </Tabs>
           </div>
           
-          {/* Help Panel */}
+          {/* Help Panel - This entire div section will be removed */}
+          {/* 
           <div className="lg:col-span-5">
             <Card className="h-full">
               <CardHeader className="flex flex-row items-center justify-between py-3">
@@ -2403,75 +2429,20 @@ ${getSubjectGuidance(subject, examBoard)}`;
                 <CardContent>
                   <div className="space-y-6">
                     <div className="space-y-4">
-                      <div className="flex items-start space-x-3">
-                        <div className="mt-0.5 bg-primary/10 p-1.5 rounded-full">
-                          <CheckCircle2 className="h-4 w-4 text-primary" />
-                        </div>
-                        <div>
-                          <h3 className="font-medium text-sm">Expert Marking</h3>
-                          <p className="text-sm text-muted-foreground">Get detailed feedback and suggestions from our AI marker</p>
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-start space-x-3">
-                        <div className="mt-0.5 bg-primary/10 p-1.5 rounded-full">
-                          <CheckCircle2 className="h-4 w-4 text-primary" />
-                        </div>
-                        <div>
-                          <h3 className="font-medium text-sm">Subject Specific</h3>
-                          <p className="text-sm text-muted-foreground">Tailored to each GCSE subject and exam board requirements</p>
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-start space-x-3">
-                        <div className="mt-0.5 bg-primary/10 p-1.5 rounded-full">
-                          <CheckCircle2 className="h-4 w-4 text-primary" />
-                        </div>
-                        <div>
-                          <h3 className="font-medium text-sm">Practice on Your Schedule</h3>
-                          <p className="text-sm text-muted-foreground">24/7 access to improve your skills whenever you have time</p>
-                        </div>
-                      </div>
+                      // ... content of Expert Marking, Subject Specific, Practice on Your Schedule ...
                     </div>
                     
-                    <div>
-                      <h3 className="font-medium text-sm mb-2">Quick Tips</h3>
-                      <ul className="text-sm text-muted-foreground space-y-2">
-                        <li className="flex items-start">
-                          <ChevronRight className="h-4 w-4 mr-1 flex-shrink-0 text-muted-foreground" />
-                          <span>Enter both the question and your full answer</span>
-                        </li>
-                        <li className="flex items-start">
-                          <ChevronRight className="h-4 w-4 mr-1 flex-shrink-0 text-muted-foreground" />
-                          <span>Select the correct subject and exam board</span>
-                        </li>
-                        <li className="flex items-start">
-                          <ChevronRight className="h-4 w-4 mr-1 flex-shrink-0 text-muted-foreground" />
-                          <span>For best results, provide clear and complete answers</span>
-                        </li>
-                        <li className="flex items-start">
-                          <ChevronRight className="h-4 w-4 mr-1 flex-shrink-0 text-muted-foreground" />
-                          <span>Wait for the backend to wake up when you first visit the site (may take up to 60 seconds)</span>
-                        </li>
-                      </ul>
-                    </div>
+                    // ... Original Quick Tips location ...
                     
                     <div className="pt-4 border-t border-border">
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="w-full"
-                        onClick={() => window.open('https://github.com/beenycool/beenycool.github.io/issues', '_blank')}
-                      >
-                        <ExternalLink className="mr-2 h-4 w-4" />
-                        Report an Issue or Suggest a Feature
-                      </Button>
+                      // ... Report an Issue button ...
                     </div>
                   </div>
                 </CardContent>
               )}
             </Card>
           </div>
+          */}
         </div>
       </div>
     </div>
