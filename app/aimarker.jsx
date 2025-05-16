@@ -369,7 +369,7 @@ const EnhancedAlert = ({ success, error, onRetryAction }) => { // Added onRetryA
   else if (error.type === 'rate_limit_with_fallback') title = 'Rate Limited (Fallback Available)';
   else if (error.type === 'rate_limit_wait') title = 'Rate Limited (Please Wait)';
   else if (isRateLimited) title = 'Rate Limited';
-
+  
   return (
     <Alert className={`mb-4 ${
       isRateLimited 
@@ -454,8 +454,8 @@ const EnhancedAlert = ({ success, error, onRetryAction }) => { // Added onRetryA
             >
               <Zap className="h-3 w-3 mr-1" /> Check Server Status
             </Button>
-          )}
-        </div>
+            )}
+          </div>
       </AlertDescription>
     </Alert>
   );
@@ -1027,7 +1027,7 @@ const AIMarker = () => {
   const [bulkSettingPreference, setBulkSettingPreference] = useState('global'); // 'global' or 'file'
   const [bulkProgress, setBulkProgress] = useState({ processed: 0, total: 0, currentItem: null });
   const bulkFileUploadRef = useRef(null);
-
+  
   // Handle image upload
   const handleImageChange = (e) => {
     if (e.target.files && e.target.files[0]) {
@@ -1354,7 +1354,7 @@ const AIMarker = () => {
       const waitTimeSeconds = Math.ceil((modelRateLimit - timeSinceLastModelRequest) / 1000);
       const fallback = FALLBACK_MODELS[selectedModel];
       if (fallback) {
-        setError({
+      setError({
           type: "rate_limit_with_fallback",
           message: `${AI_MODELS.find(m => m.value === selectedModel)?.label || selectedModel} is rate limited. You can try a fallback model or wait ${waitTimeSeconds}s.`,
           fallbackModel: fallback,
@@ -1548,7 +1548,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
         // MODIFIED Error for response not OK
         const fallback = FALLBACK_MODELS[selectedModel];
         if (response.status === 429 && fallback) { // Specifically handle 429 for fallback
-           setError({
+      setError({
             type: "rate_limit_with_fallback",
             message: `Model ${AI_MODELS.find(m => m.value === selectedModel)?.label || selectedModel} seems to be rate limited by the API. Try a fallback? Error: ${errorMessage}`,
             fallbackModel: fallback,
@@ -1561,7 +1561,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
             onRetry: () => handleSubmitForMarking()
           });
         } else {
-          setError({
+      setError({
             type: "api_error",
             message: `Backend API error: ${errorMessage}`,
             onRetry: handleSubmitForMarking
@@ -1628,7 +1628,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
         .replace(/\[MARKS:\d+\/\d+\]/gi, '');
       
       setFeedback(cleanResponse);
-      setSuccess({
+        setSuccess({
         message: "Assessment completed successfully!"
       });
       
@@ -1705,7 +1705,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
                 message: `${modelLabel} is rate limited. Other models will be tried or please wait.`,
                 // No direct retry for this specific alert, loop handles it
              });
-          } else {
+        } else {
             // If there's a fallback, we can hint at it, though the loop will try it
              setError({
                 type: "rate_limit_with_fallback", 
@@ -1853,8 +1853,8 @@ ${getSubjectGuidance(subject, examBoard)}`;
     const file = event.target.files[0];
     if (file) {
       setBulkFile(file);
-      // TODO: Add parsing logic here based on file type (e.g., CSV)
-      // For now, just showing a toast message
+      const fileType = file.name.split('.').pop().toLowerCase();
+      // Show appropriate message based on file type
       toast.info(`File "${file.name}" selected. Ready to process.`);
       // Clear previous bulk items and results
       setBulkItems([]);
@@ -1985,7 +1985,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
     }
   };
 
-  // MODIFIED: handleProcessBulkFile - to correctly use processSingleBulkItem
+  // MODIFIED: handleProcessBulkFile - to support multiple file formats
   const handleProcessBulkFile = async () => {
     if (!bulkFile) {
       toast.error("Please select a file for bulk processing.");
@@ -2004,88 +2004,171 @@ ${getSubjectGuidance(subject, examBoard)}`;
     try {
       toast.info(`Initiating bulk processing for: "${bulkFile.name}"...`);
       
-      // Ensure PapaParse is available (developer needs to install it)
-      if (typeof Papa === 'undefined') {
-        toast.error("CSV Parsing library (PapaParse) is not available. Please ensure it's installed.");
-        setBulkProcessing(false);
-        return;
-      }
+      // Determine file type by extension
+      const fileType = bulkFile.name.split('.').pop().toLowerCase();
       
-Papa.parse(bulkFile, {
-        header: true,
-        skipEmptyLines: true,
-        complete: async (results) => {
-          const parsedItemsFromCSV = results.data.map((row, idx) => ({
-            id: `csv-item-${idx}`,
-            question: row.Question || row.question,
-            answer: row.Answer || row.answer,
-            subjectFromFile: row.Subject || row.subject,
-            examBoardFromFile: row.ExamBoard || row.examBoard,
-            modelFromFile: row.Model || row.model,
-            tierFromFile: row.Tier || row.tier,
-            totalMarksFromFile: row.TotalMarks || row.totalMarks
-          })).filter(item => item.question && item.question.trim() !== '' && item.answer && item.answer.trim() !== '');
-
-          if (parsedItemsFromCSV.length === 0) {
-            toast.error("No valid items found in the CSV. Check 'Question' and 'Answer' columns.");
-            setBulkProcessing(false);
-            return;
-          }
-
-          setBulkItems(parsedItemsFromCSV); // Store the items to be processed
-          setBulkProgress(prev => ({ ...prev, total: parsedItemsFromCSV.length, processed: 0, currentItem: null }));
-
-          let accumulatedResults = [];
-          for (let i = 0; i < parsedItemsFromCSV.length; i++) {
-            const currentRawItem = parsedItemsFromCSV[i];
-            setBulkProgress(prev => ({ ...prev, currentItem: i + 1 }));
-
-            const itemPayload = {
-              question: currentRawItem.question,
-              answer: currentRawItem.answer,
-              subject: bulkSettingPreference === 'file' && currentRawItem.subjectFromFile ? currentRawItem.subjectFromFile : subject,
-              examBoard: bulkSettingPreference === 'file' && currentRawItem.examBoardFromFile ? currentRawItem.examBoardFromFile : examBoard,
-              model: bulkSettingPreference === 'file' && currentRawItem.modelFromFile && AI_MODELS.find(m => m.value === currentRawItem.modelFromFile) ? currentRawItem.modelFromFile : selectedModel,
-              tier: bulkSettingPreference === 'file' && currentRawItem.tierFromFile ? currentRawItem.tierFromFile : tier,
-              totalMarks: bulkSettingPreference === 'file' && currentRawItem.totalMarksFromFile ? currentRawItem.totalMarksFromFile : totalMarks,
-              userType: userType, // Global userType for now
-            };
-
-            const resultForCurrentItem = await processSingleBulkItem(itemPayload, i, parsedItemsFromCSV.length);
-            
-            accumulatedResults.push({
-              itemIndex: i,
-              question: currentRawItem.question, // Store original question for display
-              question: rawItem.question,
-              answer: rawItem.answer,
-              feedback: result.feedback,
-              grade: result.grade,
-              modelName: itemDataForAPI.model, // Reflect the model used
-              error: result.error
-            });
-            setBulkResults([...currentResults]); // Update results incrementally
-            setBulkProgress(prev => ({ ...prev, processed: prev.processed + 1 }));
-          }
-          toast.success("Bulk processing complete!");
+      // Process based on file type
+      if (fileType === 'csv') {
+        // Process CSV file with PapaParse
+        if (typeof Papa === 'undefined') {
+          toast.error("CSV Parsing library (PapaParse) is not available. Please ensure it's installed.");
           setBulkProcessing(false);
-          setBulkProgress(prev => ({ ...prev, currentItem: null }));
-        },
-        error: (error) => {
-          console.error("CSV parsing error:", error);
-          toast.error(`CSV parsing failed: ${error.message}`);
-          setBulkResults([{ itemIndex: -1, error: `CSV parsing error: ${error.message}` }]);
-          setBulkProcessing(false);
+          return;
         }
-      });
-
-    } catch (error) { // Catch errors from initial setup before Papa.parse or if Papa.parse itself is not called
+        
+        Papa.parse(bulkFile, {
+          header: true,
+          skipEmptyLines: true,
+          complete: async (results) => {
+            await processParseResults(results.data);
+          },
+          error: (error) => {
+            console.error("CSV parsing error:", error);
+            toast.error(`CSV parsing failed: ${error.message}`);
+            setBulkResults([{ itemIndex: -1, error: `CSV parsing error: ${error.message}` }]);
+            setBulkProcessing(false);
+          }
+        });
+      } else if (fileType === 'json') {
+        // Process JSON file
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          try {
+            const jsonData = JSON.parse(e.target.result);
+            // Handle both array and object formats
+            const dataArray = Array.isArray(jsonData) ? jsonData : [jsonData];
+            await processParseResults(dataArray);
+          } catch (error) {
+            console.error("JSON parsing error:", error);
+            toast.error(`JSON parsing failed: ${error.message}`);
+            setBulkResults([{ itemIndex: -1, error: `JSON parsing error: ${error.message}` }]);
+            setBulkProcessing(false);
+          }
+        };
+        reader.onerror = (error) => {
+          console.error("File reading error:", error);
+          toast.error(`File reading failed: ${error.message}`);
+          setBulkProcessing(false);
+        };
+        reader.readAsText(bulkFile);
+      } else if (fileType === 'txt') {
+        // Process plain text file - assume one question/answer pair per line with tab or comma separation
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          try {
+            const textData = e.target.result;
+            const lines = textData.split(/\r?\n/).filter(line => line.trim() !== '');
+            
+            const parsedItems = lines.map((line, idx) => {
+              // Try to split by tab first, then by comma if no tab
+              const parts = line.includes('\t') ? line.split('\t') : line.split(',');
+              
+              if (parts.length < 2) {
+                return { error: `Line ${idx + 1}: Could not parse question and answer` };
+              }
+              
+              return {
+                question: parts[0].trim(),
+                answer: parts[1].trim(),
+                // Optional fields if provided in subsequent columns
+                subjectFromFile: parts[2]?.trim(),
+                examBoardFromFile: parts[3]?.trim(),
+                modelFromFile: parts[4]?.trim(),
+                tierFromFile: parts[5]?.trim(),
+                totalMarksFromFile: parts[6]?.trim()
+              };
+            }).filter(item => !item.error && item.question && item.answer);
+            
+            if (parsedItems.length === 0) {
+              toast.error("No valid items found in the text file. Format should be: Question[tab]Answer");
+              setBulkProcessing(false);
+              return;
+            }
+            
+            await processParseResults(parsedItems);
+          } catch (error) {
+            console.error("Text parsing error:", error);
+            toast.error(`Text parsing failed: ${error.message}`);
+            setBulkResults([{ itemIndex: -1, error: `Text parsing error: ${error.message}` }]);
+            setBulkProcessing(false);
+          }
+        };
+        reader.onerror = (error) => {
+          console.error("File reading error:", error);
+          toast.error(`File reading failed: ${error.message}`);
+          setBulkProcessing(false);
+        };
+        reader.readAsText(bulkFile);
+      } else {
+        toast.error(`Unsupported file format: .${fileType}. Please use CSV, JSON, or TXT files.`);
+        setBulkProcessing(false);
+      }
+    } catch (error) {
       console.error("Bulk processing setup error:", error);
       toast.error(`Bulk processing setup failed: ${error.message}`);
       setBulkResults(prev => [...prev, { itemIndex: -1, error: error.message }]);
       setBulkProcessing(false);
       setBulkProgress(prev => ({ ...prev, currentItem: null }));
     }
-    // Note: The `finally` block was removed from here as async operations within Papa.parse's complete callback handle setting bulkProcessing to false.
+    
+    // Common function to process parsed data regardless of source format
+    async function processParseResults(parsedItems) {
+      const validItems = parsedItems.map((item, idx) => ({
+        id: `item-${idx}`,
+        question: item.Question || item.question,
+        answer: item.Answer || item.answer,
+        subjectFromFile: item.Subject || item.subject || item.subjectFromFile,
+        examBoardFromFile: item.ExamBoard || item.examBoard || item.examBoardFromFile,
+        modelFromFile: item.Model || item.model || item.modelFromFile,
+        tierFromFile: item.Tier || item.tier || item.tierFromFile,
+        totalMarksFromFile: item.TotalMarks || item.totalMarks || item.totalMarksFromFile
+      })).filter(item => item.question && item.question.trim() !== '' && item.answer && item.answer.trim() !== '');
+
+      if (validItems.length === 0) {
+        toast.error("No valid items found in the file. Each item must have Question and Answer fields.");
+        setBulkProcessing(false);
+        return;
+      }
+
+      setBulkItems(validItems);
+      setBulkProgress(prev => ({ ...prev, total: validItems.length, processed: 0, currentItem: null }));
+
+      let results = [];
+      for (let i = 0; i < validItems.length; i++) {
+        const currentItem = validItems[i];
+        setBulkProgress(prev => ({ ...prev, currentItem: i + 1 }));
+
+        const itemPayload = {
+          question: currentItem.question,
+          answer: currentItem.answer,
+          subject: bulkSettingPreference === 'file' && currentItem.subjectFromFile ? currentItem.subjectFromFile : subject,
+          examBoard: bulkSettingPreference === 'file' && currentItem.examBoardFromFile ? currentItem.examBoardFromFile : examBoard,
+          model: bulkSettingPreference === 'file' && currentItem.modelFromFile && AI_MODELS.find(m => m.value === currentItem.modelFromFile) ? currentItem.modelFromFile : selectedModel,
+          tier: bulkSettingPreference === 'file' && currentItem.tierFromFile ? currentItem.tierFromFile : tier,
+          totalMarks: bulkSettingPreference === 'file' && currentItem.totalMarksFromFile ? currentItem.totalMarksFromFile : totalMarks,
+          userType: userType, // Global userType for now
+        };
+
+        const result = await processSingleBulkItem(itemPayload, i, validItems.length);
+        
+        results.push({
+          itemIndex: i,
+          question: currentItem.question,
+          answer: currentItem.answer,
+          feedback: result.feedback,
+          grade: result.grade,
+          modelName: result.modelName,
+          error: result.error
+        });
+        
+        setBulkResults([...results]); // Update results incrementally
+        setBulkProgress(prev => ({ ...prev, processed: prev.processed + 1 }));
+      }
+      
+      toast.success("Bulk processing complete!");
+      setBulkProcessing(false);
+      setBulkProgress(prev => ({ ...prev, currentItem: null }));
+    }
   };
 
   return (
@@ -2135,7 +2218,7 @@ Papa.parse(bulkFile, {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
+      
       <div className="container mx-auto px-4 py-6 max-w-6xl">
         {showGuide && <QuickGuide onClose={() => setShowGuide(false)} />}
         
@@ -2306,7 +2389,7 @@ Papa.parse(bulkFile, {
                   {/* Subject selector */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                       <Label htmlFor="subject" className="text-sm">Subject</Label>
+                    <Label htmlFor="subject" className="text-sm">Subject</Label>
                         <Button variant="link" size="sm" className="text-xs h-7 px-1 text-muted-foreground hover:text-primary" onClick={handleShowSubjectGuidance} tabIndex={-1}>
                             <HelpCircle className="mr-1 h-3 w-3" /> View Guidance
                         </Button>
@@ -2374,7 +2457,7 @@ Papa.parse(bulkFile, {
                   {/* Exam board selector */}
                   <div className="space-y-2">
                      <div className="flex items-center justify-between">
-                        <Label htmlFor="examBoard" className="text-sm">Exam Board</Label>
+                    <Label htmlFor="examBoard" className="text-sm">Exam Board</Label>
                         {/* Can add another View Guidance button here if desired, or rely on the one by Subject */}
                     </div>
                     <Select
@@ -2735,22 +2818,28 @@ Papa.parse(bulkFile, {
                   <CardHeader>
                     <CardTitle>Bulk Assessment Processing</CardTitle>
                     <CardDescription>
-                      Upload a CSV file with 'Question' and 'Answer' columns to mark multiple items.
-                      Optionally, include 'Subject', 'ExamBoard', 'Model', 'Tier', 'TotalMarks' for per-item settings.
+                      Upload a file containing multiple questions and answers to mark in bulk.
+                      Supported formats: CSV, JSON, and TXT files.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="bulk-file-upload">Upload CSV File</Label>
+                      <Label htmlFor="bulk-file-upload">Upload File</Label>
                       <Input 
                         id="bulk-file-upload" 
                         type="file" 
-                        accept=".csv,text/csv" 
+                        accept=".csv,.json,.txt" 
                         onChange={handleBulkFileChange} 
                         ref={bulkFileUploadRef} 
                         disabled={bulkProcessing}
                       />
                       {bulkFile && <p className="text-sm text-muted-foreground">Selected file: {bulkFile.name}</p>}
+                      <p className="text-xs text-muted-foreground">
+                        <strong>Format requirements:</strong><br />
+                        - CSV: Include 'Question' and 'Answer' columns<br />
+                        - JSON: Array of objects with 'question' and 'answer' properties<br />
+                        - TXT: One item per line with question and answer separated by tab or comma
+                      </p>
                     </div>
 
                     <div className="space-y-2">
