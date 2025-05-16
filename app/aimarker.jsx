@@ -84,10 +84,10 @@ const USER_TYPES = [
 ];
 
 const AI_MODELS = [
-  { value: "google/gemini-2.5-pro-exp-03-25", label: "Premium (Gemini 2.5 Pro)", description: "Best quality, limited to 1 request per minute" },
-  { value: "microsoft/mai-ds-r1:free", label: "Thinking Model (takes longer)", description: "More thorough reasoning process" },
-  { value: "deepseek/deepseek-chat-v3-0324:free", label: "Good All-Rounder", description: "Balanced speed and quality" },
-  { value: "google/gemini-2.0-flash-exp:free", label: "Fast Response", description: "Quick responses, suitable for shorter answers" },
+  { value: "google/gemini-2.5-pro-exp-03-25", label: "Gemini 2.5 Pro", description: "Best quality, limited to 1 request per minute" },
+  { value: "microsoft/mai-ds-r1:free", label: "R1 (thinking model)", description: "More thorough reasoning process" },
+  { value: "deepseek/deepseek-chat-v3-0324:free", label: "V3 (balanced model)", description: "Balanced speed and quality" },
+  { value: "google/gemini-2.0-flash-exp:free", label: "Fast Response (lower quality)", description: "Quick responses, suitable for shorter answers" },
 ];
 
 // Add fallback models for when primary models are rate limited
@@ -710,6 +710,69 @@ const EnhancedFeedback = ({ feedback, grade, modelName, achievedMarks, totalMark
   );
 };
 
+// New FeedbackDisplay component to organize the tab content
+const FeedbackDisplay = ({ 
+  loading, 
+  feedback, 
+  grade, 
+  selectedModel, 
+  modelThinking, 
+  achievedMarks, 
+  totalMarks, 
+  processingProgress,
+  setActiveTab 
+}) => {
+  // Get the model name for display
+  const modelName = AI_MODELS.find(m => m.value === selectedModel)?.label || 'AI';
+  
+  return (
+    <div className="relative">
+      {/* Main loading indicator */}
+      <ProgressIndicator loading={loading} progress={processingProgress} />
+      
+      {/* Thinking Box for specific models */}
+      {(loading || modelThinking) && selectedModel === "microsoft/mai-ds-r1:free" && (
+        <ModelThinkingBox thinking={modelThinking} loading={loading} />
+      )}
+      
+      {/* Feedback content when available */}
+      {feedback ? (
+        <EnhancedFeedback 
+          feedback={feedback} 
+          grade={grade} 
+          modelName={modelName}
+          achievedMarks={achievedMarks}
+          totalMarks={totalMarks}
+        />
+      ) : loading ? (
+        <div className="min-h-[300px] flex flex-col items-center justify-center text-center p-6 border border-dashed border-border rounded-lg bg-muted/20">
+          <h3 className="text-lg font-medium">Generating Feedback...</h3>
+          <p className="text-muted-foreground max-w-md mt-2">
+            Please wait while the AI analyzes your answer. This may take up to 90 seconds depending on the model selected.
+          </p>
+        </div>
+      ) : (
+        <div className="min-h-[300px] flex flex-col items-center justify-center text-center p-6 border border-dashed border-border rounded-lg bg-muted/20">
+          <div className="mb-4 p-3 rounded-full bg-muted">
+            <HelpCircle className="h-6 w-6 text-muted-foreground" />
+          </div>
+          <h3 className="text-lg font-medium">No Feedback Yet</h3>
+          <p className="text-muted-foreground max-w-md mb-6">
+            Enter your question and answer in the Answer tab, then click "Mark Answer" to receive AI feedback and a GCSE grade.
+          </p>
+          <Button
+            variant="outline"
+            onClick={() => setActiveTab("answer")}
+            className="text-sm"
+          >
+            Go to Answer Tab
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // Add a hook to detect viewport size
 const useViewport = () => {
   const [viewportSize, setViewportSize] = useState({
@@ -1056,752 +1119,6 @@ ${getSubjectGuidance(subject, examBoard)}`;
 - Consider what evidence supports each point you make in your feedback
 - Show your reasoning for the grade assigned by comparing to GCSE standards
 - Mark your thinking process with [THINKING] and your final feedback with [FEEDBACK]`;
-      }
-
-      return basePrompt;
-    };
-
-    const systemPrompt = buildSystemPrompt();
-
-    // Set loading state
-    setSuccess({
-      message: "Processing request..."
-    });
-    setLastRequestTime(now);
-    // Update the last request time for the specific model
-    setModelLastRequestTimes(prev => ({
-      ...prev,
-      [selectedModel]: now
-    }));
-    
-    setDailyRequests((prev) => {
-      const newCount = prev + 1;
-      localStorage.setItem('dailyRequests', newCount.toString());
-      return newCount;
-    });
-
-    let answerToMark = answer;
-
-    // Process image if uploaded
-    if (image) {
-      // Inline image processing function
-      const processImage = async (imageFile) => {
-        setImageLoading(true);
-        if (!imageFile) return null;
-        
-        try {
-          const reader = new FileReader();
-          const imageBase64 = await new Promise((resolve) => {
-            reader.onload = () => resolve(reader.result.split(',')[1]);
-            reader.readAsDataURL(imageFile);
-          });
-          
-          setSuccess({
-            message: "Processing your image... Please wait."
-          });
-          
-          // Always use the image-specific model for image processing
-          const imageProcessingModel = TASK_SPECIFIC_MODELS.image_processing;
-          
-          // Use our backend API directly instead of OpenAI client
-          const response = await fetch(`${API_BASE_URL}/api/image/extract`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            mode: 'cors',
-            body: JSON.stringify({ 
-              image_base64: imageBase64,
-              model: imageProcessingModel // Specify the model for image processing
-            })
-          });
-          
-          if (!response.ok) {
-            throw new Error(`Image processing failed: ${response.statusText}`);
-          }
-          
-          const data = await response.json();
-          const extractedText = data.text;
-          
-          // Auto-fill the answer field with the extracted text
-          setAnswer(prev => prev ? `${prev}\n${extractedText}` : extractedText);
-          
-          setSuccess({
-            message: "Image processed successfully! Text has been added to your answer."
-          });
-          
-          setTimeout(() => {
-            setSuccess(null);
-          }, 3000);
-          
-          return extractedText;
-        } catch (error) {
-          console.error("Error processing image:", error);
-          setError({
-            type: "image_processing",
-            message: "Failed to process the image. Please try again or enter text manually."
-          });
-          return null;
-        } finally {
-          setImageLoading(false);
-          setImage(null); // Clear the image after processing
-        }
-      };
-      
-      const imageText = await processImage(image);
-      if (imageText) {
-        answerToMark = answer ? `${answer}\n${imageText}` : imageText;
-        setAnswer(answerToMark); // UI sync
-      }
-    }
-
-    // Build prompt for AI
-    let content = `Please mark this ${examBoard.toUpperCase()} ${subject} GCSE response:\n\nQuestion: ${question}\n\nAnswer: ${answerToMark}`;
-    if (markScheme) content += `\n\nMark Scheme: ${markScheme}`;
-    if (totalMarks) content += `\n\nMarks Available: ${totalMarks}`;
-    if (textExtract) content += `\n\nText Extract: ${textExtract}`;
-    if (relevantMaterial) content += `\n\nRelevant Material: ${relevantMaterial}`;
-    
-    // Add tier information for tiered subjects
-    const currentSubject = allSubjects.find(s => s.value === subject);
-    if (currentSubject?.hasTiers) {
-      content += `\n\nTier: ${tier.toUpperCase()}`;
-    }
-    
-    // Add specific question type information
-    if (subject === "english" && examBoard === "aqa" && questionType !== "general") {
-      content += `\n\nQuestion Type: AQA English ${questionType === "paper1q3" ? "Paper 1, Question 3 (Structure Analysis)" : 
-      questionType === "paper1q4" ? "Paper 1, Question 4 (Evaluation)" :
-      questionType === "paper2q2" ? "Paper 2, Question 2 (Summary)" : 
-      "Paper 2, Question 5 (Writing)"}`;
-    }
-     
-    // Get AI feedback
-    let completion;
-    try {
-      // Create an AbortController to handle timeouts
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 150000); // Increased to 150 second timeout for slower models
-      
-      setSuccess({
-        message: "Analyzing answer... (this may take up to 90 seconds)"
-      });
-
-      let retryCount = 0;
-      const maxRetries = 2; // Try up to 3 times total (initial + 2 retries)
-      let requestError = null;
-
-      while (retryCount <= maxRetries) {
-        try {
-          if (selectedModel === "microsoft/mai-ds-r1:free" || selectedModel === "deepseek/deepseek-r1:free") {
-            // Streaming request implementation
-            const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              mode: 'cors',
-              body: JSON.stringify({
-                model: selectedModel,
-                messages: [
-                  {
-                    role: "system",
-                    content: systemPrompt + "\nIMPORTANT: Please show your reasoning step-by-step. Prefix your thinking process with '[THINKING]' and your final answer with '[FEEDBACK]'."
-                  },
-                  {
-                    role: "user",
-                    content: content
-                  }
-                ],
-                temperature: 0.7,
-                max_tokens: 4000,
-                top_p: 1,
-                frequency_penalty: 0,
-                presence_penalty: 0,
-                stream: true
-              }),
-              signal: controller.signal
-            });
-            
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-              const errorData = await response.json().catch(() => ({}));
-              throw new Error(
-                errorData.message || 
-                `API request failed: ${response.status} ${response.statusText}`
-              );
-            }
-
-            // Process the streaming response
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder("utf-8");
-            let fullResponse = "";
-            let thinking = "";
-            let finalFeedback = "";
-            let inThinkingMode = false;
-            let inFeedbackMode = false;
-            
-            try {
-              setSuccess({
-                message: "Receiving response stream..."
-              });
-              
-              let lastProgressUpdate = Date.now();
-              
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                
-                const chunk = decoder.decode(value);
-                const lines = chunk.split('\n\n');
-                
-                // Update progress message periodically to show the system is still working
-                const now = Date.now();
-                if (now - lastProgressUpdate > 3000) {
-                  setSuccess({
-                    message: `Processing response: ${thinking.length > 0 ? Math.min(99, Math.floor(thinking.length / 50)) : 0}%`
-                  });
-                  lastProgressUpdate = now;
-                }
-                
-                for (const line of lines) {
-                  if (line.startsWith('data: ')) {
-                    const data = line.substring(6);
-                    if (data === '[DONE]') continue;
-                    
-                    try {
-                      const parsedData = JSON.parse(data);
-                      const content = parsedData.choices[0]?.delta?.content || "";
-                      fullResponse += content;
-                      
-                      // Check for thinking mode markers
-                      if (content.includes('[THINKING]')) {
-                        inThinkingMode = true;
-                        inFeedbackMode = false;
-                      } else if (content.includes('[FEEDBACK]')) {
-                        inThinkingMode = false;
-                        inFeedbackMode = true;
-                      }
-                      
-                      // Process content based on current mode
-                      if (inThinkingMode) {
-                        // Remove the thinking marker from the first part
-                        const cleanedContent = content.replace('[THINKING]', '');
-                        thinking += cleanedContent;
-                        setModelThinking(thinking);
-                      } else if (inFeedbackMode) {
-                        // Remove the feedback marker from the first part
-                        const cleanedContent = content.replace('[FEEDBACK]', '');
-                        finalFeedback += cleanedContent;
-                      } else {
-                        // If no markers yet, add to thinking until we figure out which mode we're in
-                        thinking += content;
-                        setModelThinking(thinking);
-                      }
-                    } catch (e) {
-                      console.error('Error parsing stream data:', e);
-                      // Continue processing even if there's an error with a particular chunk
-                    }
-                  }
-                }
-              }
-              
-              // If we never saw a feedback marker, use the full response
-              if (!inFeedbackMode && fullResponse) {
-                // Try to find the feedback section automatically
-                const feedbackIndex = fullResponse.indexOf('[FEEDBACK]');
-                if (feedbackIndex >= 0) {
-                  finalFeedback = fullResponse.substring(feedbackIndex + 10); // +10 to skip [FEEDBACK]
-                } else {
-                  finalFeedback = fullResponse;
-                }
-              }
-              
-              setFeedback(finalFeedback.trim());
-              
-              const gradeMatch = finalFeedback.match(/\[GRADE:(\d)\]/);
-              if (gradeMatch && gradeMatch[1]) {
-                setGrade(gradeMatch[1]);
-              }
-              
-              // Extract marks if total marks were provided
-              if (totalMarks) {
-                const marksMatch = finalFeedback.match(/\[MARKS:(\d+)\/(\d+)\]/);
-                if (marksMatch && marksMatch[1]) {
-                  setAchievedMarks(marksMatch[1]);
-                }
-              }
-            } catch (error) {
-              console.error("Streaming error:", error);
-              
-              // Determine what kind of error occurred
-              let errorMessage = "Error processing response stream.";
-              if (error.name === 'AbortError') {
-                errorMessage = "Stream timed out. The model is taking too long to respond.";
-              } else if (error.name === 'SyntaxError') {
-                errorMessage = "Invalid data received from server. The model might not support streaming.";
-              } else if (error.message.includes('network')) {
-                errorMessage = "Network error during streaming. Please check your connection.";
-              }
-              
-              // If we have partial results, still show them
-              if (finalFeedback || fullResponse) {
-                setFeedback(finalFeedback || fullResponse || "Partial feedback received due to streaming error.");
-                setError({ 
-                  type: "streaming", 
-                  message: `${errorMessage} Showing partial results.` 
-                });
-              } else {
-                setError({ 
-                  type: "streaming", 
-                  message: errorMessage + " Please try again or select a different model."
-                });
-              }
-            }
-            
-            // Handle successful response and break the retry loop
-            break;
-          } else {
-            // Regular non-streaming request with enhanced timeout handling
-            const timeoutPromise = new Promise((_, reject) => {
-              setTimeout(() => reject(new Error('Request timeout - server taking too long to respond')), 120000);
-            });
-            
-            const fetchPromise = fetch(`${API_BASE_URL}/api/chat/completions`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              mode: 'cors',
-              body: JSON.stringify({
-                model: selectedModel,
-                messages: [
-                  {
-                    role: "system",
-                    content: systemPrompt
-                  },
-                  {
-                    role: "user",
-                    content: content
-                  }
-                ],
-                temperature: 0.7,
-                max_tokens: 4000,
-                top_p: 1,
-                frequency_penalty: 0,
-                presence_penalty: 0,
-                stream: false
-              }),
-              signal: controller.signal
-            });
-            
-            // Race between the fetch and a timeout
-            const response = await Promise.race([fetchPromise, timeoutPromise]);
-            
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-              const errorData = await response.json().catch(() => ({}));
-              throw new Error(
-                errorData.message || 
-                `API request failed: ${response.status} ${response.statusText}`
-              );
-            }
-
-            completion = await response.json();
-            
-            if (completion.choices && completion.choices[0].message.content) {
-              const content = completion.choices[0].message.content;
-              setFeedback(content);
-              
-              const gradeMatch = content.match(/\[GRADE:(\d)\]/);
-              if (gradeMatch && gradeMatch[1]) {
-                setGrade(gradeMatch[1]);
-              }
-              
-              // Extract marks if total marks were provided
-              if (totalMarks) {
-                const marksMatch = content.match(/\[MARKS:(\d+)\/(\d+)\]/);
-                if (marksMatch && marksMatch[1]) {
-                  setAchievedMarks(marksMatch[1]);
-                }
-              }
-              
-              // Successfully received response, no need to retry
-              break;
-            } else {
-              throw new Error("Received empty or invalid response from the API");
-            }
-          }
-        } catch (error) {
-          requestError = error;
-          
-          // Check if it's a retriable error
-          if (retryCount === maxRetries || 
-              (error.name !== 'AbortError' && 
-               !error.message.includes('NetworkError') && 
-               !error.message.includes('Failed to fetch') &&
-               !error.message.includes('timeout') && 
-               !error.message.includes('500') && 
-               !error.message.includes('503'))) {
-            break; // Don't retry for non-retriable errors or if we've hit max retries
-          }
-          
-          retryCount++;
-          
-          // Add a progress message with attempt number
-          setSuccess({
-            message: `Request failed, retrying (attempt ${retryCount} of ${maxRetries})...`
-          });
-          
-          // Add an increasing delay between retries
-          const retryDelay = 3000 * retryCount;
-          await new Promise(resolve => setTimeout(resolve, retryDelay));
-        }
-      }
-      
-      // If all retries failed, throw the last error
-      if (requestError && retryCount > maxRetries) {
-        throw requestError;
-      }
-    } catch (error) {
-      console.error("Error submitting for marking:", error);
-      
-      let errorMessage = error.message;
-      
-      // Check if it's an abort error (timeout)
-      if (error.name === 'AbortError') {
-        errorMessage = 'Request timed out. The server took too long to respond. Please try again with a faster model.';
-      }
-      // Check for network errors
-      else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-        errorMessage = 'Network error. Please check your internet connection and try again. The server may take up to 50 seconds to wake up after inactivity.';
-      }
-      // Check for server errors
-      else if (error.message.includes('500') || error.message.includes('503')) {
-        errorMessage = 'Server error. The backend service might be unavailable or still starting up. If this persists, please wait a minute and try again.';
-      }
-      // Check for model errors
-      else if (error.message.includes('not a valid model ID')) {
-        errorMessage = 'The selected model is not available on the backend. Please try a different model.';
-      }
-      
-      setError({
-        type: error.name === 'AbortError' ? 'timeout' : 'api_error',
-        message: `Failed to get feedback: ${errorMessage}`
-      });
-      
-      setLoading(false);
-      return;
-    }
-    
-    // Automatically switch to feedback tab
-    setActiveTab("feedback");
-    setLoading(false);
-    
-    setSuccess({
-      message: "Answer marked successfully!"
-    });
-  }, [
-    answer, 
-    examBoard, 
-    checkBackendStatus,
-    lastRequestDate, 
-    lastRequestTime, 
-    markScheme, 
-    question, 
-    selectedModel, 
-    subject, 
-    textExtract, 
-    relevantMaterial, 
-    totalMarks, 
-    userType,
-    questionType,
-    image,
-    tier
-  ]);
-
-  // Effect for analyzing answer content - fixed to properly use the hook
-  useEffect(() => {
-    if (!answer || answer.length < 20 || hasManuallySetSubject.current) return;
-    
-    // Call the debounced function with all required parameters
-    debouncedClassifySubject(
-      answer, 
-      subject, 
-      hasManuallySetSubject, 
-      allSubjects, 
-      setSubject, 
-      setDetectedSubject, 
-      setSuccess
-    );
-    
-    // Cleanup function
-    return () => {
-      // This pattern ensures the debounce function is properly canceled
-      if (typeof debouncedClassifySubject.cancel === 'function') {
-        debouncedClassifySubject.cancel();
-      }
-    };
-  }, [answer, debouncedClassifySubject, subject, allSubjects]);
-
-  // ======== EFFECTS & INITIALIZATION ========
-  // Initialize OpenAI client
-  useEffect(() => {
-    // No need to use an API key anymore since the backend handles that
-    try {
-      // Initialize with empty key since we're using our backend
-      const client = new OpenAI({
-        apiKey: 'sk-not-needed',
-        baseURL: `${API_BASE_URL}/api`,
-        dangerouslyAllowBrowser: true
-      });
-      
-      setOpenai(client);
-    } catch (error) {
-      console.error('OpenAI client initialization failed:', error);
-      setError({
-        type: 'initialization',
-        message: 'AI service initialization failed. Please refresh the page.'
-      });
-    }
-  }, []);
-  
-  // Load saved form data from session storage
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const savedForm = sessionStorage.getItem('aiMarkerFormData');
-        if (savedForm) {
-          const formData = JSON.parse(savedForm);
-          setQuestion(formData.question || "");
-          setAnswer(formData.answer || "");
-          setSubject(formData.subject || "english");
-          setExamBoard(formData.examBoard || "aqa");
-          setUserType(formData.userType || "student");
-          setMarkScheme(formData.markScheme || "");
-          setTotalMarks(formData.totalMarks || "");
-          setTextExtract(formData.textExtract || "");
-          setRelevantMaterial(formData.relevantMaterial || "");
-          setQuestionType(formData.questionType || "general");
-          // Don't restore selected model to prevent rate limit issues
-          
-          // Check if we have saved subjects
-          if (formData.customSubjects && formData.customSubjects.length > 0) {
-            setCustomSubjects(formData.customSubjects);
-            setAllSubjects([...SUBJECTS, ...formData.customSubjects]);
-          }
-          
-          // Only show the success message if we actually restored data that matters
-          if (formData.question || formData.answer) {
-            setSuccess({
-              message: "Previous work restored from your last session"
-            });
-            
-            // Auto-hide message after 3 seconds
-            const timer = setTimeout(() => {
-              setSuccess(null);
-            }, 3000);
-            
-            return () => clearTimeout(timer);
-          }
-        }
-      } catch (error) {
-        console.error("Error loading saved form data:", error);
-      }
-    }
-  }, []);
-  
-  // Save form data to session storage when it changes
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const formData = {
-        question,
-        answer,
-        subject,
-        examBoard,
-        userType,
-        markScheme,
-        totalMarks,
-        textExtract,
-        relevantMaterial,
-        customSubjects,
-        questionType
-      };
-      
-      try {
-        sessionStorage.setItem('aiMarkerFormData', JSON.stringify(formData));
-      } catch (error) {
-        console.error("Error saving form data:", error);
-      }
-    }
-  }, [question, answer, subject, examBoard, userType, markScheme, totalMarks, textExtract, relevantMaterial, customSubjects, questionType]);
-
-  // Reset form - moved up to fix ReferenceError
-  const resetForm = useCallback(() => {
-    setQuestion("");
-    setAnswer("");
-    setFeedback("");
-    setGrade("");
-    setError(null);
-    setSuccess(null);
-    setImage(null);
-    setMarkScheme("");
-    setActiveTab("answer");
-    setTotalMarks("");
-    setTextExtract("");
-    setRelevantMaterial("");
-  }, []);
-
-  // Add keyboard shortcuts for common actions
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      // Ctrl/Cmd + Enter to submit
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        if (!loading && answer) {
-          handleSubmitForMarking();
-          setShortcutFeedback("Submitted for marking");
-        }
-        e.preventDefault();
-      }
-      
-      // Ctrl/Cmd + Shift + R to reset form
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'r') {
-        resetForm();
-        setShortcutFeedback("Form reset");
-        e.preventDefault();
-      }
-      
-      // Ctrl/Cmd + . to toggle advanced options
-      if ((e.ctrlKey || e.metaKey) && e.key === '.') {
-        setShowAdvancedOptions(prev => !prev);
-        setShortcutFeedback("Toggled advanced options");
-        e.preventDefault();
-      }
-      
-      // Ctrl/Cmd + / to toggle help guide
-      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
-        setShowHelp(prev => !prev);
-        setShortcutFeedback("Toggled help guide");
-        e.preventDefault();
-      }
-      
-      // Keyboard shortcut for keyboard shortcuts dialog - Ctrl/Cmd + K
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        setShowKeyboardShortcuts(prev => !prev);
-        setShortcutFeedback("Toggled keyboard shortcuts");
-        e.preventDefault();
-      }
-      
-      // Clear shortcut feedback after 2 seconds
-      setTimeout(() => {
-        setShortcutFeedback(null);
-      }, 2000);
-    };
-    
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [loading, answer, handleSubmitForMarking, resetForm]);
-
-  // Focus custom subject input when adding a new subject
-  useEffect(() => {
-    if (isAddingSubject && customSubjectInputRef.current) {
-      customSubjectInputRef.current.focus();
-    }
-  }, [isAddingSubject]);
-
-  // Add missing image handling functions
-  const handleImageChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      setImage(e.target.files[0]);
-    }
-  };
-
-  const handleProcessImage = async () => {
-    if (!image) return;
-    
-    setImageLoading(true);
-    
-    try {
-      const reader = new FileReader();
-      const imageBase64 = await new Promise((resolve) => {
-        reader.onload = () => resolve(reader.result.split(',')[1]);
-        reader.readAsDataURL(image);
-      });
-      
-      setSuccess({
-        message: "Processing your image... Please wait."
-      });
-      
-      // Always use the image-specific model for image processing
-      const imageProcessingModel = TASK_SPECIFIC_MODELS.image_processing;
-      
-      // Use our backend API directly instead of OpenAI client
-      const response = await fetch(`${API_BASE_URL}/api/image/extract`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        mode: 'cors',
-        body: JSON.stringify({ 
-          image_base64: imageBase64,
-          model: imageProcessingModel // Specify the model for image processing
-        })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Image processing failed: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      const extractedText = data.text;
-      
-      // Auto-fill the answer field with the extracted text
-      setAnswer(prev => prev ? `${prev}\n${extractedText}` : extractedText);
-      
-      setSuccess({
-        message: "Image processed successfully! Text has been added to your answer."
-      });
-      
-      setTimeout(() => {
-        setSuccess(null);
-      }, 3000);
-    } catch (error) {
-      console.error("Error processing image:", error);
-      setError({
-        type: "image_processing",
-        message: "Failed to process the image. Please try again or enter text manually."
-      });
-    } finally {
-      setImageLoading(false);
-      setImage(null); // Clear the image after processing
-    }
-  };
-
-  // Add missing function to handle custom subject addition
-  const addCustomSubject = () => {
-    if (!customSubject.trim()) return;
-    
-    const newSubject = {
-      value: customSubject.toLowerCase().replace(/\s+/g, ''),
-      label: customSubject.trim()
-    };
-    
-    const updatedCustomSubjects = [...customSubjects, newSubject];
-    setCustomSubjects(updatedCustomSubjects);
-    setAllSubjects([...SUBJECTS, ...updatedCustomSubjects]);
-    setSubject(newSubject.value);
-    setIsAddingSubject(false);
-    setCustomSubject("");
-    
-    setSuccess({
-      message: `Added custom subject: ${newSubject.label}`
-    });
-    setTimeout(() => {
-      setSuccess(null);
-    }, 3000);
-  };
 
   // Test function for debugging mark scheme generation
   const testMarkSchemeGeneration = async () => {
@@ -2807,51 +2124,17 @@ IMPORTANT: Provide a complete and comprehensive mark scheme. Do not truncate you
               </TabsContent>
               
               <TabsContent value="feedback" className="pt-4 relative">
-                <ProgressIndicator loading={loading} progress={processingProgress} />
-                
-                {/* Thinking Box */}
-                {(loading || modelThinking) && selectedModel === "microsoft/mai-ds-r1:free" && (
-                  <ModelThinkingBox thinking={modelThinking} loading={loading} />
-                )}
-                
-                {/* Feedback Section */}
-                {feedback ? (
-                  <EnhancedFeedback 
-                    feedback={feedback} 
-                    grade={grade} 
-                    modelName={AI_MODELS.find(m => m.value === selectedModel)?.label || 'AI'}
-                    achievedMarks={achievedMarks}
-                    totalMarks={totalMarks}
-                  />
-                ) : (
-                  <div className="min-h-[300px] flex flex-col items-center justify-center text-center p-6 border border-dashed border-border rounded-lg bg-muted/20">
-                    <div className="mb-4 p-3 rounded-full bg-muted">
-                      {loading ? (
-                        <Loader2 className="h-6 w-6 text-primary animate-spin" />
-                      ) : (
-                        <HelpCircle className="h-6 w-6 text-muted-foreground" />
-                      )}
-                    </div>
-                    <h3 className="text-lg font-medium mb-2">
-                      {loading ? "Generating Feedback..." : "No Feedback Yet"}
-                    </h3>
-                    <p className="text-muted-foreground max-w-md mb-6">
-                      {loading 
-                        ? "Please wait while the AI analyzes your answer. This may take up to 90 seconds depending on the model selected."
-                        : "Enter your question and answer in the Answer tab, then click \"Mark Answer\" to receive AI feedback and a GCSE grade."}
-                    </p>
-                    
-                    {!loading && (
-                      <Button
-                        variant="outline"
-                        onClick={() => setActiveTab("answer")}
-                        className="text-sm"
-                      >
-                        Go to Answer Tab
-                      </Button>
-                    )}
-                  </div>
-                )}
+                <FeedbackDisplay 
+                  loading={loading} 
+                  feedback={feedback} 
+                  grade={grade} 
+                  selectedModel={selectedModel} 
+                  modelThinking={modelThinking} 
+                  achievedMarks={achievedMarks} 
+                  totalMarks={totalMarks} 
+                  processingProgress={processingProgress}
+                  setActiveTab={setActiveTab}
+                />
               </TabsContent>
             </Tabs>
           </div>

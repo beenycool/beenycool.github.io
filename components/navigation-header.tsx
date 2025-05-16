@@ -36,6 +36,11 @@ export function NavigationHeader() {
   // If we're already on the debug page, always show the home link
   const isDebugPage = pathname === '/debug';
   
+  // Only render the nav if debug link should be shown or we're on the debug page
+  if (!showDebugLink && !isDebugPage) {
+    return null;
+  }
+  
   return (
     <nav className="fixed top-2 right-2 z-50 bg-background/80 backdrop-blur-sm rounded-md shadow-sm px-2 py-1 border border-border">
       <ul className="flex items-center gap-2 text-xs">
@@ -54,11 +59,6 @@ export function NavigationHeader() {
             >
               Debug
             </Link>
-          </li>
-        )}
-        {!showDebugLink && !isDebugPage && (
-          <li className="text-muted-foreground/50 text-[10px]">
-            Press Ctrl+Shift+D for debug
           </li>
         )}
       </ul>
