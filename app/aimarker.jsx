@@ -44,6 +44,7 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog"; // ADDED Dialog for OCR Preview
+import Papa from 'papaparse'; // Import PapaParse
 
 // API URL for our backend
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 
@@ -344,11 +345,9 @@ const BackendStatusChecker = ({ onStatusChange }) => {
 };
 
 // Add a better success alert component with animations
-const EnhancedAlert = ({ success, error }) => {
-  // If there's no alert to show, return null
+const EnhancedAlert = ({ success, error, onRetryAction }) => { // Added onRetryAction prop
   if (!success && !error) return null;
 
-  // For success messages
   if (success) {
     return (
       <Alert className="mb-4 bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-900">
@@ -363,8 +362,14 @@ const EnhancedAlert = ({ success, error }) => {
 
   // For error messages
   const isApiError = error.type === 'api_error' || error.message?.includes('API') || error.message?.includes('backend');
-  const isRateLimited = error.message?.includes('rate limit') || error.message?.toLowerCase().includes('too many requests');
+  const isRateLimited = error.type?.startsWith('rate_limit') || error.message?.includes('rate limit') || error.message?.toLowerCase().includes('too many requests');
   
+  let title = 'Error';
+  if (isApiError) title = 'API Error';
+  else if (error.type === 'rate_limit_with_fallback') title = 'Rate Limited (Fallback Available)';
+  else if (error.type === 'rate_limit_wait') title = 'Rate Limited (Please Wait)';
+  else if (isRateLimited) title = 'Rate Limited';
+
   return (
     <Alert className={`mb-4 ${
       isRateLimited 
@@ -381,7 +386,7 @@ const EnhancedAlert = ({ success, error }) => {
           : 'text-red-800 dark:text-red-300'
         } ml-2 flex items-center gap-2`}
       >
-        {isApiError ? 'API Error' : isRateLimited ? 'Rate Limited' : 'Error'}
+        {title}
         {error.code && <span className="text-xs opacity-75">({error.code})</span>}
       </AlertTitle>
       <AlertDescription className={`${
@@ -398,8 +403,34 @@ const EnhancedAlert = ({ success, error }) => {
           </span>
         )}
         
-        {error.retry && (
-          <div className="flex items-center gap-2 mt-1">
+        {/* MODIFIED Retry options based on error type */}
+        <div className="flex flex-wrap items-center gap-2 mt-2">
+          {error.type === 'rate_limit_with_fallback' && error.fallbackModel && error.onRetryFallback && (
+            <Button 
+              size="sm" 
+              variant="outline" 
+              className="text-xs h-7 border-amber-200 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900 text-amber-800 dark:text-amber-300"
+              onClick={() => error.onRetryFallback(error.fallbackModel)}
+            >
+              <RefreshCw className="h-3 w-3 mr-1" /> Retry with {AI_MODELS.find(m => m.value === error.fallbackModel)?.label || error.fallbackModel}
+            </Button>
+          )}
+
+          {error.type === 'rate_limit_wait' && error.waitTime && error.onRetry && (
+             <Button 
+              size="sm" 
+              variant="outline" 
+              className="text-xs h-7 border-amber-200 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900 text-amber-800 dark:text-amber-300"
+              onClick={() => {
+                toast.info(`Retrying in ${error.waitTime} seconds...`);
+                setTimeout(() => error.onRetry(), error.waitTime * 1000);
+              }}
+            >
+              <RefreshCw className="h-3 w-3 mr-1" /> Retry in {error.waitTime}s
+            </Button>
+          )}
+
+          {(error.type === 'api_error' || error.type === 'network' || error.type === 'timeout') && error.onRetry && (
             <Button 
               size="sm" 
               variant="outline" 
@@ -408,18 +439,23 @@ const EnhancedAlert = ({ success, error }) => {
                   ? 'border-amber-200 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900 text-amber-800 dark:text-amber-300' 
                   : 'border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900 text-red-800 dark:text-red-300'
               }`}
-              onClick={error.retry === true ? () => window.location.reload() : error.retry}
+              onClick={error.onRetry === true ? () => window.location.reload() : error.onRetry}
             >
               <RefreshCw className="h-3 w-3 mr-1" /> Try Again
             </Button>
-            
-            {isApiError && (
-              <span className="text-xs opacity-75">
-                You may need to wait 30-60 seconds for the backend to start up
-              </span>
-            )}
-          </div>
-        )}
+          )}
+          
+          {isApiError && onRetryAction && typeof onRetryAction.checkBackendStatus === 'function' && (
+            <Button 
+              size="sm" 
+              variant="outline" 
+              className="text-xs h-7 border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900 text-blue-800 dark:text-blue-300"
+              onClick={() => onRetryAction.checkBackendStatus()}
+            >
+              <Zap className="h-3 w-3 mr-1" /> Check Server Status
+            </Button>
+          )}
+        </div>
       </AlertDescription>
     </Alert>
   );
@@ -981,6 +1017,17 @@ const AIMarker = () => {
   const [showSubjectGuidanceDialog, setShowSubjectGuidanceDialog] = useState(false);
   const [currentSubjectGuidance, setCurrentSubjectGuidance] = useState("");
 
+  const { checkBackendStatus: refreshBackendStatusHook } = useBackendStatus(API_BASE_URL); // Alias for clarity
+
+  // ADDED: State for Bulk Assessment
+  const [bulkFile, setBulkFile] = useState(null);
+  const [bulkItems, setBulkItems] = useState([]); // Array of {question, answer, subject?, examBoard?, ...}
+  const [bulkResults, setBulkResults] = useState([]); // Array of {itemIndex, feedback, grade, error?
+  const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [bulkSettingPreference, setBulkSettingPreference] = useState('global'); // 'global' or 'file'
+  const [bulkProgress, setBulkProgress] = useState({ processed: 0, total: 0, currentItem: null });
+  const bulkFileUploadRef = useRef(null);
+
   // Handle image upload
   const handleImageChange = (e) => {
     if (e.target.files && e.target.files[0]) {
@@ -1302,20 +1349,40 @@ const AIMarker = () => {
     const modelLastRequestTime = modelLastRequestTimes[selectedModel] || 0;
     const timeSinceLastModelRequest = now - modelLastRequestTime;
     
-    // Check if we're within the rate limit for this specific model
     if (timeSinceLastModelRequest < modelRateLimit) {
       setLoading(false);
       const waitTimeSeconds = Math.ceil((modelRateLimit - timeSinceLastModelRequest) / 1000);
-      setError({
-        type: "rate_limit",
-        message: `${AI_MODELS.find(m => m.value === selectedModel)?.label || selectedModel} is limited to 1 request per ${modelRateLimit/1000} seconds. Please wait ${waitTimeSeconds} more seconds or select a different model.`
-      });
+      const fallback = FALLBACK_MODELS[selectedModel];
+      if (fallback) {
+        setError({
+          type: "rate_limit_with_fallback",
+          message: `${AI_MODELS.find(m => m.value === selectedModel)?.label || selectedModel} is rate limited. You can try a fallback model or wait ${waitTimeSeconds}s.`,
+          fallbackModel: fallback,
+          originalModel: selectedModel,
+          onRetryFallback: (newModel) => { 
+            toast.info(`Switching to ${AI_MODELS.find(m => m.value === newModel)?.label || newModel} and retrying.`);
+            setSelectedModel(newModel); 
+            // Wrap handleSubmitForMarking in a timeout to allow state to update
+            setTimeout(() => handleSubmitForMarking(), 100); 
+          },
+          onRetry: () => handleSubmitForMarking(), // General retry still uses original model
+          waitTime: waitTimeSeconds
+        });
+      } else {
+        setError({
+          type: "rate_limit_wait",
+          message: `${AI_MODELS.find(m => m.value === selectedModel)?.label || selectedModel} is limited. Please wait ${waitTimeSeconds} more seconds.`,
+          waitTime: waitTimeSeconds,
+          onRetry: () => handleSubmitForMarking()
+        });
+      }
       return;
-    } else if (now - lastRequestTime < 5000) { // Global rate limit of 5 seconds between any requests
+    } else if (now - lastRequestTime < 5000) {
       setLoading(false);
       setError({
-        type: "rate_limit",
-        message: "Please wait at least 5 seconds between requests"
+        type: "rate_limit", // Generic rate limit, could be rate_limit_wait if we want a timed retry
+        message: "Please wait at least 5 seconds between requests.",
+        onRetry: () => handleSubmitForMarking()
       });
       return;
     }
@@ -1478,7 +1545,29 @@ ${getSubjectGuidance(subject, examBoard)}`;
           errorMessage = errorText || response.statusText;
         }
         
-        throw new Error(`Backend API error: ${errorMessage}`);
+        // MODIFIED Error for response not OK
+        const fallback = FALLBACK_MODELS[selectedModel];
+        if (response.status === 429 && fallback) { // Specifically handle 429 for fallback
+           setError({
+            type: "rate_limit_with_fallback",
+            message: `Model ${AI_MODELS.find(m => m.value === selectedModel)?.label || selectedModel} seems to be rate limited by the API. Try a fallback? Error: ${errorMessage}`,
+            fallbackModel: fallback,
+            originalModel: selectedModel,
+            onRetryFallback: (newModel) => { 
+              toast.info(`Switching to ${AI_MODELS.find(m => m.value === newModel)?.label || newModel} and retrying.`);
+              setSelectedModel(newModel); 
+              setTimeout(() => handleSubmitForMarking(), 100);
+            },
+            onRetry: () => handleSubmitForMarking()
+          });
+        } else {
+          setError({
+            type: "api_error",
+            message: `Backend API error: ${errorMessage}`,
+            onRetry: handleSubmitForMarking
+          });
+        }
+        return; // Ensure we don't proceed after setting error
       }
       
       const data = await response.json();
@@ -1551,28 +1640,35 @@ ${getSubjectGuidance(subject, examBoard)}`;
         setError({
           type: "timeout",
           message: "The request timed out. The server took too long to respond.",
-          retry: handleSubmitForMarking
+          onRetry: handleSubmitForMarking
         });
       } else if (error.message.includes("rate limit") || error.message.includes("429")) {
-        setError({
-          type: "rate_limit",
-          message: `Rate limit reached for ${selectedModel}. Please try again in a minute or select a different model.`,
-          retry: () => {
-            // Try with a fallback model
-            const fallbackModel = FALLBACK_MODELS[selectedModel];
-            if (fallbackModel) {
-              setSelectedModel(fallbackModel);
-              setTimeout(() => {
-                handleSubmitForMarking();
-              }, 1000);
-            }
-          }
-        });
+        const fallback = FALLBACK_MODELS[selectedModel];
+        if (fallback) {
+          setError({
+            type: "rate_limit_with_fallback",
+            message: `Rate limit suspected for ${AI_MODELS.find(m => m.value === selectedModel)?.label || selectedModel}. Error: ${error.message}`,
+            fallbackModel: fallback,
+            originalModel: selectedModel,
+            onRetryFallback: (newModel) => { 
+              toast.info(`Switching to ${AI_MODELS.find(m => m.value === newModel)?.label || newModel} and retrying.`);
+              setSelectedModel(newModel); 
+              setTimeout(() => handleSubmitForMarking(), 100);
+            },
+            onRetry: () => handleSubmitForMarking()
+          });
+        } else {
+           setError({
+            type: "rate_limit", // Could be rate_limit_wait if a pattern for wait time is identified
+            message: `Rate limit issue with ${AI_MODELS.find(m => m.value === selectedModel)?.label || selectedModel}. Error: ${error.message}`,
+            onRetry: handleSubmitForMarking
+          });
+        }
       } else {
         setError({
           type: "api_error",
           message: `Error processing assessment: ${error.message}`,
-          retry: handleSubmitForMarking
+          onRetry: handleSubmitForMarking
         });
       }
     } finally {
@@ -1581,13 +1677,80 @@ ${getSubjectGuidance(subject, examBoard)}`;
     }
   }, [
     answer, question, subject, examBoard, questionType, userType, markScheme, totalMarks,
-    textExtract, relevantMaterial, selectedModel, tier, allSubjects,
-    checkBackendStatus, API_BASE_URL,
-    lastRequestDate, modelLastRequestTimes, lastRequestTime,
+    textExtract, relevantMaterial, selectedModel, tier, allSubjects, API_BASE_URL,
+    lastRequestDate, modelLastRequestTimes, lastRequestTime, consumeToken,
     setFeedback, setGrade, setError, setSuccess, setModelThinking, setAchievedMarks,
     setLoading, setActiveTab, setDailyRequests, setLastRequestDate, setLastRequestTime,
-    setModelLastRequestTimes, autoMaxTokens, maxTokens
+    setModelLastRequestTimes, autoMaxTokens, maxTokens, getRequestTokens, // Added getRequestTokens if used inside
+    // Ensure setSelectedModel is in dependency array if used in retry logic like onRetryFallback
+    setSelectedModel 
   ]);
+
+  const generateMarkScheme = async () => {
+    // ... (initial checks)
+
+    // MODIFIED error handling within generateMarkScheme loop
+    while (retryCount <= maxRetries && !successFlag) { // Renamed success to successFlag to avoid conflict
+      try {
+        // ... (model selection, API call setup)
+
+        if (isRateLimited) {
+          console.log(`Model ${currentModel} is rate limited, will try another model for mark scheme`);
+          failedModels.add(currentModel);
+          const fallbackForScheme = FALLBACK_MODELS[currentModel];
+          // If this was the last model in modelsToTry or no specific fallback, set a generic error
+          if (retryCount >= modelsToTry.length -1 || !fallbackForScheme) {
+             setError({
+                type: "rate_limit", // Generic rate limit type
+                message: `${modelLabel} is rate limited. Other models will be tried or please wait.`,
+                // No direct retry for this specific alert, loop handles it
+             });
+          } else {
+            // If there's a fallback, we can hint at it, though the loop will try it
+             setError({
+                type: "rate_limit_with_fallback", 
+                message: `${modelLabel} is rate limited. Trying fallback ${AI_MODELS.find(m => m.value === fallbackForScheme)?.label || fallbackForScheme} next for mark scheme.`, 
+                fallbackModel: fallbackForScheme, // For potential UI hint, though loop handles retry
+                // No direct onRetryFallback here, the loop manages model cycling
+             });
+          }
+          // ... (logic to select next model in modelsToTry)
+          throw new Error(`Rate limit for ${currentModel} during mark scheme generation.`);
+        }
+
+        if (!response.ok) {
+          // ... (error parsing)
+          // More generic error for mark scheme generation failure
+          setError({
+              type: "api_error",
+              message: `Mark scheme generation failed with ${modelLabel}: ${errorMessage}`,
+              onRetry: generateMarkScheme // Retry the whole generation process
+          });
+          throw new Error(`HTTP error: ${response.status}. ${errorMessage}`);
+        }
+        // ... (success handling for mark scheme)
+      } catch (error) {
+        console.error("Error generating mark scheme (attempt ${retryCount + 1}):", error);
+        // ... (retry delay logic)
+        if (retryCount >= maxRetries) {
+          if (error.name === 'AbortError') {
+            setError({
+              type: "timeout", message: "Mark scheme generation timed out.",
+              onRetry: generateMarkScheme
+            });
+          } else {
+            setError({
+              type: "api_error",
+              message: `Failed to generate mark scheme after multiple attempts: ${error.message}`,
+              onRetry: generateMarkScheme
+            });
+          }
+          break;
+        }
+      }
+    }
+    // ... (final setLoading)
+  };
 
   // Reset form fields
   const resetForm = () => {
@@ -1685,6 +1848,246 @@ ${getSubjectGuidance(subject, examBoard)}`;
     setShowSubjectGuidanceDialog(true);
   };
 
+  // ADDED: Handler for bulk file upload
+  const handleBulkFileChange = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      setBulkFile(file);
+      // TODO: Add parsing logic here based on file type (e.g., CSV)
+      // For now, just showing a toast message
+      toast.info(`File "${file.name}" selected. Ready to process.`);
+      // Clear previous bulk items and results
+      setBulkItems([]);
+      setBulkResults([]);
+    }
+  };
+
+  // Function to process a single bulk item - Defined within AIMarker component scope
+  const processSingleBulkItem = async (itemData, itemIndex, totalItemsInBulk) => {
+    toast.info(`Processing item ${itemIndex + 1}/${totalItemsInBulk}: ${itemData.question?.substring(0,30)}...`);
+
+    const currentModelForItem = itemData.model;
+    const modelRateLimit = MODEL_RATE_LIMITS[currentModelForItem] || 10000;
+    const now = Date.now();
+
+    const globalLastReqTime = modelLastRequestTimes['global_request_time'] || 0;
+    if (now - globalLastReqTime < 5000) {
+      const waitTime = Math.ceil((5000 - (now - globalLastReqTime)) / 1000);
+      toast.warning(`Global rate limit: Waiting ${waitTime}s.`);
+      await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
+    }
+
+    const modelLastReq = modelLastRequestTimes[currentModelForItem] || 0;
+    if (now - modelLastReq < modelRateLimit) {
+      const waitTime = Math.ceil((modelRateLimit - (now - modelLastReq)) / 1000);
+      toast.warning(`Rate limit for ${AI_MODELS.find(m => m.value === currentModelForItem)?.label || currentModelForItem}: Waiting ${waitTime}s.`);
+      await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
+    }
+    
+    setModelLastRequestTimes(prev => ({ 
+      ...prev, 
+      [currentModelForItem]: Date.now(),
+      'global_request_time': Date.now() 
+    }));
+
+    // Optional: Consume token if daily limits apply to bulk items
+    // if (!consumeToken()) { 
+    //   return { error: "Daily request limit reached.", feedback: null, grade: null, modelName: currentModelForItem };
+    // }
+
+    const buildSystemPromptForItem = () => {
+      let basePrompt = `You are an experienced GCSE ${itemData.subject} examiner. Your task is to provide detailed, constructive feedback for ${itemData.userType === 'teacher' ? 'assessment purposes' : 'student learning'} following these guidelines:\n\n1. ASSESSMENT CRITERIA:\n- Accuracy of content (subject knowledge)\n- Clarity and structure of response\n- Use of evidence/examples\n- Depth of analysis (where applicable)\n- Technical accuracy (spelling, grammar, terminology)`;
+      const currentSubjectDetails = allSubjects.find(s => s.value === itemData.subject);
+      if (currentSubjectDetails?.hasTiers) {
+        basePrompt += `\n- This is a ${itemData.tier?.toUpperCase()} tier question`;
+      }
+      basePrompt += `\n\n2. FEEDBACK STRUCTURE:\na) Summary of performance (1-2 sentences)\nb) 2-3 specific strengths with examples\nc) 2-3 areas for improvement with ${itemData.userType === 'teacher' ? 'marking criteria' : 'actionable suggestions'}\nd) One specific ${itemData.userType === 'teacher' ? 'assessment note' : '"next step" for the student'}\ne) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number`;
+      if (itemData.totalMarks) {
+        basePrompt += `\nf) Marks achieved in the format: [MARKS:Y/${itemData.totalMarks}] where Y is the number of marks achieved`;
+      }
+      if (itemData.subject === "maths") {
+        basePrompt += `\n\n4. MATHEMATICAL NOTATION:\n- Use LaTeX notation for mathematical expressions enclosed in $ $ for inline formulas and as separate blocks for complex formulas\n- Example inline: $x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$\n- Example block:\n$$\nx = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\n$$\n- Format solutions step-by-step with clear explanations\n- Number equations and reference them in your feedback`;
+      } else {
+        basePrompt += `\n\n4. SUBJECT-SPECIFIC GUIDANCE:\n${getSubjectGuidance(itemData.subject, itemData.examBoard)}`;
+      }
+      if (currentModelForItem === "microsoft/mai-ds-r1:free") { 
+        basePrompt += `\n\n5. THINKING PROCESS:\n- First, analyze the student's answer carefully...\n- Mark your thinking process with [THINKING] and your final feedback with [FEEDBACK]`;
+      }
+      return basePrompt;
+    };
+
+    const buildUserPromptForItem = () => {
+      let userPromptText = `Please mark this GCSE ${itemData.subject} answer.\n\nQUESTION:\n${itemData.question}\n\nSTUDENT ANSWER:\n${itemData.answer}\n\n`;
+      if (itemData.totalMarks) {
+        userPromptText += `TOTAL MARKS: ${itemData.totalMarks}\n\n`;
+      }
+      userPromptText += `INSTRUCTIONS:\n1. Assess the answer against GCSE criteria for ${itemData.subject} (${itemData.examBoard} exam board)\n2. Provide detailed, constructive feedback\n3. Assign a GCSE grade (9-1) in the format [GRADE:X]`;
+      if (itemData.totalMarks) {
+        userPromptText += `\n4. Assign marks in the format [MARKS:Y/${itemData.totalMarks}]`;
+      }
+      return userPromptText;
+    };
+
+    try {
+      const systemPromptContent = buildSystemPromptForItem();
+      const userPromptContent = buildUserPromptForItem();
+
+      const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: currentModelForItem,
+          messages: [{ role: "system", content: systemPromptContent }, { role: "user", content: userPromptContent }],
+          max_tokens: autoMaxTokens ? undefined : maxTokens, 
+          temperature: 0.7
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let parsedErrorMessage = errorText;
+        try { parsedErrorMessage = JSON.parse(errorText).error?.message || JSON.parse(errorText).message || errorText; } catch(e){}
+        // Consider fallback model logic for bulk items here if desired.
+        return { error: `API Error (Item ${itemIndex + 1}): ${parsedErrorMessage} (Model: ${currentModelForItem})`, feedback: null, grade: null, modelName: currentModelForItem };
+      }
+
+      const responseData = await response.json();
+      let apiResponseContent = responseData.choices?.[0]?.message?.content || responseData.content || responseData.text || responseData.answer || responseData.response || "";
+      let itemModelThinking = [];
+
+      if (currentModelForItem === "microsoft/mai-ds-r1:free") {
+        const thinkingBlockMatch = apiResponseContent.match(/\[THINKING\]([\s\S]*?)(?:\[FEEDBACK\]|$)/i);
+        if (thinkingBlockMatch?.[1]) {
+          itemModelThinking = thinkingBlockMatch[1].trim().split(/\n\s*\n/).map(s => s.trim());
+          const feedbackBlockMatch = apiResponseContent.match(/\[FEEDBACK\]([\s\S]*?)$/i);
+          apiResponseContent = feedbackBlockMatch?.[1]?.trim() || apiResponseContent; 
+        }
+      }
+
+      const gradeValueMatch = apiResponseContent.match(/\[GRADE:(\d+)\]/i);
+      const itemGrade = gradeValueMatch?.[1] || null;
+      const marksValueMatch = apiResponseContent.match(/\[MARKS:(\d+)\/\d+\]/i);
+      const itemAchievedMarks = marksValueMatch?.[1] || null;
+      
+      const finalFeedback = apiResponseContent.replace(/\[GRADE:\d+\]/gi, '').replace(/\[MARKS:\d+\/\d+\]/gi, '').trim();
+      
+      return {
+        feedback: finalFeedback,
+        grade: itemGrade,
+        achievedMarks: itemAchievedMarks,
+        modelThinking: itemModelThinking,
+        modelName: currentModelForItem,
+        error: null
+      };
+    } catch (error) {
+      console.error(`Error in processSingleBulkItem (Item ${itemIndex + 1}):`, error);
+      return { error: `Processing failed (Item ${itemIndex + 1}): ${error.message}`, feedback: null, grade: null, modelName: currentModelForItem };
+    }
+  };
+
+  // MODIFIED: handleProcessBulkFile - to correctly use processSingleBulkItem
+  const handleProcessBulkFile = async () => {
+    if (!bulkFile) {
+      toast.error("Please select a file for bulk processing.");
+      return;
+    }
+    if (bulkProcessing) {
+      toast.warning("Bulk processing is already active.");
+      return;
+    }
+
+    setBulkProcessing(true);
+    setBulkResults([]);
+    setBulkProgress({ processed: 0, total: 0, currentItem: null });
+    setActiveTab("bulk");
+
+    try {
+      toast.info(`Initiating bulk processing for: "${bulkFile.name}"...`);
+      
+      // Ensure PapaParse is available (developer needs to install it)
+      if (typeof Papa === 'undefined') {
+        toast.error("CSV Parsing library (PapaParse) is not available. Please ensure it's installed.");
+        setBulkProcessing(false);
+        return;
+      }
+      
+Papa.parse(bulkFile, {
+        header: true,
+        skipEmptyLines: true,
+        complete: async (results) => {
+          const parsedItemsFromCSV = results.data.map((row, idx) => ({
+            id: `csv-item-${idx}`,
+            question: row.Question || row.question,
+            answer: row.Answer || row.answer,
+            subjectFromFile: row.Subject || row.subject,
+            examBoardFromFile: row.ExamBoard || row.examBoard,
+            modelFromFile: row.Model || row.model,
+            tierFromFile: row.Tier || row.tier,
+            totalMarksFromFile: row.TotalMarks || row.totalMarks
+          })).filter(item => item.question && item.question.trim() !== '' && item.answer && item.answer.trim() !== '');
+
+          if (parsedItemsFromCSV.length === 0) {
+            toast.error("No valid items found in the CSV. Check 'Question' and 'Answer' columns.");
+            setBulkProcessing(false);
+            return;
+          }
+
+          setBulkItems(parsedItemsFromCSV); // Store the items to be processed
+          setBulkProgress(prev => ({ ...prev, total: parsedItemsFromCSV.length, processed: 0, currentItem: null }));
+
+          let accumulatedResults = [];
+          for (let i = 0; i < parsedItemsFromCSV.length; i++) {
+            const currentRawItem = parsedItemsFromCSV[i];
+            setBulkProgress(prev => ({ ...prev, currentItem: i + 1 }));
+
+            const itemPayload = {
+              question: currentRawItem.question,
+              answer: currentRawItem.answer,
+              subject: bulkSettingPreference === 'file' && currentRawItem.subjectFromFile ? currentRawItem.subjectFromFile : subject,
+              examBoard: bulkSettingPreference === 'file' && currentRawItem.examBoardFromFile ? currentRawItem.examBoardFromFile : examBoard,
+              model: bulkSettingPreference === 'file' && currentRawItem.modelFromFile && AI_MODELS.find(m => m.value === currentRawItem.modelFromFile) ? currentRawItem.modelFromFile : selectedModel,
+              tier: bulkSettingPreference === 'file' && currentRawItem.tierFromFile ? currentRawItem.tierFromFile : tier,
+              totalMarks: bulkSettingPreference === 'file' && currentRawItem.totalMarksFromFile ? currentRawItem.totalMarksFromFile : totalMarks,
+              userType: userType, // Global userType for now
+            };
+
+            const resultForCurrentItem = await processSingleBulkItem(itemPayload, i, parsedItemsFromCSV.length);
+            
+            accumulatedResults.push({
+              itemIndex: i,
+              question: currentRawItem.question, // Store original question for display
+              question: rawItem.question,
+              answer: rawItem.answer,
+              feedback: result.feedback,
+              grade: result.grade,
+              modelName: itemDataForAPI.model, // Reflect the model used
+              error: result.error
+            });
+            setBulkResults([...currentResults]); // Update results incrementally
+            setBulkProgress(prev => ({ ...prev, processed: prev.processed + 1 }));
+          }
+          toast.success("Bulk processing complete!");
+          setBulkProcessing(false);
+          setBulkProgress(prev => ({ ...prev, currentItem: null }));
+        },
+        error: (error) => {
+          console.error("CSV parsing error:", error);
+          toast.error(`CSV parsing failed: ${error.message}`);
+          setBulkResults([{ itemIndex: -1, error: `CSV parsing error: ${error.message}` }]);
+          setBulkProcessing(false);
+        }
+      });
+
+    } catch (error) { // Catch errors from initial setup before Papa.parse or if Papa.parse itself is not called
+      console.error("Bulk processing setup error:", error);
+      toast.error(`Bulk processing setup failed: ${error.message}`);
+      setBulkResults(prev => [...prev, { itemIndex: -1, error: error.message }]);
+      setBulkProcessing(false);
+      setBulkProgress(prev => ({ ...prev, currentItem: null }));
+    }
+    // Note: The `finally` block was removed from here as async operations within Papa.parse's complete callback handle setting bulkProcessing to false.
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <TopBar version="2.1.3" backendStatus={backendStatusRef.current} remainingTokens={remainingRequestTokens} />
@@ -1737,7 +2140,16 @@ ${getSubjectGuidance(subject, examBoard)}`;
         {showGuide && <QuickGuide onClose={() => setShowGuide(false)} />}
         
         {/* Backend alerts */}
-        <EnhancedAlert success={success} error={error} />
+        <EnhancedAlert 
+          success={success} 
+          error={error} 
+          onRetryAction={{ 
+            checkBackendStatus: refreshBackendStatusHook, 
+            // setSelectedModel, // Pass if needed for manual model switch from alert
+            // handleSubmitForMarking, // Pass if specific retries from alert need it
+            // generateMarkScheme  // Pass if specific retries from alert need it
+          }}
+        />
         
         {/* Backend Status Checker */}
         <BackendStatusChecker onStatusChange={handleBackendStatusChange} />
@@ -1802,9 +2214,10 @@ ${getSubjectGuidance(subject, examBoard)}`;
           {/* Input Panel */}
           <div className="lg:col-span-12 space-y-4">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
+              <TabsList className="grid w-full grid-cols-3"> {/* MODIFIED: Added Bulk Mark Tab */} 
                 <TabsTrigger value="answer">Answer</TabsTrigger>
                 <TabsTrigger value="feedback">Feedback</TabsTrigger>
+                <TabsTrigger value="bulk">Bulk Mark</TabsTrigger> {/* ADDED */} 
               </TabsList>
               <TabsContent value="answer" className="pt-4 space-y-4">
                 {/* Question input */}
@@ -2314,6 +2727,116 @@ ${getSubjectGuidance(subject, examBoard)}`;
                   processingProgress={processingProgress}
                   setActiveTab={setActiveTab}
                 />
+              </TabsContent>
+
+              {/* ADDED: TabsContent for 'bulk' */}
+              <TabsContent value="bulk" className="pt-4 space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Bulk Assessment Processing</CardTitle>
+                    <CardDescription>
+                      Upload a CSV file with 'Question' and 'Answer' columns to mark multiple items.
+                      Optionally, include 'Subject', 'ExamBoard', 'Model', 'Tier', 'TotalMarks' for per-item settings.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="bulk-file-upload">Upload CSV File</Label>
+                      <Input 
+                        id="bulk-file-upload" 
+                        type="file" 
+                        accept=".csv,text/csv" 
+                        onChange={handleBulkFileChange} 
+                        ref={bulkFileUploadRef} 
+                        disabled={bulkProcessing}
+                      />
+                      {bulkFile && <p className="text-sm text-muted-foreground">Selected file: {bulkFile.name}</p>}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Settings Preference</Label>
+                      <Select value={bulkSettingPreference} onValueChange={setBulkSettingPreference} disabled={bulkProcessing}>
+                        <SelectTrigger className="w-[280px]">
+                          <SelectValue placeholder="Choose settings source" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="global">Use Global Settings (from Answer tab)</SelectItem>
+                          <SelectItem value="file">Use Settings from File (if available)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        If 'Use Settings from File' is chosen and a setting is missing for an item, global settings will be used as a fallback.
+                      </p>
+                    </div>
+                    
+                    <Button onClick={handleProcessBulkFile} disabled={!bulkFile || bulkProcessing || backendStatusRef.current !== 'online'}>
+                      {bulkProcessing ? (
+                        <React.Fragment>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing Bulk ({bulkProgress.processed}/{bulkProgress.total})...
+                        </React.Fragment>
+                      ) : backendStatusRef.current !== 'online' ? (
+                        <React.Fragment>
+                          <AlertTriangle className="mr-2 h-4 w-4" /> API Offline
+                        </React.Fragment>
+                      ) : (
+                        <React.Fragment>
+                          <UploadCloud className="mr-2 h-4 w-4" /> Process Bulk File
+                        </React.Fragment>
+                      )}
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {/* Display Bulk Processing Results */}
+                {(bulkProcessing || bulkResults.length > 0) && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Bulk Results</CardTitle>
+                      {bulkProcessing && bulkProgress.total > 0 && (
+                        <CardDescription>
+                          Processing item {bulkProgress.currentItem || '-'} of {bulkProgress.total}. Processed: {bulkProgress.processed}.
+                        </CardDescription>
+                      )}
+                    </CardHeader>
+                    <CardContent>
+                      {bulkResults.length === 0 && bulkProcessing && (
+                        <div className="flex items-center justify-center p-6 text-muted-foreground">
+                          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                          <span>Waiting for results...</span>
+                        </div>
+                      )}
+                      {bulkResults.length > 0 && (
+                        <ScrollArea className="h-[400px] w-full">
+                          <div className="space-y-4 pr-4">
+                            {bulkResults.map((result, index) => (
+                              <div key={index} className="p-3 border rounded-md bg-muted/30">
+                                <h4 className="font-semibold text-sm mb-1">
+                                  Item {result.itemIndex + 1}: {result.question ? result.question.substring(0, 100) + (result.question.length > 100 ? '...' : '') : 'N/A'}
+                                </h4>
+                                {result.error ? (
+                                  <Alert variant="destructive" className="py-2 px-3">
+                                    <AlertTriangle className="h-4 w-4" />
+                                    <AlertTitle className="text-xs">Error</AlertTitle>
+                                    <AlertDescription className="text-xs">{result.error}</AlertDescription>
+                                  </Alert>
+                                ) : (
+                                  <div className="text-xs">
+                                    <p><strong>Grade:</strong> {result.grade || 'N/A'}</p>
+                                    <p className="mt-1">
+                                      <strong>Feedback Summary:</strong> {result.feedback ? result.feedback.substring(0, 150) + (result.feedback.length > 150 ? '...' : '') : 'N/A'}
+                                    </p>
+                                    {/* TODO: Add a button/modal to view full feedback for this item */}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                          <ScrollBar orientation="vertical" />
+                        </ScrollArea>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
               </TabsContent>
             </Tabs>
           </div>
