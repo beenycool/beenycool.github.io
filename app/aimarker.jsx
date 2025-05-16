@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
-import { Loader2, Upload, AlertTriangle, CheckCircle2, RefreshCw, HelpCircle, ChevronDown, ChevronRight, Save, Share2, ExternalLink, Settings, FilePlus, ChevronUp, Zap, X, Keyboard } from "lucide-react";
+import { Loader2, Upload, AlertTriangle, CheckCircle2, RefreshCw, HelpCircle, ChevronDown, ChevronRight, Save, Share2, ExternalLink, Settings, FilePlus, ChevronUp, Zap, X, Keyboard, Pause } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -692,7 +692,6 @@ const EnhancedFeedback = ({ feedback, grade, modelName, achievedMarks, totalMark
             </Tooltip>
           </TooltipProvider>
         
-          {/* FIXED: Share dropdown menu */}
           <DropdownMenu>
             <TooltipProvider>
               <Tooltip>
@@ -723,6 +722,14 @@ const EnhancedFeedback = ({ feedback, grade, modelName, achievedMarks, totalMark
               <DropdownMenuItem onClick={() => handleShare('email')}>
                 <Mail className="mr-2 h-4 w-4" />
                 <span>Share via email</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleShare('twitter')}>
+                <Twitter className="mr-2 h-4 w-4" />
+                <span>Share on Twitter</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleShare('facebook')}>
+                <Facebook className="mr-2 h-4 w-4" />
+                <span>Share on Facebook</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleSaveAsPdf}>
@@ -976,6 +983,139 @@ const LOCALSTORAGE_KEYS = {
   TIER: 'aimarker_tier',
 };
 
+// ADDED: Enhanced Bulk Item Preview Dialog component
+const BulkItemPreviewDialog = ({ open, onOpenChange, item, onClose }) => {
+  if (!item) return null;
+  
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Item {item.itemIndex + 1} Details</DialogTitle>
+          <DialogDescription>
+            Full question, answer and feedback details
+          </DialogDescription>
+        </DialogHeader>
+        
+        <div className="space-y-4 my-4">
+          <div className="border-b pb-2">
+            <h3 className="font-medium text-lg">Question</h3>
+            <p className="mt-1">{item.question}</p>
+          </div>
+          
+          <div className="border-b pb-2">
+            <h3 className="font-medium text-lg">Answer</h3>
+            <p className="mt-1">{item.answer}</p>
+          </div>
+          
+          <div className="border-b pb-2">
+            <h3 className="font-medium text-lg">Feedback</h3>
+            {item.error ? (
+              <Alert variant="destructive" className="mt-2">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Error</AlertTitle>
+                <AlertDescription>{item.error}</AlertDescription>
+              </Alert>
+            ) : (
+              <div className="mt-1 prose prose-sm dark:prose-invert max-w-none">
+                <MathMarkdown>{item.feedback}</MathMarkdown>
+              </div>
+            )}
+          </div>
+          
+          {!item.error && (
+            <div className="flex items-center gap-4">
+              <div className="flex items-center">
+                <span className="font-medium mr-2">Grade:</span>
+                <div className="inline-flex items-center justify-center h-8 w-8 bg-gradient-to-br from-indigo-600 to-purple-600 dark:from-indigo-500 dark:to-purple-500 text-white font-bold rounded-full shadow-md">
+                  {item.grade || 'N/A'}
+                </div>
+              </div>
+              
+              {item.modelName && (
+                <div className="text-sm text-muted-foreground">
+                  <span className="font-medium">Model:</span> {AI_MODELS.find(m => m.value === item.modelName)?.label || item.modelName}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        
+        <DialogFooter>
+          <Button onClick={onClose}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// MODIFIED: BatchProcessingControls component with parallelism setting
+const BatchProcessingControls = ({ 
+  isProcessing, 
+  progress, 
+  onPause, 
+  onResume, 
+  onCancel, 
+  isPaused,
+  parallelism,
+  onParallelismChange
+}) => {
+  return (
+    <div className="flex flex-col space-y-3 mt-2 mb-4">
+      <div className="w-full bg-muted rounded-full h-2.5">
+        <div 
+          className="bg-primary h-2.5 rounded-full transition-all duration-300" 
+          style={{ width: `${Math.round((progress.processed / progress.total) * 100)}%` }}
+        ></div>
+      </div>
+      
+      <div className="flex justify-between items-center text-xs text-muted-foreground">
+        <span>Processing {progress.processed} of {progress.total} items</span>
+        <span>{Math.round((progress.processed / progress.total) * 100)}% complete</span>
+      </div>
+      
+      <div className="flex flex-wrap gap-2 justify-between items-center">
+        <div className="flex items-center gap-2">
+          <Label htmlFor="parallelism" className="text-xs whitespace-nowrap">Parallel Tasks:</Label>
+          <Select
+            value={parallelism.toString()}
+            onValueChange={(value) => onParallelismChange(parseInt(value))}
+            disabled={isProcessing}
+          >
+            <SelectTrigger className="h-7 w-16 text-xs">
+              <SelectValue placeholder={parallelism} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="1">1</SelectItem>
+              <SelectItem value="2">2</SelectItem>
+              <SelectItem value="3">3</SelectItem>
+              <SelectItem value="4">4</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        
+        <div className="flex gap-2">
+          {isPaused ? (
+            <Button size="sm" variant="outline" onClick={onResume} disabled={!isProcessing}>
+              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+              Resume
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" onClick={onPause} disabled={!isProcessing}>
+              <Pause className="mr-1.5 h-3.5 w-3.5" />
+              Pause
+            </Button>
+          )}
+          <Button size="sm" variant="outline" onClick={onCancel} disabled={!isProcessing}>
+            <X className="mr-1.5 h-3.5 w-3.5" />
+            Cancel
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Enhanced AIMarker component with mobile responsiveness
 const AIMarker = () => {
   // console.log('AIMarker component is rendering', { window: typeof window !== 'undefined' ? window.location.hostname : 'SSR' });
@@ -1020,6 +1160,17 @@ const AIMarker = () => {
   const [bulkSettingPreference, setBulkSettingPreference] = useState('global'); // 'global' or 'file'
   const [bulkProgress, setBulkProgress] = useState({ processed: 0, total: 0, currentItem: null });
   const bulkFileUploadRef = useRef(null);
+  
+  // ADDED: State for Bulk Item Preview
+  const [previewItem, setPreviewItem] = useState(null);
+  const [showPreviewDialog, setShowPreviewDialog] = useState(false);
+  
+  // ADDED: State for batch processing controls
+  const [isBulkProcessingPaused, setIsBulkProcessingPaused] = useState(false);
+  const bulkProcessingRef = useRef({ cancel: false, pause: false });
+  
+  // ADDED: State for parallel processing
+  const [parallelProcessing, setParallelProcessing] = useState(1);
   
   // Handle image upload
   const handleImageChange = (e) => {
@@ -1894,7 +2045,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
       setBulkFile(file);
       const fileType = file.name.split('.').pop().toLowerCase();
       // Show appropriate message based on file type
-      toast.info(`File "${file.name}" selected. Click "Process File" to begin.`);
+      toast.info(`File "${file.name}" selected. Ready to process.`);
       // Clear previous bulk items and results
       setBulkItems([]);
       setBulkResults([]);
@@ -2024,7 +2175,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
     }
   };
 
-  // MODIFIED: handleProcessBulkFile - to support multiple file formats and auto-detect content
+  // MODIFIED: handleProcessBulkFile - to support multiple file formats
   const handleProcessBulkFile = async () => {
     if (!bulkFile) {
       toast.error("Please select a file for bulk processing.");
@@ -2035,13 +2186,17 @@ ${getSubjectGuidance(subject, examBoard)}`;
       return;
     }
 
+    // Reset control flags
+    bulkProcessingRef.current = { cancel: false, pause: false };
+    setIsBulkProcessingPaused(false);
+    
     setBulkProcessing(true);
     setBulkResults([]);
     setBulkProgress({ processed: 0, total: 0, currentItem: null });
     setActiveTab("bulk");
 
     try {
-      toast.info(`Analyzing file: "${bulkFile.name}"...`);
+      toast.info(`Initiating bulk processing for: "${bulkFile.name}"...`);
       
       // Determine file type by extension
       const fileType = bulkFile.name.split('.').pop().toLowerCase();
@@ -2090,102 +2245,36 @@ ${getSubjectGuidance(subject, examBoard)}`;
           setBulkProcessing(false);
         };
         reader.readAsText(bulkFile);
-      } else if (fileType === 'txt' || fileType === 'text') {
-        // Process plain text file - with improved auto-detection
+      } else if (fileType === 'txt') {
+        // Process plain text file - assume one question/answer pair per line with tab or comma separation
         const reader = new FileReader();
         reader.onload = async (e) => {
           try {
             const textData = e.target.result;
             const lines = textData.split(/\r?\n/).filter(line => line.trim() !== '');
             
-            // Improved auto-detection of content format
-            const parsedItems = [];
-            
-            // Try to detect if this is a structured text file
-            for (let i = 0; i < lines.length; i++) {
-              const line = lines[i];
+            const parsedItems = lines.map((line, idx) => {
+              // Try to split by tab first, then by comma if no tab
+              const parts = line.includes('\t') ? line.split('\t') : line.split(',');
               
-              // Try to detect question/answer pairs
-              // Case 1: Line contains a tab or multiple tabs - split by tab
-              if (line.includes('\t')) {
-                const parts = line.split('\t');
-                if (parts.length >= 2) {
-                  parsedItems.push({
-                    question: parts[0].trim(),
-                    answer: parts[1].trim(),
-                    subjectFromFile: parts[2]?.trim(),
-                    examBoardFromFile: parts[3]?.trim(),
-                    modelFromFile: parts[4]?.trim(),
-                    tierFromFile: parts[5]?.trim(),
-                    totalMarksFromFile: parts[6]?.trim()
-                  });
-                  continue;
-                }
+              if (parts.length < 2) {
+                return { error: `Line ${idx + 1}: Could not parse question and answer` };
               }
               
-              // Case 2: Line contains a comma - split by comma
-              if (line.includes(',') && !line.includes('"')) { // Simple CSV without quoted fields
-                const parts = line.split(',');
-                if (parts.length >= 2) {
-                  parsedItems.push({
-                    question: parts[0].trim(),
-                    answer: parts[1].trim(),
-                    subjectFromFile: parts[2]?.trim(),
-                    examBoardFromFile: parts[3]?.trim(),
-                    modelFromFile: parts[4]?.trim(),
-                    tierFromFile: parts[5]?.trim(),
-                    totalMarksFromFile: parts[6]?.trim()
-                  });
-                  continue;
-                }
-              }
-              
-              // Case 3: Line starts with Q: or Question: and next line starts with A: or Answer:
-              if ((line.startsWith('Q:') || line.startsWith('Question:')) && i + 1 < lines.length) {
-                const questionLine = line;
-                const answerLine = lines[i + 1];
-                
-                if (answerLine.startsWith('A:') || answerLine.startsWith('Answer:')) {
-                  const question = questionLine.replace(/^(Q:|Question:)\s*/, '').trim();
-                  const answer = answerLine.replace(/^(A:|Answer:)\s*/, '').trim();
-                  
-                  parsedItems.push({
-                    question: question,
-                    answer: answer
-                  });
-                  
-                  i++; // Skip the next line since we've processed it
-                  continue;
-                }
-              }
-              
-              // Case 4: Alternating lines are questions and answers
-              // If we have an odd number of lines and haven't matched other patterns
-              if (i + 1 < lines.length && parsedItems.length === Math.floor(i/2)) {
-                parsedItems.push({
-                  question: line.trim(),
-                  answer: lines[i + 1].trim()
-                });
-                i++; // Skip the next line
-                continue;
-              }
-            }
+              return {
+                question: parts[0].trim(),
+                answer: parts[1].trim(),
+                // Optional fields if provided in subsequent columns
+                subjectFromFile: parts[2]?.trim(),
+                examBoardFromFile: parts[3]?.trim(),
+                modelFromFile: parts[4]?.trim(),
+                tierFromFile: parts[5]?.trim(),
+                totalMarksFromFile: parts[6]?.trim()
+              };
+            }).filter(item => !item.error && item.question && item.answer);
             
             if (parsedItems.length === 0) {
-              // If no structured format was detected, try to process as essay questions
-              // Group every two lines as question-answer pairs
-              for (let i = 0; i < lines.length; i += 2) {
-                if (i + 1 < lines.length) {
-                  parsedItems.push({
-                    question: lines[i].trim(),
-                    answer: lines[i + 1].trim()
-                  });
-                }
-              }
-            }
-            
-            if (parsedItems.length === 0) {
-              toast.error("No valid items could be extracted from the text file.");
+              toast.error("No valid items found in the text file. Format should be: Question[tab]Answer");
               setBulkProcessing(false);
               return;
             }
@@ -2204,61 +2293,9 @@ ${getSubjectGuidance(subject, examBoard)}`;
           setBulkProcessing(false);
         };
         reader.readAsText(bulkFile);
-      } else if (fileType === 'doc' || fileType === 'docx' || fileType === 'pdf' || fileType === 'rtf') {
-        // For document formats, show a helpful error
-        toast.error(`Document format (.${fileType}) cannot be processed directly. Please convert to TXT, CSV, or JSON.`);
-        setBulkProcessing(false);
       } else {
-        // Try to process as text for any other format
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-          try {
-            const textData = e.target.result;
-            // Try to parse as JSON first
-            try {
-              const jsonData = JSON.parse(textData);
-              const dataArray = Array.isArray(jsonData) ? jsonData : [jsonData];
-              await processParseResults(dataArray);
-              return;
-            } catch (jsonError) {
-              // Not JSON, continue with text processing
-            }
-            
-            // Process as plain text
-            const lines = textData.split(/\r?\n/).filter(line => line.trim() !== '');
-            
-            // Simple heuristic: if there are at least 2 lines, treat each pair as question/answer
-            if (lines.length >= 2) {
-              const parsedItems = [];
-              for (let i = 0; i < lines.length; i += 2) {
-                if (i + 1 < lines.length) {
-                  parsedItems.push({
-                    question: lines[i].trim(),
-                    answer: lines[i + 1].trim()
-                  });
-                }
-              }
-              
-              if (parsedItems.length > 0) {
-                await processParseResults(parsedItems);
-                return;
-              }
-            }
-            
-            toast.error(`Couldn't determine file format for "${bulkFile.name}". Please use CSV, JSON, or TXT files.`);
-            setBulkProcessing(false);
-          } catch (error) {
-            console.error("File processing error:", error);
-            toast.error(`File processing failed: ${error.message}`);
-            setBulkProcessing(false);
-          }
-        };
-        reader.onerror = (error) => {
-          console.error("File reading error:", error);
-          toast.error(`File reading failed: ${error.message}`);
-          setBulkProcessing(false);
-        };
-        reader.readAsText(bulkFile);
+        toast.error(`Unsupported file format: .${fileType}. Please use CSV, JSON, or TXT files.`);
+        setBulkProcessing(false);
       }
     } catch (error) {
       console.error("Bulk processing setup error:", error);
@@ -2268,52 +2305,21 @@ ${getSubjectGuidance(subject, examBoard)}`;
       setBulkProgress(prev => ({ ...prev, currentItem: null }));
     }
     
-    // Common function to process parsed data regardless of source format
+    // MODIFIED: Process parsed data with parallel processing
     async function processParseResults(parsedItems) {
-      // Improved key detection - look for common variations of question/answer fields
-      const validItems = parsedItems.map((item, idx) => {
-        // Find the question field - try various possible key names
-        const questionKeys = ['question', 'Question', 'q', 'Q', 'prompt', 'Prompt'];
-        const questionKey = questionKeys.find(key => item[key] && typeof item[key] === 'string');
-        
-        // Find the answer field - try various possible key names
-        const answerKeys = ['answer', 'Answer', 'a', 'A', 'response', 'Response'];
-        const answerKey = answerKeys.find(key => item[key] && typeof item[key] === 'string');
-        
-        // If we found both question and answer, create a valid item
-        if (questionKey && answerKey) {
-          return {
-            id: `item-${idx}`,
-            question: item[questionKey],
-            answer: item[answerKey],
-            subjectFromFile: item.Subject || item.subject || item.subjectFromFile,
-            examBoardFromFile: item.ExamBoard || item.examBoard || item.examBoardFromFile,
-            modelFromFile: item.Model || item.model || item.modelFromFile,
-            tierFromFile: item.Tier || item.tier || item.tierFromFile,
-            totalMarksFromFile: item.TotalMarks || item.totalMarks || item.totalMarksFromFile
-          };
-        }
-        
-        // If the item already has question and answer properties, use them
-        if (item.question && item.answer) {
-          return {
-            id: `item-${idx}`,
-            question: item.question,
-            answer: item.answer,
-            subjectFromFile: item.subject || item.subjectFromFile,
-            examBoardFromFile: item.examBoard || item.examBoardFromFile,
-            modelFromFile: item.model || item.modelFromFile,
-            tierFromFile: item.tier || item.tierFromFile,
-            totalMarksFromFile: item.totalMarks || item.totalMarksFromFile
-          };
-        }
-        
-        // If we can't find question and answer fields, return null
-        return null;
-      }).filter(Boolean); // Remove null items
+      const validItems = parsedItems.map((item, idx) => ({
+        id: `item-${idx}`,
+        question: item.Question || item.question,
+        answer: item.Answer || item.answer,
+        subjectFromFile: item.Subject || item.subject || item.subjectFromFile,
+        examBoardFromFile: item.ExamBoard || item.examBoard || item.examBoardFromFile,
+        modelFromFile: item.Model || item.model || item.modelFromFile,
+        tierFromFile: item.Tier || item.tier || item.tierFromFile,
+        totalMarksFromFile: item.TotalMarks || item.totalMarks || item.totalMarksFromFile
+      })).filter(item => item.question && item.question.trim() !== '' && item.answer && item.answer.trim() !== '');
 
       if (validItems.length === 0) {
-        toast.error("No valid question-answer pairs found in the file. Please check the format.");
+        toast.error("No valid items found in the file. Each item must have Question and Answer fields.");
         setBulkProcessing(false);
         return;
       }
@@ -2321,42 +2327,81 @@ ${getSubjectGuidance(subject, examBoard)}`;
       setBulkItems(validItems);
       setBulkProgress(prev => ({ ...prev, total: validItems.length, processed: 0, currentItem: null }));
 
-      // Create a pool of AI models to cycle through
-      const modelPool = AI_MODELS.map(m => m.value);
-      let currentModelIndex = modelPool.indexOf(selectedModel);
-      if (currentModelIndex === -1) currentModelIndex = 0;
-
+      // Track active and completed tasks
       let results = [];
-      for (let i = 0; i < validItems.length; i++) {
-        const currentItem = validItems[i];
-        setBulkProgress(prev => ({ ...prev, currentItem: i + 1 }));
-
-        // Select model - either use file-specified model, selected model, or cycle through models
-        let modelToUse = selectedModel;
-        if (bulkSettingPreference === 'file' && currentItem.modelFromFile && 
-            AI_MODELS.find(m => m.value === currentItem.modelFromFile)) {
-          modelToUse = currentItem.modelFromFile;
-        } else {
-          // Cycle through models to avoid rate limiting
-          modelToUse = modelPool[currentModelIndex];
-          currentModelIndex = (currentModelIndex + 1) % modelPool.length;
+      let activeTaskCount = 0;
+      let nextItemIndex = 0;
+      let completedCount = 0;
+      
+      // Process items in parallel based on parallelism setting
+      const processNextItems = async () => {
+        // Continue processing until all items are processed or cancelled
+        while (nextItemIndex < validItems.length && !bulkProcessingRef.current.cancel) {
+          // Check if processing is paused
+          if (bulkProcessingRef.current.pause) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            continue;
+          }
+          
+          // Check if we've reached the parallelism limit
+          if (activeTaskCount >= parallelProcessing) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            continue;
+          }
+          
+          // Start a new task
+          const itemIndex = nextItemIndex++;
+          activeTaskCount++;
+          
+          // Process the item
+          processItem(itemIndex).then(() => {
+            activeTaskCount--;
+            completedCount++;
+            
+            // Update progress
+            setBulkProgress(prev => ({ 
+              ...prev, 
+              processed: completedCount,
+              currentItem: nextItemIndex < validItems.length ? nextItemIndex : null
+            }));
+            
+            // Check if we're done
+            if (completedCount >= validItems.length || nextItemIndex >= validItems.length) {
+              if (!bulkProcessingRef.current.cancel) {
+                toast.success("Bulk processing complete!");
+              }
+              setBulkProcessing(false);
+              setIsBulkProcessingPaused(false);
+            }
+          });
         }
-
+      };
+      
+      // Process a single item
+      const processItem = async (itemIndex) => {
+        const currentItem = validItems[itemIndex];
+        
+        // Check if cancelled
+        if (bulkProcessingRef.current.cancel) {
+          return;
+        }
+        
         const itemPayload = {
           question: currentItem.question,
           answer: currentItem.answer,
           subject: bulkSettingPreference === 'file' && currentItem.subjectFromFile ? currentItem.subjectFromFile : subject,
           examBoard: bulkSettingPreference === 'file' && currentItem.examBoardFromFile ? currentItem.examBoardFromFile : examBoard,
-          model: modelToUse,
+          model: bulkSettingPreference === 'file' && currentItem.modelFromFile && AI_MODELS.find(m => m.value === currentItem.modelFromFile) ? currentItem.modelFromFile : selectedModel,
           tier: bulkSettingPreference === 'file' && currentItem.tierFromFile ? currentItem.tierFromFile : tier,
           totalMarks: bulkSettingPreference === 'file' && currentItem.totalMarksFromFile ? currentItem.totalMarksFromFile : totalMarks,
-          userType: userType, // Global userType for now
+          userType: userType,
         };
-
-        const result = await processSingleBulkItem(itemPayload, i, validItems.length);
         
+        const result = await processSingleBulkItem(itemPayload, itemIndex, validItems.length);
+        
+        // Add result to the results array
         results.push({
-          itemIndex: i,
+          itemIndex: itemIndex,
           question: currentItem.question,
           answer: currentItem.answer,
           feedback: result.feedback,
@@ -2365,14 +2410,44 @@ ${getSubjectGuidance(subject, examBoard)}`;
           error: result.error
         });
         
-        setBulkResults([...results]); // Update results incrementally
-        setBulkProgress(prev => ({ ...prev, processed: prev.processed + 1 }));
-      }
+        // Update the results state
+        setBulkResults([...results]);
+      };
       
-      toast.success(`Bulk processing complete! Processed ${results.length} items.`);
-      setBulkProcessing(false);
-      setBulkProgress(prev => ({ ...prev, currentItem: null }));
+      // Start processing
+      processNextItems();
     }
+  };
+
+  // ADDED: Handlers for batch processing controls
+  const handlePauseBulkProcessing = () => {
+    bulkProcessingRef.current.pause = true;
+    setIsBulkProcessingPaused(true);
+    toast.info("Bulk processing paused. Will complete current item before stopping.");
+  };
+
+  const handleResumeBulkProcessing = () => {
+    bulkProcessingRef.current.pause = false;
+    setIsBulkProcessingPaused(false);
+    toast.info("Bulk processing resumed.");
+  };
+
+  const handleCancelBulkProcessing = () => {
+    bulkProcessingRef.current.cancel = true;
+    bulkProcessingRef.current.pause = false; // Unpause if paused to allow cancellation
+    toast.info("Cancelling bulk processing after current item completes...");
+  };
+
+  // ADDED: Handler for viewing full item details
+  const handleViewItemDetails = (item) => {
+    setPreviewItem(item);
+    setShowPreviewDialog(true);
+  };
+
+  // ADDED: Handler for changing parallelism
+  const handleParallelismChange = (value) => {
+    setParallelProcessing(value);
+    toast.info(`Parallel processing set to ${value} simultaneous tasks`);
   };
 
   return (
@@ -3023,67 +3098,33 @@ ${getSubjectGuidance(subject, examBoard)}`;
                     <CardTitle>Bulk Assessment Processing</CardTitle>
                     <CardDescription>
                       Upload a file containing multiple questions and answers to mark in bulk.
-                      The AI will automatically detect and process your file format.
+                      Supported formats: CSV, JSON, and TXT files.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
                       <Label htmlFor="bulk-file-upload">Upload File</Label>
-                      <div className="flex flex-col gap-2">
-                        <div className="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg p-6 text-center hover:bg-gray-50 dark:hover:bg-gray-900 transition cursor-pointer"
-                             onClick={() => bulkFileUploadRef.current?.click()}>
-                          <Upload className="h-10 w-10 text-gray-400 dark:text-gray-600 mx-auto mb-2" />
-                          <p className="text-sm font-medium">
-                            {bulkFile ? bulkFile.name : "Click to upload or drag and drop"}
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {bulkFile 
-                              ? `${(bulkFile.size / 1024).toFixed(1)} KB - ${new Date().toLocaleTimeString()}`
-                              : "CSV, TXT, JSON or any text-based format"}
-                          </p>
-                        </div>
-                        <Input 
-                          id="bulk-file-upload" 
-                          type="file" 
-                          accept=".csv,.json,.txt,.text" 
-                          onChange={handleBulkFileChange} 
-                          ref={bulkFileUploadRef} 
-                          disabled={bulkProcessing}
-                          className="hidden"
-                        />
-                      </div>
+                      <Input 
+                        id="bulk-file-upload" 
+                        type="file" 
+                        accept=".csv,.json,.txt" 
+                        onChange={handleBulkFileChange} 
+                        ref={bulkFileUploadRef} 
+                        disabled={bulkProcessing}
+                      />
+                      {bulkFile && <p className="text-sm text-muted-foreground">Selected file: {bulkFile.name}</p>}
+                      <p className="text-xs text-muted-foreground">
+                        <strong>Format requirements:</strong><br />
+                        - CSV: Include 'Question' and 'Answer' columns<br />
+                        - JSON: Array of objects with 'question' and 'answer' properties<br />
+                        - TXT: One item per line with question and answer separated by tab or comma
+                      </p>
                     </div>
 
-                    <div className="space-y-2 bg-muted/30 p-4 rounded-lg">
-                      <h4 className="text-sm font-medium">Supported Formats</h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-muted-foreground">
-                        <div className="space-y-1">
-                          <p className="font-medium">CSV Format:</p>
-                          <p>• First row as headers (Question, Answer)</p>
-                          <p>• One question-answer pair per row</p>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="font-medium">TXT Format:</p>
-                          <p>• Question and answer on alternate lines</p>
-                          <p>• Or "Q: question" followed by "A: answer"</p>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="font-medium">JSON Format:</p>
-                          <p>• Array of objects with question/answer keys</p>
-                          <p>• Or single object with question/answer keys</p>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="font-medium">Any Format:</p>
-                          <p>• AI will try to detect question-answer pairs</p>
-                          <p>• Works with most structured text formats</p>
-                        </div>
-                      </div>
-                    </div>
-                    
                     <div className="space-y-2">
                       <Label>Settings Preference</Label>
                       <Select value={bulkSettingPreference} onValueChange={setBulkSettingPreference} disabled={bulkProcessing}>
-                        <SelectTrigger className="w-full">
+                        <SelectTrigger className="w-[280px]">
                           <SelectValue placeholder="Choose settings source" />
                         </SelectTrigger>
                         <SelectContent>
@@ -3096,16 +3137,61 @@ ${getSubjectGuidance(subject, examBoard)}`;
                       </p>
                     </div>
                     
+                    {/* MODIFIED: Batch processing controls with parallelism */}
+                    {bulkProcessing && bulkProgress.total > 0 && (
+                      <BatchProcessingControls 
+                        isProcessing={bulkProcessing}
+                        progress={bulkProgress}
+                        onPause={handlePauseBulkProcessing}
+                        onResume={handleResumeBulkProcessing}
+                        onCancel={handleCancelBulkProcessing}
+                        isPaused={isBulkProcessingPaused}
+                        parallelism={parallelProcessing}
+                        onParallelismChange={handleParallelismChange}
+                      />
+                    )}
+
+                    {/* ADDED: Parallelism setting when not processing */}
+                    {!bulkProcessing && (
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="parallelism-setting" className="text-sm whitespace-nowrap">Parallel Processing:</Label>
+                        <Select
+                          id="parallelism-setting"
+                          value={parallelProcessing.toString()}
+                          onValueChange={(value) => setParallelProcessing(parseInt(value))}
+                        >
+                          <SelectTrigger className="w-24">
+                            <SelectValue placeholder={parallelProcessing} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1">1 task</SelectItem>
+                            <SelectItem value="2">2 tasks</SelectItem>
+                            <SelectItem value="3">3 tasks</SelectItem>
+                            <SelectItem value="4">4 tasks</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                            </TooltipTrigger>
+                            <TooltipContent side="right" className="max-w-xs">
+                              <p>Process multiple items simultaneously to speed up bulk marking. Higher values may increase API rate limiting.</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                    )}
+                    
                     <Button 
                       onClick={handleProcessBulkFile} 
                       disabled={!bulkFile || bulkProcessing || backendStatusRef.current !== 'online'}
-                      className="w-full"
+                      className="w-full sm:w-auto"
                     >
                       {bulkProcessing ? (
                         <React.Fragment>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" /> 
-                          Processing {bulkProgress.processed}/{bulkProgress.total}
-                          {bulkProgress.currentItem ? ` (Item ${bulkProgress.currentItem})` : ''}...
+                          {isBulkProcessingPaused ? "Paused" : `Processing (${bulkProgress.processed}/${bulkProgress.total})...`}
                         </React.Fragment>
                       ) : backendStatusRef.current !== 'online' ? (
                         <React.Fragment>
@@ -3127,7 +3213,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
                       <CardTitle>Bulk Results</CardTitle>
                       {bulkProcessing && bulkProgress.total > 0 && (
                         <CardDescription>
-                          Processing item {bulkProgress.currentItem || '-'} of {bulkProgress.total}. Completed: {bulkProgress.processed}.
+                          Processing item {bulkProgress.currentItem || '-'} of {bulkProgress.total}. Processed: {bulkProgress.processed}.
                         </CardDescription>
                       )}
                     </CardHeader>
@@ -3142,46 +3228,38 @@ ${getSubjectGuidance(subject, examBoard)}`;
                         <ScrollArea className="h-[400px] w-full">
                           <div className="space-y-4 pr-4">
                             {bulkResults.map((result, index) => (
-                              <div key={index} className={`p-4 border rounded-md ${result.error ? 'bg-red-50/30 dark:bg-red-900/10 border-red-200 dark:border-red-900' : 'bg-muted/30'}`}>
-                                <div className="flex justify-between items-start mb-2">
+                              <div key={index} className="p-3 border rounded-md bg-muted/30">
+                                <div className="flex justify-between items-start mb-1">
                                   <h4 className="font-semibold text-sm">
-                                    Item {result.itemIndex + 1}
+                                    Item {result.itemIndex + 1}: {result.question ? result.question.substring(0, 100) + (result.question.length > 100 ? '...' : '') : 'N/A'}
                                   </h4>
                                   {result.grade && (
-                                    <div className="inline-flex items-center justify-center h-6 w-6 bg-gradient-to-br from-indigo-600 to-purple-600 dark:from-indigo-500 dark:to-purple-500 text-white font-bold rounded-full shadow-sm text-xs">
+                                    <div className="inline-flex items-center justify-center h-6 w-6 bg-gradient-to-br from-indigo-600 to-purple-600 dark:from-indigo-500 dark:to-purple-500 text-white font-bold rounded-full text-xs shadow-sm">
                                       {result.grade}
                                     </div>
                                   )}
                                 </div>
-                                
-                                <div className="text-xs mb-2">
-                                  <p className="font-medium text-muted-foreground mb-1">Question:</p>
-                                  <p className="bg-background p-2 rounded border mb-2">{result.question ? result.question.substring(0, 100) + (result.question.length > 100 ? '...' : '') : 'N/A'}</p>
-                                  <p className="font-medium text-muted-foreground mb-1">Answer:</p>
-                                  <p className="bg-background p-2 rounded border">{result.answer ? result.answer.substring(0, 100) + (result.answer.length > 100 ? '...' : '') : 'N/A'}</p>
-                                </div>
-                                
                                 {result.error ? (
-                                  <Alert variant="destructive" className="py-2 px-3 mt-2">
+                                  <Alert variant="destructive" className="py-2 px-3">
                                     <AlertTriangle className="h-4 w-4" />
                                     <AlertTitle className="text-xs">Error</AlertTitle>
                                     <AlertDescription className="text-xs">{result.error}</AlertDescription>
                                   </Alert>
                                 ) : (
-                                  <div className="mt-2">
-                                    <p className="text-xs font-medium text-muted-foreground mb-1">
-                                      Feedback by {result.modelName ? (AI_MODELS.find(m => m.value === result.modelName)?.label || result.modelName) : 'AI'}:
+                                  <div className="text-xs">
+                                    <p className="mt-1">
+                                      <strong>Feedback Summary:</strong> {result.feedback ? result.feedback.substring(0, 150) + (result.feedback.length > 150 ? '...' : '') : 'N/A'}
                                     </p>
-                                    <div className="bg-background p-2 rounded border text-xs">
-                                      {result.feedback ? result.feedback.substring(0, 200) + (result.feedback.length > 200 ? '...' : '') : 'N/A'}
-                                    </div>
-                                    
-                                    <details className="mt-2 text-xs">
-                                      <summary className="font-medium cursor-pointer">View Full Feedback</summary>
-                                      <div className="mt-2 p-3 bg-background rounded border">
-                                        <MathMarkdown>{result.feedback || "No feedback available."}</MathMarkdown>
-                                      </div>
-                                    </details>
+                                    {/* ADDED: View full details button */}
+                                    <Button 
+                                      variant="link" 
+                                      size="sm" 
+                                      className="p-0 h-auto mt-1 text-xs" 
+                                      onClick={() => handleViewItemDetails(result)}
+                                    >
+                                      <ExternalLink className="h-3 w-3 mr-1" /> 
+                                      View Full Details
+                                    </Button>
                                   </div>
                                 )}
                               </div>
@@ -3191,38 +3269,46 @@ ${getSubjectGuidance(subject, examBoard)}`;
                         </ScrollArea>
                       )}
                     </CardContent>
-                    {bulkResults.length > 0 && !bulkProcessing && (
+                    {bulkResults.length > 0 && (
                       <CardFooter className="flex justify-between">
-                        <Button variant="outline" onClick={() => setBulkResults([])}>
-                          Clear Results
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => setBulkResults([])}
+                          disabled={bulkProcessing}
+                        >
+                          <X className="h-4 w-4 mr-1" /> Clear Results
                         </Button>
-                        <Button variant="outline" onClick={() => {
-                          // Create a CSV file from the results
-                          const csvContent = [
-                            ["Question", "Answer", "Grade", "Feedback"].join(","),
-                            ...bulkResults.map(result => [
-                              `"${(result.question || "").replace(/"/g, '""')}"`,
-                              `"${(result.answer || "").replace(/"/g, '""')}"`,
-                              `"${result.grade || "N/A"}"`,
-                              `"${(result.feedback || "").replace(/"/g, '""')}"`
-                            ].join(","))
-                          ].join("\n");
-                          
-                          // Create a download link
-                          const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                          const url = URL.createObjectURL(blob);
-                          const link = document.createElement('a');
-                          link.setAttribute('href', url);
-                          link.setAttribute('download', `bulk-results-${new Date().toISOString().slice(0,10)}.csv`);
-                          link.style.visibility = 'hidden';
-                          document.body.appendChild(link);
-                          link.click();
-                          document.body.removeChild(link);
-                          
-                          toast.success("Results downloaded as CSV file");
-                        }}>
-                          <Download className="mr-2 h-4 w-4" />
-                          Download Results
+                        <Button 
+                          size="sm"
+                          onClick={() => {
+                            // Create CSV content
+                            const csvContent = [
+                              ["Item", "Question", "Answer", "Grade", "Feedback"].join(","),
+                              ...bulkResults.map((item, index) => [
+                                index + 1,
+                                `"${item.question?.replace(/"/g, '""') || ''}"`,
+                                `"${item.answer?.replace(/"/g, '""') || ''}"`,
+                                item.grade || 'N/A',
+                                `"${item.feedback?.replace(/"/g, '""') || item.error?.replace(/"/g, '""') || ''}"`,
+                              ].join(","))
+                            ].join("\n");
+                            
+                            // Create download link
+                            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                            const url = URL.createObjectURL(blob);
+                            const link = document.createElement('a');
+                            link.setAttribute('href', url);
+                            link.setAttribute('download', `bulk-results-${new Date().toISOString().split('T')[0]}.csv`);
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                            
+                            toast.success("Results downloaded as CSV file");
+                          }}
+                          disabled={bulkProcessing || bulkResults.length === 0}
+                        >
+                          <Download className="h-4 w-4 mr-1" /> Download Results
                         </Button>
                       </CardFooter>
                     )}
@@ -3233,6 +3319,14 @@ ${getSubjectGuidance(subject, examBoard)}`;
           </div>
         </div>
       </div>
+
+      {/* ADDED: Bulk Item Preview Dialog */}
+      <BulkItemPreviewDialog 
+        open={showPreviewDialog} 
+        onOpenChange={setShowPreviewDialog} 
+        item={previewItem} 
+        onClose={() => setShowPreviewDialog(false)}
+      />
     </div>
   );
 }
