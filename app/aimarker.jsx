@@ -1119,6 +1119,29 @@ ${getSubjectGuidance(subject, examBoard)}`;
 - Consider what evidence supports each point you make in your feedback
 - Show your reasoning for the grade assigned by comparing to GCSE standards
 - Mark your thinking process with [THINKING] and your final feedback with [FEEDBACK]`;
+      }
+      return basePrompt;
+    }; // Closes buildSystemPrompt
+
+    // Assuming the main logic of handleSubmitForMarking (API calls, state updates) happens here,
+    // using the systemPrompt from buildSystemPrompt()
+
+    // Example:
+    // const systemPrompt = buildSystemPrompt();
+    // console.log("System Prompt:", systemPrompt);
+    // Further logic for API call, handling response, setting feedback, grade, errors, loading states etc.
+    // This part is crucial and seems to be where the function body continues.
+    // After all that logic, the useCallback hook needs to be closed.
+
+  }, [
+    answer, question, subject, examBoard, questionType, userType, markScheme, totalMarks,
+    textExtract, relevantMaterial, selectedModel, tier, image, customSubjects, allSubjects,
+    checkBackendStatus, /* getSubjectGuidance, (if stable or memoized) */
+    lastRequestDate, modelLastRequestTimes, lastRequestTime, dailyRequests,
+    setFeedback, setGrade, setError, setSuccess, setModelThinking, setAchievedMarks,
+    setLoading, setActiveTab, setDailyRequests, setLastRequestDate, setLastRequestTime,
+    setModelLastRequestTimes, consumeToken /* if stable or memoized */
+  ]); // Closes handleSubmitForMarking
 
   // Test function for debugging mark scheme generation
   const testMarkSchemeGeneration = async () => {
@@ -2142,6 +2165,6 @@ IMPORTANT: Provide a complete and comprehensive mark scheme. Do not truncate you
       </div>
     </div>
   );
-};
+}
 
 export default AIMarker;
