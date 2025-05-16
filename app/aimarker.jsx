@@ -990,6 +990,26 @@ const AIMarker = () => {
   const [maxTokens, setMaxTokens] = useState(2048);
   const [isHelpPanelOpen, setIsHelpPanelOpen] = useState(true); // New state for retractable panel
 
+  // Token management for rate limiting
+  const getRequestTokens = () => {
+    const stored = localStorage.getItem('requestTokens');
+    const now = new Date().toDateString();
+    let tokens = stored ? JSON.parse(stored) : { count: 500, lastReset: now };
+    if (tokens.lastReset !== now) {
+      tokens = { count: 500, lastReset: now };
+    }
+    localStorage.setItem('requestTokens', JSON.stringify(tokens));
+    return tokens;
+  };
+
+  const consumeToken = () => {
+    const tokens = getRequestTokens();
+    if (tokens.count <= 0) return false;
+    tokens.count -= 1;
+    localStorage.setItem('requestTokens', JSON.stringify(tokens));
+    return true;
+  };
+
   // Handler for backend status changes
   const handleBackendStatusChange = useCallback((status, data) => {
     console.log('Backend status changed:', status, data);
@@ -1097,25 +1117,6 @@ const AIMarker = () => {
       return;
     }
 
-    const getRequestTokens = () => {
-      const stored = localStorage.getItem('requestTokens');
-      const now = new Date().toDateString();
-      let tokens = stored ? JSON.parse(stored) : { count: 500, lastReset: now };
-      if (tokens.lastReset !== now) {
-        tokens = { count: 500, lastReset: now };
-      }
-      localStorage.setItem('requestTokens', JSON.stringify(tokens));
-      return tokens;
-    };
-
-    const consumeToken = () => {
-      const tokens = getRequestTokens();
-      if (tokens.count <= 0) return false;
-      tokens.count -= 1;
-      localStorage.setItem('requestTokens', JSON.stringify(tokens));
-      return true;
-    };
-
     if (!consumeToken()) {
       setLoading(false);
       setError({ type: "rate_limit", message: "Daily request limit reached (500/day)" });
@@ -1196,7 +1197,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
     lastRequestDate, modelLastRequestTimes, lastRequestTime, dailyRequests,
     setFeedback, setGrade, setError, setSuccess, setModelThinking, setAchievedMarks,
     setLoading, setActiveTab, setDailyRequests, setLastRequestDate, setLastRequestTime,
-    setModelLastRequestTimes, consumeToken /* if stable or memoized */
+    setModelLastRequestTimes
   ]); // Closes handleSubmitForMarking
 
   // Test function for debugging mark scheme generation
