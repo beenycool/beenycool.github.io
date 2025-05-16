@@ -231,8 +231,23 @@ app.post('/api/chat/completions', async (req, res) => {
       });
       
       logger.info('Non-streaming completion finished successfully');
+      logger.debug('Response data:', completion);
       clearTimeout(timeout);
-      return res.json(completion);
+      
+      // Format the response to match what the frontend expects
+      // The frontend checks for choices[0].message.content first
+      if (completion.choices && completion.choices[0] && completion.choices[0].message) {
+        return res.json(completion);
+      } else {
+        // If we don't have the expected format, create a compatible structure
+        return res.json({
+          choices: [{
+            message: {
+              content: completion.content || (completion.choices && completion.choices[0] ? completion.choices[0].text : "No content available")
+            }
+          }]
+        });
+      }
     }
   } catch (error) {
     logger.error('Chat completion error', {

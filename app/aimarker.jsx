@@ -1061,6 +1061,15 @@ const AIMarker = () => {
       
       const data = await response.json();
       
+      // Add detailed debugging for API response
+      console.log("API Response received:", data);
+      if (data.choices && data.choices[0]) {
+        console.log("First choice:", data.choices[0]);
+        if (data.choices[0].message) {
+          console.log("Message content:", data.choices[0].message.content);
+        }
+      }
+      
       if (data.text && data.text.trim() !== "") {
         setOcrTextPreview(data.text);
         setShowOcrPreviewDialog(true);
@@ -1577,12 +1586,49 @@ ${getSubjectGuidance(subject, examBoard)}`;
       
       if (data.content) {
         responseContent = data.content;
-      } else if (data.choices && data.choices[0] && data.choices[0].message) {
+        console.log("Using data.content format");
+      } else if (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
         responseContent = data.choices[0].message.content;
+        console.log("Using data.choices[0].message.content format");
       } else if (data.choices && data.choices[0] && data.choices[0].text) {
         responseContent = data.choices[0].text;
+        console.log("Using data.choices[0].text format");
       } else if (data.text || data.answer || data.response) {
         responseContent = data.text || data.answer || data.response;
+        console.log("Using data.text/answer/response format");
+      } else if (typeof data === 'object') {
+        // Try to find content in the response object
+        console.log("Attempting to find content in response object");
+        
+        // Try to extract content from any nested structure
+        const extractContent = (obj) => {
+          if (!obj || typeof obj !== 'object') return null;
+          
+          // Check for common content fields
+          if (obj.content && typeof obj.content === 'string') return obj.content;
+          if (obj.text && typeof obj.text === 'string') return obj.text;
+          if (obj.message && obj.message.content) return obj.message.content;
+          
+          // Recursively check nested objects
+          for (const key in obj) {
+            if (typeof obj[key] === 'object') {
+              const found = extractContent(obj[key]);
+              if (found) return found;
+            }
+          }
+          
+          return null;
+        };
+        
+        const extractedContent = extractContent(data);
+        if (extractedContent) {
+          responseContent = extractedContent;
+          console.log("Found content in nested object:", responseContent.substring(0, 50) + "...");
+        } else {
+          // Last resort: try to stringify the object if it has any meaningful content
+          console.warn("Unexpected API response format:", data);
+          throw new Error("Unexpected API response format");
+        }
       } else {
         console.warn("Unexpected API response format:", data);
         throw new Error("Unexpected API response format");
