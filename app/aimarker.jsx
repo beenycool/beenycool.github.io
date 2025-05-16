@@ -937,17 +937,27 @@ const QuickGuide = ({ onClose }) => {
   );
 };
 
+// Define keys for localStorage
+const LOCALSTORAGE_KEYS = {
+  QUESTION: 'aimarker_question',
+  ANSWER: 'aimarker_answer',
+  SUBJECT: 'aimarker_subject',
+  EXAM_BOARD: 'aimarker_examBoard',
+  MODEL: 'aimarker_model',
+  TIER: 'aimarker_tier',
+};
+
 // Enhanced AIMarker component with mobile responsiveness
 const AIMarker = () => {
-  console.log('AIMarker component is rendering', { window: typeof window !== 'undefined' ? window.location.hostname : 'SSR' });
+  // console.log('AIMarker component is rendering', { window: typeof window !== 'undefined' ? window.location.hostname : 'SSR' });
   
   // State for form inputs and data
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [subject, setSubject] = useState("english");
   const [examBoard, setExamBoard] = useState("aqa");
-  const [questionType, setQuestionType] = useState("general");
-  const [userType, setUserType] = useState("student");
+  const [questionType, setQuestionType] = useState("general"); // Not persisted for now, resets with subject/board
+  const [userType, setUserType] = useState("student"); // Not persisted for now
   const [markScheme, setMarkScheme] = useState("");
   const [image, setImage] = useState(null);
   const [activeTab, setActiveTab] = useState("answer");
@@ -962,12 +972,14 @@ const AIMarker = () => {
   const [modelThinking, setModelThinking] = useState("");
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
   const [isGitHubPages, setIsGitHubPages] = useState(false);
-  const [tier, setTier] = useState("higher");
-  const [achievedMarks, setAchievedMarks] = useState(null);
-  
-  // ADDED: State for OCR Preview
+  const [tier, setTier] = useState("higher"); 
+  const [achievedMarks, setAchievedMarks] = useState(null); 
   const [ocrTextPreview, setOcrTextPreview] = useState("");
   const [showOcrPreviewDialog, setShowOcrPreviewDialog] = useState(false);
+
+  // ADDED: State for Subject Guidance Dialog
+  const [showSubjectGuidanceDialog, setShowSubjectGuidanceDialog] = useState(false);
+  const [currentSubjectGuidance, setCurrentSubjectGuidance] = useState("");
 
   // Handle image upload
   const handleImageChange = (e) => {
@@ -1055,22 +1067,84 @@ const AIMarker = () => {
   const [modelLastRequestTimes, setModelLastRequestTimes] = useState({});
   const [imageLoading, setImageLoading] = useState(false);
   const [backendError, setBackendError] = useState(false);
-  // const [showHelp, setShowHelp] = useState(false); // showHelp was part of original code, but seems unused. Keeping for now unless specified.
   const [helpButtonRef, setHelpButtonRef] = useState(null);
   const [questionInputRef, setQuestionInputRef] = useState(null);
   const [answerInputRef, setAnswerInputRef] = useState(null);
   const [marksInputRef, setMarksInputRef] = useState(null);
   const [markSchemeButtonRef, setMarkSchemeButtonRef] = useState(null);
-  const submitButtonRef = useRef(null); // ADDED: Ref for submit button for keyboard shortcut
-
+  const submitButtonRef = useRef(null); 
   const hasManuallySetSubject = useRef(false);
   const backendStatusRef = useRef('checking');
   const [backendUpdated, setBackendUpdated] = useState(false);
   const [autoMaxTokens, setAutoMaxTokens] = useState(true);
   const [maxTokens, setMaxTokens] = useState(2048);
-
-  // ADDED: State for remaining tokens display
   const [remainingRequestTokens, setRemainingRequestTokens] = useState(0);
+
+  // Debounced save function for question and answer
+  const debouncedSaveDraft = useCallback(
+    debounce((q, a) => {
+      localStorage.setItem(LOCALSTORAGE_KEYS.QUESTION, q);
+      localStorage.setItem(LOCALSTORAGE_KEYS.ANSWER, a);
+      // console.log('Draft saved');
+    }, 1500), // Save after 1.5 seconds of inactivity
+    []
+  );
+
+  // Effect for auto-saving question and answer drafts
+  useEffect(() => {
+    if (question || answer) { // Only save if there's content
+      debouncedSaveDraft(question, answer);
+    }
+  }, [question, answer, debouncedSaveDraft]);
+
+  // Effect for loading persistent user preferences and drafts on initial mount
+  useEffect(() => {
+    // Load drafts
+    const savedQuestion = localStorage.getItem(LOCALSTORAGE_KEYS.QUESTION);
+    const savedAnswer = localStorage.getItem(LOCALSTORAGE_KEYS.ANSWER);
+    if (savedQuestion) setQuestion(savedQuestion);
+    if (savedAnswer) setAnswer(savedAnswer);
+
+    // Load preferences
+    const savedSubject = localStorage.getItem(LOCALSTORAGE_KEYS.SUBJECT);
+    if (savedSubject && SUBJECTS.find(s => s.value === savedSubject)) {
+      setSubject(savedSubject);
+    }
+    const savedExamBoard = localStorage.getItem(LOCALSTORAGE_KEYS.EXAM_BOARD);
+    if (savedExamBoard && EXAM_BOARDS.find(eb => eb.value === savedExamBoard)) {
+      setExamBoard(savedExamBoard);
+    }
+    const savedModel = localStorage.getItem(LOCALSTORAGE_KEYS.MODEL);
+    if (savedModel && AI_MODELS.find(m => m.value === savedModel)) {
+      setSelectedModel(savedModel);
+    }
+    const savedTier = localStorage.getItem(LOCALSTORAGE_KEYS.TIER);
+    if (savedTier === "higher" || savedTier === "foundation") {
+      setTier(savedTier);
+    }
+
+    // Initialize remaining tokens display
+    const tokens = getRequestTokens();
+    setRemainingRequestTokens(tokens.count);
+
+  }, []); // Empty dependency array means this runs once on mount
+
+  // Effects for saving preferences to localStorage when they change
+  useEffect(() => {
+    localStorage.setItem(LOCALSTORAGE_KEYS.SUBJECT, subject);
+  }, [subject]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCALSTORAGE_KEYS.EXAM_BOARD, examBoard);
+  }, [examBoard]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCALSTORAGE_KEYS.MODEL, selectedModel);
+  }, [selectedModel]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCALSTORAGE_KEYS.TIER, tier);
+  }, [tier]);
 
   // Token management for rate limiting
   const getRequestTokens = useCallback(() => {
@@ -1529,7 +1603,16 @@ ${getSubjectGuidance(subject, examBoard)}`;
     setAchievedMarks(null);
     setError(null);
     setSuccess(null);
-    toast.success("Form has been reset");
+    // Clear drafts from localStorage
+    localStorage.removeItem(LOCALSTORAGE_KEYS.QUESTION);
+    localStorage.removeItem(LOCALSTORAGE_KEYS.ANSWER);
+    // Optionally reset preferences to default if desired, or leave them persisted
+    // setSubject("english"); localStorage.setItem(LOCALSTORAGE_KEYS.SUBJECT, "english");
+    // setExamBoard("aqa"); localStorage.setItem(LOCALSTORAGE_KEYS.EXAM_BOARD, "aqa");
+    // setSelectedModel("google/gemini-2.5-pro-exp-03-25"); localStorage.setItem(LOCALSTORAGE_KEYS.MODEL, "google/gemini-2.5-pro-exp-03-25");
+    // setTier("higher"); localStorage.setItem(LOCALSTORAGE_KEYS.TIER, "higher");
+
+    toast.success("Form has been reset and drafts cleared");
   };
 
   // TopBar component
@@ -1595,9 +1678,16 @@ ${getSubjectGuidance(subject, examBoard)}`;
     );
   };
 
+  // ADDED: Function to show subject guidance
+  const handleShowSubjectGuidance = () => {
+    const guidance = getSubjectGuidance(subject, examBoard);
+    setCurrentSubjectGuidance(guidance || "No specific guidance available for the current selection.");
+    setShowSubjectGuidanceDialog(true);
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <TopBar version="2.1.2" backendStatus={backendStatusRef.current} remainingTokens={remainingRequestTokens} />
+      <TopBar version="2.1.3" backendStatus={backendStatusRef.current} remainingTokens={remainingRequestTokens} />
       
       {/* ADDED: OCR Preview Dialog (Sheet was mentioned, but Dialog is simpler here) */}
       <Dialog open={showOcrPreviewDialog} onOpenChange={setShowOcrPreviewDialog}>
@@ -1621,6 +1711,24 @@ ${getSubjectGuidance(subject, examBoard)}`;
               Cancel
             </Button>
             <Button onClick={handleConfirmOcrText}>Add to Answer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ADDED: Subject Guidance Dialog */}
+      <Dialog open={showSubjectGuidanceDialog} onOpenChange={setShowSubjectGuidanceDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Subject Specific Guidance</DialogTitle>
+            <DialogDescription>
+              Guidance for {allSubjects.find(s => s.value === subject)?.label} - {EXAM_BOARDS.find(eb => eb.value === examBoard)?.label}
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="h-[300px] w-full rounded-md border p-3 my-4">
+            <MathMarkdown>{currentSubjectGuidance}</MathMarkdown>
+          </ScrollArea>
+          <DialogFooter>
+            <Button onClick={() => setShowSubjectGuidanceDialog(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1784,7 +1892,12 @@ ${getSubjectGuidance(subject, examBoard)}`;
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Subject selector */}
                   <div className="space-y-2">
-                    <Label htmlFor="subject" className="text-sm">Subject</Label>
+                    <div className="flex items-center justify-between">
+                       <Label htmlFor="subject" className="text-sm">Subject</Label>
+                        <Button variant="link" size="sm" className="text-xs h-7 px-1 text-muted-foreground hover:text-primary" onClick={handleShowSubjectGuidance} tabIndex={-1}>
+                            <HelpCircle className="mr-1 h-3 w-3" /> View Guidance
+                        </Button>
+                    </div>
                     <Select
                       value={subject}
                       onValueChange={(value) => {
@@ -1794,6 +1907,8 @@ ${getSubjectGuidance(subject, examBoard)}`;
                         }
                         setSubject(value);
                         hasManuallySetSubject.current = true;
+                        // Reset question type if subject changes, as types are subject-specific
+                        setQuestionType("general"); 
                       }}
                     >
                       <SelectTrigger>
@@ -1845,10 +1960,13 @@ ${getSubjectGuidance(subject, examBoard)}`;
                   
                   {/* Exam board selector */}
                   <div className="space-y-2">
-                    <Label htmlFor="examBoard" className="text-sm">Exam Board</Label>
+                     <div className="flex items-center justify-between">
+                        <Label htmlFor="examBoard" className="text-sm">Exam Board</Label>
+                        {/* Can add another View Guidance button here if desired, or rely on the one by Subject */}
+                    </div>
                     <Select
                       value={examBoard}
-                      onValueChange={setExamBoard}
+                      onValueChange={setExamBoard} // examBoard is now persisted
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select an exam board" />
@@ -1872,7 +1990,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
                           variant={tier === "higher" ? "default" : "outline"}
                           size="sm"
                           className="flex-1"
-                          onClick={() => setTier("higher")}
+                          onClick={() => setTier("higher")} // tier is now persisted
                         >
                           Higher
                         </Button>
@@ -1880,7 +1998,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
                           variant={tier === "foundation" ? "default" : "outline"}
                           size="sm"
                           className="flex-1"
-                          onClick={() => setTier("foundation")}
+                          onClick={() => setTier("foundation")} // tier is now persisted
                         >
                           Foundation
                         </Button>
@@ -1894,7 +2012,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
                       <Label htmlFor="questionType" className="text-sm">Question Type</Label>
                       <Select
                         value={questionType}
-                        onValueChange={setQuestionType}
+                        onValueChange={setQuestionType} // Not persisted, but good practice to have handler
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select question type" />
@@ -2035,8 +2153,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
                         </Label>
                         <Select
                           value={selectedModel}
-                          onValueChange={(value) => {
-                            // Check if we're within the rate limit for the new model
+                          onValueChange={(value) => { // selectedModel is now persisted
                             const now = Date.now();
                             const modelLimit = MODEL_RATE_LIMITS[value] || 10000;
                             const lastModelRequest = modelLastRequestTimes[value] || 0;
@@ -2047,7 +2164,6 @@ ${getSubjectGuidance(subject, examBoard)}`;
                               toast.warning(`${AI_MODELS.find(m => m.value === value)?.label || value} was used recently. Please wait ${waitTime} more seconds.`);
                               return;
                             }
-                            
                             setSelectedModel(value);
                           }}
                         >
