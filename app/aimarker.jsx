@@ -956,6 +956,62 @@ const AIMarker = () => {
   const [tier, setTier] = useState("higher"); // Default to higher tier
   const [achievedMarks, setAchievedMarks] = useState(null); // Add state for achieved marks
   
+  // Handle image upload
+  const handleImageChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      const selectedImage = e.target.files[0];
+      setImage(selectedImage);
+    }
+  };
+  
+  // Handle image processing - convert to text using AI OCR
+  const handleProcessImage = async () => {
+    if (!image) return;
+    
+    try {
+      setImageLoading(true);
+      setSuccess({ message: "Processing image with AI OCR..." });
+      
+      // Create form data to send the image to the backend
+      const formData = new FormData();
+      formData.append('image', image);
+      
+      // Send the image to the backend API for OCR processing
+      const response = await fetch(`${API_BASE_URL}/api/ocr`, {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`OCR failed: ${response.status} ${errorText}`);
+      }
+      
+      const data = await response.json();
+      
+      // Add the OCR text to the answer field
+      if (data.text) {
+        setAnswer(prev => {
+          const separator = prev.trim() ? '\n\n' : '';
+          return prev + separator + data.text;
+        });
+        toast.success("Image processed successfully");
+      } else {
+        toast.warning("No text detected in image");
+      }
+    } catch (error) {
+      console.error('Error processing image:', error);
+      setImageLoading(false);
+      setError({
+        type: "api",
+        message: `Failed to process image: ${error.message}`
+      });
+      toast.error("Failed to process image");
+    } finally {
+      setImageLoading(false);
+    }
+  };
+  
   // UI state
   const [showGuide, setShowGuide] = useState(false);
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
