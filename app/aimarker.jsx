@@ -6,7 +6,6 @@ import ReactMarkdown from 'react-markdown';
 import 'katex/dist/katex.min.css'; // Add import for KaTeX CSS
 import remarkMath from 'remark-math'; // Add import for remark-math plugin
 import rehypeKatex from 'rehype-katex'; // Add import for rehype-katex plugin
-import OpenAI from 'openai';
 import { getSubjectGuidance } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -44,6 +43,7 @@ import {
 } from "@/components/ui/sheet";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog"; // ADDED Dialog for OCR Preview
 
 // API URL for our backend
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 
@@ -492,7 +492,6 @@ const shareFeedback = (feedback, method, grade) => {
 // Improved PDF export function using html2canvas and jsPDF
 const saveFeedbackAsPdf = async (feedbackElement, grade) => {
   try {
-    // Dynamically import the libraries (only load when needed)
     const html2canvasModule = await import('html2canvas');
     const jsPDFModule = await import('jspdf');
     
@@ -500,16 +499,24 @@ const saveFeedbackAsPdf = async (feedbackElement, grade) => {
     const jsPDF = jsPDFModule.default;
     
     const feedbackContainer = feedbackElement.current;
-    if (!feedbackContainer) return;
+    if (!feedbackContainer) {
+      toast.error("Feedback element not found for PDF export.");
+      return;
+    }
     
+    // Slightly increase scale for better quality, ensure all content is captured
     const canvas = await html2canvas(feedbackContainer, {
-      scale: 2,
+      scale: 2.5, // Increased scale
       useCORS: true,
-      logging: false
+      logging: false,
+      scrollY: -window.scrollY, // Capture full element even if scrolled
+      windowWidth: feedbackContainer.scrollWidth,
+      windowHeight: feedbackContainer.scrollHeight,
+      backgroundColor: window.getComputedStyle(document.documentElement).getPropertyValue('--card').trim() || '#ffffff', // Use theme background
     });
     
     const imgData = canvas.toDataURL('image/png');
-    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pdf = new jsPDF('p', 'mm', 'a4', true); // Added 'true' for better compression
     const pdfWidth = pdf.internal.pageSize.getWidth();
     const pdfHeight = pdf.internal.pageSize.getHeight();
     
@@ -518,14 +525,16 @@ const saveFeedbackAsPdf = async (feedbackElement, grade) => {
     
     const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
     const imgX = (pdfWidth - imgWidth * ratio) / 2;
+    const imgY = (pdfHeight - imgHeight * ratio) / 2; // Center vertically too
     
-    pdf.addImage(imgData, 'PNG', imgX, 0, imgWidth * ratio, imgHeight * ratio);
-    pdf.save(`GCSE_Grade${grade}_Feedback.pdf`);
+    pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
+    pdf.save(`GCSE_Grade${grade || 'N/A'}_Feedback.pdf`);
     
+    toast.success('Feedback saved as PDF');
     return 'Feedback saved as PDF';
   } catch (error) {
     console.error('Error saving PDF:', error);
-    alert('Could not generate PDF. Please try again or use another method to save the feedback.');
+    toast.error('Could not generate PDF. Please try again.');
   }
 };
 
@@ -953,30 +962,34 @@ const AIMarker = () => {
   const [modelThinking, setModelThinking] = useState("");
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
   const [isGitHubPages, setIsGitHubPages] = useState(false);
-  const [tier, setTier] = useState("higher"); // Default to higher tier
-  const [achievedMarks, setAchievedMarks] = useState(null); // Add state for achieved marks
+  const [tier, setTier] = useState("higher");
+  const [achievedMarks, setAchievedMarks] = useState(null);
   
+  // ADDED: State for OCR Preview
+  const [ocrTextPreview, setOcrTextPreview] = useState("");
+  const [showOcrPreviewDialog, setShowOcrPreviewDialog] = useState(false);
+
   // Handle image upload
   const handleImageChange = (e) => {
     if (e.target.files && e.target.files[0]) {
       const selectedImage = e.target.files[0];
       setImage(selectedImage);
+      // Clear previous preview if any
+      setOcrTextPreview("");
     }
   };
   
-  // Handle image processing - convert to text using AI OCR
+  // MODIFIED: Handle image processing - convert to text using AI OCR
   const handleProcessImage = async () => {
     if (!image) return;
     
     try {
       setImageLoading(true);
-      setSuccess({ message: "Processing image with AI OCR..." });
+      toast.info("Processing image with AI OCR...", { duration: 5000 });
       
-      // Create form data to send the image to the backend
       const formData = new FormData();
       formData.append('image', image);
       
-      // Send the image to the backend API for OCR processing
       const response = await fetch(`${API_BASE_URL}/api/ocr`, {
         method: 'POST',
         body: formData,
@@ -989,27 +1002,37 @@ const AIMarker = () => {
       
       const data = await response.json();
       
-      // Add the OCR text to the answer field
-      if (data.text) {
-        setAnswer(prev => {
-          const separator = prev.trim() ? '\n\n' : '';
-          return prev + separator + data.text;
-        });
-        toast.success("Image processed successfully");
+      if (data.text && data.text.trim() !== "") {
+        setOcrTextPreview(data.text);
+        setShowOcrPreviewDialog(true);
+        toast.success("Image processed. Review extracted text.");
       } else {
-        toast.warning("No text detected in image");
+        toast.warning("No text detected in image, or extracted text is empty.");
+        setOcrTextPreview(""); // Clear preview if no text
       }
     } catch (error) {
       console.error('Error processing image:', error);
-      setImageLoading(false);
       setError({
         type: "api",
         message: `Failed to process image: ${error.message}`
       });
-      toast.error("Failed to process image");
+      toast.error("Failed to process image: " + error.message);
     } finally {
       setImageLoading(false);
     }
+  };
+
+  // ADDED: Handle OCR text confirmation
+  const handleConfirmOcrText = () => {
+    if (ocrTextPreview) {
+      setAnswer(prev => {
+        const separator = prev.trim() ? '\n\n' : '';
+        return prev + separator + ocrTextPreview;
+      });
+      toast.success("Text added to answer field.");
+    }
+    setShowOcrPreviewDialog(false);
+    // setOcrTextPreview(""); // Optionally clear preview after adding
   };
   
   // UI state
@@ -1025,46 +1048,57 @@ const AIMarker = () => {
   const [processingProgress, setProcessingProgress] = useState("");
   
   // API and rate limiting
-  const [openai, setOpenai] = useState(null);
   const [lastRequestTime, setLastRequestTime] = useState(0);
-  const [dailyRequests, setDailyRequests] = useState(0);
+  const [dailyRequests, setDailyRequests] = useState(0); // This seems locally managed, let's use getRequestTokens for display
   const [lastRequestDate, setLastRequestDate] = useState(new Date().toDateString());
-  const [selectedModel, setSelectedModel] = useState("google/gemini-2.5-pro-exp-03-25"); // Default to Gemini 2.5 Pro
-  const [modelLastRequestTimes, setModelLastRequestTimes] = useState({}); // Track last request time for each model
+  const [selectedModel, setSelectedModel] = useState("google/gemini-2.5-pro-exp-03-25");
+  const [modelLastRequestTimes, setModelLastRequestTimes] = useState({});
   const [imageLoading, setImageLoading] = useState(false);
   const [backendError, setBackendError] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
+  // const [showHelp, setShowHelp] = useState(false); // showHelp was part of original code, but seems unused. Keeping for now unless specified.
   const [helpButtonRef, setHelpButtonRef] = useState(null);
   const [questionInputRef, setQuestionInputRef] = useState(null);
   const [answerInputRef, setAnswerInputRef] = useState(null);
   const [marksInputRef, setMarksInputRef] = useState(null);
   const [markSchemeButtonRef, setMarkSchemeButtonRef] = useState(null);
+  const submitButtonRef = useRef(null); // ADDED: Ref for submit button for keyboard shortcut
+
   const hasManuallySetSubject = useRef(false);
   const backendStatusRef = useRef('checking');
   const [backendUpdated, setBackendUpdated] = useState(false);
   const [autoMaxTokens, setAutoMaxTokens] = useState(true);
   const [maxTokens, setMaxTokens] = useState(2048);
-  const [isHelpPanelOpen, setIsHelpPanelOpen] = useState(true); // New state for retractable panel
+
+  // ADDED: State for remaining tokens display
+  const [remainingRequestTokens, setRemainingRequestTokens] = useState(0);
 
   // Token management for rate limiting
-  const getRequestTokens = () => {
+  const getRequestTokens = useCallback(() => {
     const stored = localStorage.getItem('requestTokens');
     const now = new Date().toDateString();
     let tokens = stored ? JSON.parse(stored) : { count: 500, lastReset: now };
     if (tokens.lastReset !== now) {
       tokens = { count: 500, lastReset: now };
     }
-    localStorage.setItem('requestTokens', JSON.stringify(tokens));
+    // Don't set localStorage here, do it in consumeToken or a dedicated update function
+    // localStorage.setItem('requestTokens', JSON.stringify(tokens)); 
     return tokens;
-  };
+  }, []);
 
-  const consumeToken = () => {
+  // ADDED: Effect to initialize and update remaining tokens display
+  useEffect(() => {
+    const tokens = getRequestTokens();
+    setRemainingRequestTokens(tokens.count);
+  }, [getRequestTokens]);
+
+  const consumeToken = useCallback(() => {
     const tokens = getRequestTokens();
     if (tokens.count <= 0) return false;
     tokens.count -= 1;
     localStorage.setItem('requestTokens', JSON.stringify(tokens));
+    setRemainingRequestTokens(tokens.count); // Update display state
     return true;
-  };
+  }, [getRequestTokens]);
 
   // Handler for backend status changes
   const handleBackendStatusChange = useCallback((status, data) => {
@@ -1100,7 +1134,46 @@ const AIMarker = () => {
     }
   }, [setIsGitHubPages]);
 
+  // Effect for automatic subject detection based on question and answer
+  useEffect(() => {
+    if (question.length > 20 && !hasManuallySetSubject.current && !loading) {
+      // Ensure both question and answer are passed for detection
+      debouncedClassifySubject(question + " " + answer, subject, hasManuallySetSubject, allSubjects, setSubject, setDetectedSubject, setSuccess);
+    }
+  // Add answer to dependency array
+  }, [question, answer, debouncedClassifySubject, subject, loading, allSubjects, setDetectedSubject, setSuccess, hasManuallySetSubject]);
+
   // ======== MAIN FUNCTIONS ========
+  // Add the missing addCustomSubject function
+  const addCustomSubject = () => {
+    if (!customSubject.trim()) return;
+    
+    const newSubjectValue = customSubject.toLowerCase().replace(/\s+/g, '');
+    const newSubject = {
+      value: newSubjectValue,
+      label: customSubject.trim()
+    };
+    
+    // Add to both state arrays
+    setCustomSubjects(prev => [...prev, newSubject]);
+    setAllSubjects(prev => [...prev, newSubject]);
+    
+    // Set as current selection
+    setSubject(newSubjectValue);
+    hasManuallySetSubject.current = true;
+    
+    // Reset custom subject input and hide the add input
+    setCustomSubject('');
+    setIsAddingSubject(false);
+    
+    // Focus back on the select after adding
+    setTimeout(() => {
+      if (customSubjectInputRef.current) {
+        customSubjectInputRef.current.blur();
+      }
+    }, 10);
+  };
+
   // Submit handler
   const handleSubmitForMarking = useCallback(async () => {
     // Clear previous feedback and errors
@@ -1211,8 +1284,8 @@ e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number`;
       // Add math-specific LaTeX formatting instructions
       if (subject === "maths") {
         basePrompt += `\n\n4. MATHEMATICAL NOTATION:
-- Use LaTeX notation for mathematical expressions enclosed in ( ) for inline formulas and as separate blocks for complex formulas
-- Example inline: ( x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a} )
+- Use LaTeX notation for mathematical expressions enclosed in $ $ for inline formulas and as separate blocks for complex formulas
+- Example inline: $x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$
 - Example block:
 $$
 x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}
@@ -1234,265 +1307,76 @@ ${getSubjectGuidance(subject, examBoard)}`;
 - Mark your thinking process with [THINKING] and your final feedback with [FEEDBACK]`;
       }
       return basePrompt;
-    }; // Closes buildSystemPrompt
+    };
 
-    // Assuming the main logic of handleSubmitForMarking (API calls, state updates) happens here,
-    // using the systemPrompt from buildSystemPrompt()
-
-    // Example:
-    // const systemPrompt = buildSystemPrompt();
-    // console.log("System Prompt:", systemPrompt);
-    // Further logic for API call, handling response, setting feedback, grade, errors, loading states etc.
-    // This part is crucial and seems to be where the function body continues.
-    // After all that logic, the useCallback hook needs to be closed.
-
-  }, [
-    answer, question, subject, examBoard, questionType, userType, markScheme, totalMarks,
-    textExtract, relevantMaterial, selectedModel, tier, image, customSubjects, allSubjects,
-    checkBackendStatus, /* getSubjectGuidance, (if stable or memoized) */
-    lastRequestDate, modelLastRequestTimes, lastRequestTime, dailyRequests,
-    setFeedback, setGrade, setError, setSuccess, setModelThinking, setAchievedMarks,
-    setLoading, setActiveTab, setDailyRequests, setLastRequestDate, setLastRequestTime,
-    setModelLastRequestTimes
-  ]); // Closes handleSubmitForMarking
-
-  // Test function for debugging mark scheme generation
-  const testMarkSchemeGeneration = async () => {
-    if (!question) {
-      toast.error("Please enter a question first");
-      return;
-    }
-    
-    console.log("=== TEST MARK SCHEME GENERATION STARTED ===");
-    console.log("Question:", question);
-    console.log("Subject:", subject);
-    console.log("Exam board:", examBoard);
-    console.log("Backend URL:", API_BASE_URL);
-    
-    setSuccess({
-      message: "Testing mark scheme generation... Check console for details"
-    });
-    
-    // Create a simplified test prompt
-    const testPrompt = `Create a mark scheme for this GCSE ${subject} question: "${question}"`;
-    console.log("Using simplified test prompt:", testPrompt);
-    
-    try {
-      // First check if the API is responsive
-      const healthCheck = await fetch(`${API_BASE_URL}/api/health`);
-      console.log("API health check response:", healthCheck.status, await healthCheck.text());
+    // Build user prompt with the question and answer
+    const buildUserPrompt = () => {
+      let userPrompt = `Please mark this GCSE ${subject} answer.\n\n`;
       
-      if (healthCheck.status !== 200) {
-        throw new Error(`API health check failed with status ${healthCheck.status}`);
+      // Add the question
+      userPrompt += `QUESTION:\n${question}\n\n`;
+      
+      // Add the answer
+      userPrompt += `STUDENT ANSWER:\n${answer}\n\n`;
+      
+      // Add any additional context
+      if (markScheme) {
+        userPrompt += `MARK SCHEME:\n${markScheme}\n\n`;
       }
       
-      console.log("Health check successful, proceeding with mark scheme test");
+      if (textExtract) {
+        userPrompt += `TEXT EXTRACT:\n${textExtract}\n\n`;
+      }
       
-      // Make a direct request to the backend
+      if (relevantMaterial) {
+        userPrompt += `RELEVANT MATERIAL:\n${relevantMaterial}\n\n`;
+      }
+      
+      if (totalMarks) {
+        userPrompt += `TOTAL MARKS: ${totalMarks}\n\n`;
+      }
+      
+      // Add specific instructions
+      userPrompt += `INSTRUCTIONS:
+1. Assess the answer against GCSE criteria for ${subject} (${examBoard} exam board)
+2. Provide detailed, constructive feedback
+3. Assign a GCSE grade (9-1) in the format [GRADE:X]`;
+
+      if (totalMarks) {
+        userPrompt += `\n4. Assign marks in the format [MARKS:Y/${totalMarks}]`;
+      }
+      
+      return userPrompt;
+    };
+
+    try {
+      const systemPrompt = buildSystemPrompt();
+      const userPrompt = buildUserPrompt();
+      
+      setProcessingProgress("Sending request to AI model...");
+      setSuccess({
+        message: `Processing with ${AI_MODELS.find(m => m.value === selectedModel)?.label || selectedModel}...`
+      });
+      
+      // Update last request time for rate limiting
+      setLastRequestTime(now);
+      setModelLastRequestTimes(prev => ({
+        ...prev,
+        [selectedModel]: now
+      }));
+      
+      // For models that support thinking process, we'll capture it
+      const captureThinking = selectedModel === "microsoft/mai-ds-r1:free";
+      let thinkingSteps = [];
+      
+      // Make a request to the backend API
       const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: "google/gemini-2.0-flash-exp:free",
-          messages: [
-            {
-              role: "user",
-              content: testPrompt
-            }
-          ],
-          max_tokens: 1500
-        }),
-      });
-      
-      // Log the raw response for debugging
-      const responseText = await response.clone().text();
-      console.log("Test response status:", response.status);
-      console.log("Test response raw:", responseText);
-      
-      if (!response.ok) {
-        let errorMessage = "Unknown error";
-        try {
-          const errorData = JSON.parse(responseText);
-          errorMessage = JSON.stringify(errorData);
-          console.error("Test response error:", errorMessage);
-        } catch (parseError) {
-          errorMessage = responseText || response.statusText;
-          console.error("Test response error (text):", errorMessage);
-        }
-        
-        throw new Error(`API request failed: ${response.status}. ${errorMessage}`);
-      }
-      
-      // Try to parse the response as JSON, with fallback handling
-      let testData;
-      try {
-        testData = JSON.parse(responseText);
-        console.log("Test response parsed successfully:", testData);
-      } catch (parseError) {
-        console.error("Failed to parse response as JSON:", parseError);
-        throw new Error(`Failed to parse API response as JSON: ${parseError.message}`);
-      }
-      
-      // Handle different response formats
-      let markSchemeContent = "";
-      
-      if (testData.content) {
-        // Format 1: { content: "..." }
-        markSchemeContent = testData.content;
-        console.log("Using content field from response");
-      } else if (testData.choices && testData.choices[0] && testData.choices[0].message) {
-        // Format 2: { choices: [{ message: { content: "..." } }] }
-        markSchemeContent = testData.choices[0].message.content;
-        console.log("Using choices[0].message.content field from response");
-      } else if (testData.text || testData.answer || testData.response) {
-        // Format 3: Some other common field names
-        markSchemeContent = testData.text || testData.answer || testData.response;
-        console.log("Using text/answer/response field from response");
-      } else if (typeof testData === "string") {
-        // Format 4: Direct string response
-        markSchemeContent = testData;
-        console.log("Using direct string response");
-      } else {
-        // Unknown format - log the full response and use stringified version
-        console.log("Unknown response format:", testData);
-        markSchemeContent = "Failed to extract mark scheme content. Full response: " + JSON.stringify(testData);
-      }
-      
-      // Update the mark scheme field
-      console.log("Extracted mark scheme content (first 100 chars):", markSchemeContent.substring(0, 100) + "...");
-      setMarkScheme(markSchemeContent);
-      setSuccess({
-        message: "Test mark scheme generated successfully!"
-      });
-    } catch (error) {
-      console.error("Test mark scheme generation error:", error);
-      console.error("Error details:", error);
-      setError({
-        type: "api",
-        message: `Test mark scheme generation failed: ${error.message}`
-      });
-    } finally {
-      console.log("=== TEST MARK SCHEME GENERATION COMPLETED ===");
-      setLoading(false);
-    }
-  };
-
-  // Improve the mark scheme generation function with more robust response handling
-  const generateMarkScheme = async () => {
-    if (!question) {
-      setError({
-        type: "validation",
-        message: "Please enter a question first to generate a mark scheme"
-      });
-      return;
-    }
-    
-    console.log("Starting mark scheme generation for:", question);
-    console.log("Subject:", subject, "Exam board:", examBoard);
-    
-    setError(null); // Clear general error messages
-    setSuccess(null); // Clear general success messages
-    setLoading(true);
-    setMarkScheme("Generating mark scheme... Please wait."); // Show immediate feedback in the mark scheme field
-    setSuccess({
-      message: "Generating mark scheme with relevant Assessment Objectives..."
-    });
-    
-    let retryCount = 0;
-    const maxRetries = 3; // Try up to 4 times total (initial + 3 retries)
-    let success = false;
-    
-    // Create a more robust system prompt for better mark scheme generation
-    const systemPrompt = `
-You are an expert GCSE examiner for ${examBoard.toUpperCase()} ${subject} with years of experience in assessment and curriculum design.
-
-ROLE:
-- You create official mark schemes that align precisely with ${examBoard.toUpperCase()}'s assessment objectives and grade descriptors
-- You understand the specific requirements and nuances of ${subject} at GCSE level
-- You have deep knowledge of how mark schemes are structured and applied by examiners
-
-MARK SCHEME STRUCTURE:
-1. Assessment Objectives - List the specific AOs being tested (e.g., AO1: Knowledge and understanding)
-2. Mark Bands - Create clear level descriptors with specific mark ranges (e.g., Level 1: 1-3 marks)
-3. Grade Boundaries - Indicate approximate grade boundaries where relevant
-4. Key Content Points - Identify essential knowledge/concepts students must demonstrate
-5. Command Word Analysis - Explain what the question command word requires (e.g., "Explain" vs "Evaluate")
-6. Exemplar Responses - Brief examples of answers at different levels
-
-GUIDANCE:
-- Be precise and use subject-specific terminology appropriate for ${examBoard.toUpperCase()}
-- Include both content and skills assessment criteria
-- Ensure mark schemes are accessible to teachers while maintaining rigor
-- Format with clear headings, bullet points, and structured sections
-- Consider both higher and foundation tier requirements if applicable
-- Use markdown formatting for better readability including tables and bullet points
-- Provide complete responses without truncation
-`;
-
-    // Create a user prompt with the question and specific instructions
-    const userPrompt = `As an expert GCSE examiner for ${examBoard.toUpperCase()} ${subject}, create a mark scheme for this question.
-Include assessment objectives, level descriptors, and marking criteria.
-Focus on ${subject}-specific requirements, key concepts, and grade boundaries.
-Format with bullet points, tables, and clear structure.
-
-Here is the question:
-"${question}"
-
-Please provide a detailed mark scheme that includes:
-1. Relevant assessment objectives (AOs)
-2. Clear level descriptors with mark bands
-3. Key concepts students should include
-4. Examples of good responses
-5. Criteria for different grade levels
-
-IMPORTANT: Provide a complete and comprehensive mark scheme. Do not truncate your response.`;
-
-    // Array of models to try in order if rate limiting occurs
-    let modelsToTry = [
-      "google/gemini-2.0-flash-exp:free",  // Start with fastest model
-      "deepseek/deepseek-chat-v3-0324:free",
-      "microsoft/mai-ds-r1:free"
-    ];
-    
-    // Keep track of which models we've tried and failed with
-    const failedModels = new Set();
-
-    while (retryCount <= maxRetries && !success) {
-      try {
-        // Only log the attempt number if it's a retry
-        if (retryCount > 0) {
-          setMarkScheme(`Retrying mark scheme generation (attempt ${retryCount + 1}/${maxRetries + 1})...\n\nPrevious attempt failed. Trying with a different model.`);
-          setSuccess({
-            message: `Retrying mark scheme generation (${retryCount}/${maxRetries})...`
-          });
-        }
-        
-        // Select the appropriate model for this attempt
-        const currentModel = modelsToTry[retryCount % modelsToTry.length];
-        
-        // Skip models we've already tried and failed with
-        if (failedModels.has(currentModel)) {
-          retryCount++;
-          continue;
-        }
-        
-        console.log(`Attempt ${retryCount + 1}/${maxRetries + 1} to generate mark scheme using ${currentModel}`);
-        console.log(`Backend URL: ${API_BASE_URL}`);
-        
-        // Update UI to show which model we're using
-        const modelLabel = AI_MODELS.find(m => m.value === currentModel)?.label || currentModel;
-        setMarkScheme(`Generating mark scheme with ${modelLabel}...\n\nThis may take up to 30 seconds. Please wait.`);
-        setSuccess({
-          message: `Generating mark scheme with ${modelLabel}...`
-        });
-        
-        // Use a combined approach with just user prompt
-        console.log("Using combined user prompt approach");
-        console.log("User prompt first 100 chars:", userPrompt.substring(0, 100) + "...");
-        const requestBody = {
-          model: currentModel,
+          model: selectedModel,
           messages: [
             {
               role: "system",
@@ -1503,161 +1387,133 @@ IMPORTANT: Provide a complete and comprehensive mark scheme. Do not truncate you
               content: userPrompt
             }
           ],
-          max_tokens: 4000, // Increased token limit for more complete mark schemes
+          max_tokens: autoMaxTokens ? undefined : maxTokens,
           temperature: 0.7
-        };
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("API error response:", errorText);
         
-        console.log("Request body:", JSON.stringify(requestBody, null, 2));
-        
-        // Set a timeout for the request
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 second timeout (increased)
-        
-        const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(requestBody),
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        const responseText = await response.clone().text();
-        console.log("Response status:", response.status);
-        console.log("Response raw:", responseText);
-        
-        // Check for rate limiting errors specifically
-        const isRateLimited = responseText.includes("rate-limit") || 
-                              responseText.includes("429") || 
-                              response.status === 429;
-        
-        if (isRateLimited) {
-          console.log(`Model ${currentModel} is rate limited, will try another model`);
-          failedModels.add(currentModel); // Mark this model as failed
-          setMarkScheme(`${modelLabel} is currently rate limited. Trying another model...`);
-          
-          // Try the fallback model next
-          const fallbackModel = FALLBACK_MODELS[currentModel];
-          if (fallbackModel && !failedModels.has(fallbackModel)) {
-            // Move the fallback model to the front of the queue
-            modelsToTry = [fallbackModel, ...modelsToTry.filter(m => m !== fallbackModel)];
-          }
-          
-          throw new Error(`Rate limit reached for ${currentModel}. Trying alternative model.`);
-        }
-        
-        if (!response.ok) {
-          let errorMessage = "Unknown error";
-          try {
-            const errorData = JSON.parse(responseText);
-            errorMessage = JSON.stringify(errorData);
-          } catch (parseError) {
-            errorMessage = responseText || response.statusText;
-          }
-          
-          throw new Error(`HTTP error: ${response.status}. ${errorMessage}`);
-        }
-        
-        // Handle different response formats
-        let responseData;
+        let errorMessage = "Unknown error occurred";
         try {
-          responseData = JSON.parse(responseText);
-        } catch (parseError) {
-          console.error("Failed to parse response as JSON:", parseError);
-          throw new Error(`Failed to parse API response as JSON: ${parseError.message}`);
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.error?.message || errorJson.message || JSON.stringify(errorJson);
+        } catch (e) {
+          errorMessage = errorText || response.statusText;
         }
         
-        // Extract content from various possible response formats
-        let markSchemeContent = "";
-        
-        if (responseData.content) {
-          markSchemeContent = responseData.content;
-        } else if (responseData.choices && responseData.choices[0] && responseData.choices[0].message) {
-          markSchemeContent = responseData.choices[0].message.content;
-        } else if (responseData.text || responseData.answer || responseData.response) {
-          markSchemeContent = responseData.text || responseData.answer || responseData.response;
-        } else if (typeof responseData === "string") {
-          markSchemeContent = responseData;
-        } else if (responseData.error) {
-          // Handle error object in response
-          throw new Error(`API error: ${responseData.error.message || JSON.stringify(responseData.error)}`);
-        } else {
-          console.log("Unknown response format:", responseData);
-          throw new Error("Failed to extract proper content from response");
-        }
-        
-        if (!markSchemeContent || markSchemeContent.trim() === "") {
-          throw new Error("Received empty mark scheme content");
-        }
-        
-        setMarkScheme(markSchemeContent);
-        success = true;
-        setSuccess({
-          message: `Mark scheme generated successfully with ${modelLabel}!`
-        });
-        
-      } catch (error) {
-        console.error("Error generating mark scheme:", error);
-        console.error("Error details:", error);
-        
-        // Check if we've tried all models and still failed
-        if (failedModels.size >= modelsToTry.length) {
-          setMarkScheme("Failed to generate mark scheme. All available models are currently rate limited. Please try again in a few minutes.");
-          setError({
-            type: "rate_limit",
-            message: "All available models are currently rate limited. Please try again in a few minutes.",
-            retry: () => {
-              setTimeout(() => {
-                generateMarkScheme();
-              }, 5000);
-            }
-          });
-          break;
-        }
-        
-        if (retryCount < maxRetries) {
-          retryCount++;
-          // Wait a bit before retrying (500ms, 1000ms, 2000ms)
-          const delay = 500 * Math.pow(2, retryCount - 1);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        } else {
-          // Provide a more helpful error message based on the error type
-          if (error.name === 'AbortError') {
-            setMarkScheme("Request timed out. The server took too long to respond. Please try again.");
-            setError({
-              type: "timeout",
-              message: "Request timed out. The server took too long to respond.",
-              retry: () => generateMarkScheme()
-            });
-          } else if (error.message.includes("rate-limit") || error.message.includes("429")) {
-            setMarkScheme("All models are currently rate limited. Please try again in a few minutes.");
-            setError({
-              type: "rate_limit",
-              message: "All models are currently rate limited. Please try again in a few minutes.",
-              retry: () => {
-                setTimeout(() => {
-                  generateMarkScheme();
-                }, 5000);
-              }
-            });
-          } else {
-            setMarkScheme(`Failed to generate mark scheme: ${error.message}. Please try again.`);
-            setError({
-              type: "api",
-              message: `Failed to generate mark scheme: ${error.message}. Backend service may be starting up or experiencing issues.`,
-              retry: () => generateMarkScheme()
-            });
+        throw new Error(`Backend API error: ${errorMessage}`);
+      }
+      
+      const data = await response.json();
+      
+      // Extract the response content from various possible API response formats
+      let responseContent = "";
+      
+      if (data.content) {
+        responseContent = data.content;
+      } else if (data.choices && data.choices[0] && data.choices[0].message) {
+        responseContent = data.choices[0].message.content;
+      } else if (data.choices && data.choices[0] && data.choices[0].text) {
+        responseContent = data.choices[0].text;
+      } else if (data.text || data.answer || data.response) {
+        responseContent = data.text || data.answer || data.response;
+      } else {
+        console.warn("Unexpected API response format:", data);
+        throw new Error("Unexpected API response format");
+      }
+      
+      // If using a thinking model, extract the thinking process
+      if (captureThinking) {
+        // Check if there's a [THINKING] section
+        const thinkingMatch = responseContent.match(/\[THINKING\]([\s\S]*?)(?:\[FEEDBACK\]|$)/i);
+        if (thinkingMatch && thinkingMatch[1]) {
+          const thinkingContent = thinkingMatch[1].trim();
+          // Split into steps/points
+          thinkingSteps = thinkingContent
+            .split(/\n\s*\n|\r\n\s*\r\n/)
+            .filter(step => step.trim().length > 0)
+            .map(step => step.trim());
+          
+          setModelThinking(thinkingSteps);
+          
+          // Extract only the feedback part for the final response
+          const feedbackMatch = responseContent.match(/\[FEEDBACK\]([\s\S]*?)$/i);
+          if (feedbackMatch && feedbackMatch[1]) {
+            responseContent = feedbackMatch[1].trim();
           }
-          break;
         }
       }
+      
+      // Extract the grade from the response
+      const gradeMatch = responseContent.match(/\[GRADE:(\d+)\]/i);
+      if (gradeMatch && gradeMatch[1]) {
+        setGrade(gradeMatch[1]);
+      }
+      
+      // Extract marks if provided
+      const marksMatch = responseContent.match(/\[MARKS:(\d+)\/(\d+)\]/i);
+      if (marksMatch && marksMatch[1]) {
+        setAchievedMarks(marksMatch[1]);
+      }
+      
+      // Clean up the response (remove the grade/marks tag)
+      const cleanResponse = responseContent
+        .replace(/\[GRADE:\d+\]/gi, '')
+        .replace(/\[MARKS:\d+\/\d+\]/gi, '');
+      
+      setFeedback(cleanResponse);
+      setSuccess({
+        message: "Assessment completed successfully!"
+      });
+      
+    } catch (error) {
+      console.error("Error during assessment:", error);
+      
+      // Handle different error types
+      if (error.name === 'AbortError') {
+        setError({
+          type: "timeout",
+          message: "The request timed out. The server took too long to respond.",
+          retry: handleSubmitForMarking
+        });
+      } else if (error.message.includes("rate limit") || error.message.includes("429")) {
+        setError({
+          type: "rate_limit",
+          message: `Rate limit reached for ${selectedModel}. Please try again in a minute or select a different model.`,
+          retry: () => {
+            // Try with a fallback model
+            const fallbackModel = FALLBACK_MODELS[selectedModel];
+            if (fallbackModel) {
+              setSelectedModel(fallbackModel);
+              setTimeout(() => {
+                handleSubmitForMarking();
+              }, 1000);
+            }
+          }
+        });
+      } else {
+        setError({
+          type: "api_error",
+          message: `Error processing assessment: ${error.message}`,
+          retry: handleSubmitForMarking
+        });
+      }
+    } finally {
+      setLoading(false);
+      setProcessingProgress("");
     }
-    
-    console.log("Mark scheme generation process completed");
-    setLoading(false);
-  };
+  }, [
+    answer, question, subject, examBoard, questionType, userType, markScheme, totalMarks,
+    textExtract, relevantMaterial, selectedModel, tier, allSubjects,
+    checkBackendStatus, API_BASE_URL,
+    lastRequestDate, modelLastRequestTimes, lastRequestTime,
+    setFeedback, setGrade, setError, setSuccess, setModelThinking, setAchievedMarks,
+    setLoading, setActiveTab, setDailyRequests, setLastRequestDate, setLastRequestTime,
+    setModelLastRequestTimes, autoMaxTokens, maxTokens
+  ]);
 
   // Reset form fields
   const resetForm = () => {
@@ -1677,7 +1533,7 @@ IMPORTANT: Provide a complete and comprehensive mark scheme. Do not truncate you
   };
 
   // TopBar component
-  const TopBar = ({ version = "2.1.0", backendStatus }) => {
+  const TopBar = ({ version = "2.1.0", backendStatus, remainingTokens }) => {
     return (
       <div className="sticky top-0 z-10 flex items-center justify-between py-2 px-4 border-b border-border bg-card shadow-sm backdrop-blur-sm bg-opacity-90">
         <div className="flex items-center space-x-4">
@@ -1692,11 +1548,25 @@ IMPORTANT: Provide a complete and comprehensive mark scheme. Do not truncate you
               }`}></div>
               <div className="text-xs text-muted-foreground">{
                 backendStatus === 'online' ? 'API Connected' : 
-                backendStatus === 'rate_limited' ? 'Rate Limited' : 
+                backendStatus === 'rate_limited' ? 'API Rate Limited' : // More specific message
                 'API Offline'
               }</div>
             </div>
           )}
+           {/* ADDED: Remaining Tokens Display */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="text-xs text-muted-foreground hidden sm:flex items-center">
+                  <Zap size={12} className="mr-1" /> 
+                  <span>{remainingTokens} requests left</span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Daily request limit: 500. Resets midnight.</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
         <div className="flex items-center space-x-2">
           <ThemeToggle />
@@ -1715,7 +1585,7 @@ IMPORTANT: Provide a complete and comprehensive mark scheme. Do not truncate you
             size="sm" 
             className="text-muted-foreground hover:text-foreground"
             onClick={() => setShowGuide(!showGuide)}
-            ref={node => setHelpButtonRef(node)}
+            // ref={node => setHelpButtonRef(node)} // Ref seems unused here, can be removed if showHelp is also unused.
           >
             <HelpCircle size={18} />
             <span className="sr-only">Help</span>
@@ -1727,8 +1597,34 @@ IMPORTANT: Provide a complete and comprehensive mark scheme. Do not truncate you
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <TopBar version="2.1.1" backendStatus={backendStatusRef.current} />
+      <TopBar version="2.1.2" backendStatus={backendStatusRef.current} remainingTokens={remainingRequestTokens} />
       
+      {/* ADDED: OCR Preview Dialog (Sheet was mentioned, but Dialog is simpler here) */}
+      <Dialog open={showOcrPreviewDialog} onOpenChange={setShowOcrPreviewDialog}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Review Extracted Text</DialogTitle>
+            <DialogDescription>
+              Review the text extracted from the image. You can edit it here before adding to your answer.
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="h-[300px] w-full rounded-md border p-3 my-4">
+            <Textarea 
+              value={ocrTextPreview}
+              onChange={(e) => setOcrTextPreview(e.target.value)}
+              className="min-h-[280px] text-sm"
+              placeholder="No text extracted or an error occurred."
+            />
+          </ScrollArea>
+          <DialogFooter className="sm:justify-between">
+            <Button variant="outline" onClick={() => setShowOcrPreviewDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmOcrText}>Add to Answer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="container mx-auto px-4 py-6 max-w-6xl">
         {showGuide && <QuickGuide onClose={() => setShowGuide(false)} />}
         
@@ -2177,6 +2073,74 @@ IMPORTANT: Provide a complete and comprehensive mark scheme. Do not truncate you
                           </div>
                         )}
                       </div>
+                      {/* ADDED: UI for Token Limits */}
+                      <div className="space-y-2 pt-2">
+                        <div className="flex items-center justify-between">
+                           <Label htmlFor="autoMaxTokens" className="text-sm flex items-center">
+                            Automatic Max Tokens
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <HelpCircle className="h-3 w-3 ml-1.5 text-muted-foreground cursor-help" />
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="max-w-xs">
+                                  <p>When enabled, the AI will automatically determine the appropriate maximum number of tokens for the response. Disable to set a custom limit.</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </Label>
+                          <Switch
+                            id="autoMaxTokens"
+                            checked={autoMaxTokens}
+                            onCheckedChange={setAutoMaxTokens}
+                          />
+                        </div>
+                      </div>
+
+                      {!autoMaxTokens && (
+                        <div className="space-y-2 mt-3">
+                          <Label htmlFor="maxTokensSlider" className="text-sm">
+                            Max Tokens: {maxTokens}
+                          </Label>
+                          <div className="flex items-center gap-3">
+                            <Slider
+                              id="maxTokensSlider"
+                              min={256}
+                              max={8192}
+                              step={128} // Adjusted step for finer control
+                              value={[maxTokens]}
+                              onValueChange={(value) => setMaxTokens(value[0])}
+                              className="flex-grow"
+                            />
+                            <Input
+                              id="maxTokensInput"
+                              type="number"
+                              value={maxTokens}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value);
+                                if (!isNaN(val)) {
+                                  if (val >= 256 && val <= 8192) {
+                                    setMaxTokens(val);
+                                  } else if (val < 256) {
+                                    setMaxTokens(256);
+                                  } else if (val > 8192) {
+                                    setMaxTokens(8192);
+                                  }
+                                } else if (e.target.value === '') {
+                                   setMaxTokens(256); // Default to min if empty
+                                }
+                              }}
+                              className="w-24 text-sm h-9"
+                              min={256}
+                              max={8192}
+                              step={128}
+                            />
+                          </div>
+                           <p className="text-xs text-muted-foreground">
+                            Defines the maximum length of the AI's response. (Min: 256, Max: 8192). Default is 2048.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -2184,6 +2148,7 @@ IMPORTANT: Provide a complete and comprehensive mark scheme. Do not truncate you
                 {/* Submit button */}
                 <div className="space-y-2">
                   <Button 
+                    ref={submitButtonRef} // ADDED REF
                     onClick={handleSubmitForMarking}
                     disabled={loading || !answer || backendStatusRef.current !== 'online'}
                     className="w-full"
