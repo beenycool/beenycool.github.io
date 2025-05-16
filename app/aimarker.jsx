@@ -710,6 +710,62 @@ const EnhancedFeedback = ({ feedback, grade, modelName, achievedMarks, totalMark
   );
 };
 
+// Add this component for displaying the Model Thinking Process
+const ModelThinkingBox = ({ thinking, loading }) => {
+  // If loading and no thinking content yet, show a generic loading message
+  if (loading && (!thinking || thinking.length === 0)) {
+    return (
+      <div className="absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm flex flex-col items-center justify-center z-10 rounded-lg p-4">
+        <Loader2 className="h-8 w-8 animate-spin text-indigo-500 mb-3" />
+        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Model is thinking...</p>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Please wait while the AI processes your request.</p>
+      </div>
+    );
+  }
+
+  // If there is thinking content, display it
+  return (
+    <AnimatePresence>
+      {(thinking && thinking.length > 0) && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 10 }}
+          transition={{ duration: 0.3 }}
+          className="absolute inset-0 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md flex flex-col items-center justify-center z-10 rounded-lg p-6 shadow-xl border border-gray-200 dark:border-gray-700"
+        >
+          <div className="flex items-center mb-3">
+            <Zap className="h-6 w-6 text-yellow-500 mr-2" />
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">Model Thinking Process</h3>
+          </div>
+          <ScrollArea className="h-[120px] w-full rounded-md border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 p-3 text-sm">
+            <ul className="space-y-1.5 text-gray-700 dark:text-gray-300">
+              {thinking.map((thought, index) => (
+                <motion.li
+                  key={index}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                  className="flex items-start"
+                >
+                  <CheckCircle2 className="h-4 w-4 text-green-500 mr-2 mt-0.5 flex-shrink-0" />
+                  <span>{thought}</span>
+                </motion.li>
+              ))}
+            </ul>
+          </ScrollArea>
+          {loading && (
+            <div className="flex items-center mt-3 text-xs text-gray-500 dark:text-gray-400">
+              <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
+              Still processing...
+            </div>
+          )}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
+
 // New FeedbackDisplay component to organize the tab content
 const FeedbackDisplay = ({ 
   loading, 
@@ -1544,61 +1600,6 @@ IMPORTANT: Provide a complete and comprehensive mark scheme. Do not truncate you
     
     console.log("Mark scheme generation process completed");
     setLoading(false);
-  };
-
-  // Add this component for displaying the Model Thinking Process
-  const ModelThinkingBox = ({ thinking, loading }) => {
-    const [isExpanded, setIsExpanded] = useState(false);
-    
-    if (!thinking && !loading) return null;
-    
-    return (
-      <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-md">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center">
-            <div className="text-sm font-medium text-gray-700 dark:text-gray-300">Model Thinking Process</div>
-            {loading && !thinking ? (
-              <Badge variant="outline" className="ml-2 px-1.5 py-0 text-xs bg-blue-50 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
-                <Loader2 className="mr-1 h-3 w-3 animate-spin" /> 
-                Processing...
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="ml-2 px-1.5 py-0 text-xs">Step-by-Step Reasoning</Badge>
-            )}
-          </div>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="h-7 w-7 p-0 rounded-full"
-            onClick={() => setIsExpanded(!isExpanded)}
-          >
-            {isExpanded ? 
-              <ChevronUp size={16} className="text-gray-500 dark:text-gray-400" /> :
-              <ChevronDown size={16} className="text-gray-500 dark:text-gray-400" />
-            }
-          </Button>
-        </div>
-        <div 
-          className={`overflow-y-auto text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap transition-all duration-300 font-mono border border-gray-100 dark:border-gray-800 p-2 rounded bg-white dark:bg-gray-950 ${
-            isExpanded ? 'max-h-[500px]' : 'max-h-48'
-          }`}
-        >
-          {loading && !thinking ? (
-            <div className="flex flex-col items-center justify-center py-4 text-gray-400">
-              <Loader2 className="h-4 w-4 animate-spin mb-2" />
-              <span>Waiting for the model to start thinking...</span>
-            </div>
-          ) : thinking ? (
-            // Process and display thinking, ensuring we only show the [THINKING] part
-            thinking.includes('[THINKING]') 
-              ? thinking.split('[THINKING]')[1].split('[FEEDBACK]')[0] 
-              : thinking
-          ) : (
-            "Waiting for model's thinking process..."
-          )}
-        </div>
-      </div>
-    );
   };
 
   // TopBar component
