@@ -53,6 +53,9 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "GCSE AI Marker",
   },
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
 };
 
 export default function RootLayout({
