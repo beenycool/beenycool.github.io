@@ -1659,6 +1659,23 @@ IMPORTANT: Provide a complete and comprehensive mark scheme. Do not truncate you
     setLoading(false);
   };
 
+  // Reset form fields
+  const resetForm = () => {
+    setQuestion("");
+    setAnswer("");
+    setMarkScheme("");
+    setImage(null);
+    setTextExtract("");
+    setRelevantMaterial("");
+    setTotalMarks("");
+    setFeedback("");
+    setGrade("");
+    setAchievedMarks(null);
+    setError(null);
+    setSuccess(null);
+    toast.success("Form has been reset");
+  };
+
   // TopBar component
   const TopBar = ({ version = "2.1.0", backendStatus }) => {
     return (
