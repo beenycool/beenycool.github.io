@@ -662,7 +662,16 @@ const printFeedback = (feedbackElement) => {
 };
 
 // Enhanced Feedback UI component
-const EnhancedFeedback = ({ feedback, grade, modelName, achievedMarks, totalMarks, hasMarkScheme }) => {
+const EnhancedFeedback = ({ 
+  feedback, 
+  grade, 
+  modelName, 
+  achievedMarks, 
+  totalMarks, 
+  hasMarkScheme,
+  onAskFollowUp = () => {},
+  followUpEnabled = true
+}) => {
   const feedbackRef = useRef(null);
   const [shareMessage, setShareMessage] = useState(null);
   
@@ -805,6 +814,28 @@ const EnhancedFeedback = ({ feedback, grade, modelName, achievedMarks, totalMark
       >
         <MathMarkdown>{feedback}</MathMarkdown>
       </div>
+
+      {followUpEnabled && (
+        <div className="mt-6 border-t border-gray-200 dark:border-gray-700 pt-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 justify-between">
+            <div>
+              <h4 className="text-base font-semibold mb-1 flex items-center">
+                <HelpCircle className="h-4 w-4 mr-1.5 text-primary" />
+                Need more help understanding this feedback?
+              </h4>
+              <p className="text-sm text-muted-foreground">
+                Ask a follow-up question about anything you didn't understand in the feedback.
+              </p>
+            </div>
+            <Button
+              onClick={onAskFollowUp}
+              className="whitespace-nowrap"
+            >
+              Ask Follow-Up Question
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -876,7 +907,9 @@ const FeedbackDisplay = ({
   totalMarks, 
   processingProgress,
   setActiveTab,
-  markScheme
+  markScheme,
+  onAskFollowUp,
+  followUpEnabled = true
 }) => {
   // Get the model name for display
   const modelName = AI_MODELS.find(m => m.value === selectedModel)?.label || 'AI';
@@ -900,6 +933,8 @@ const FeedbackDisplay = ({
           achievedMarks={achievedMarks}
           totalMarks={totalMarks}
           hasMarkScheme={!!markScheme}
+          onAskFollowUp={onAskFollowUp}
+          followUpEnabled={followUpEnabled}
         />
       ) : loading ? (
         <div className="min-h-[300px] flex flex-col items-center justify-center text-center p-6 border border-dashed border-border rounded-lg bg-muted/20">
@@ -1236,6 +1271,12 @@ const AIMarker = () => {
   
   // ADDED: State for parallel processing
   const [parallelProcessing, setParallelProcessing] = useState(1);
+  
+  // ADDED: State for follow-up dialog
+  const [showFollowUpDialog, setShowFollowUpDialog] = useState(false);
+  const [followUpQuestion, setFollowUpQuestion] = useState("");
+  const [followUpResponse, setFollowUpResponse] = useState("");
+  const [followUpLoading, setFollowUpLoading] = useState(false);
   
   // Handle image upload
   const handleImageChange = (e) => {
@@ -2649,6 +2690,88 @@ ${markScheme ? `8. Apply a rigorous mark-by-mark assessment using the provided m
     setParallelProcessing(value);
     toast.info(`Parallel processing set to ${value} simultaneous tasks`);
   };
+  
+  // ADDED: Handler for asking follow-up questions
+  const handleAskFollowUp = () => {
+    setShowFollowUpDialog(true);
+    setFollowUpQuestion("");
+    setFollowUpResponse("");
+  };
+  
+  // ADDED: Handler for submitting follow-up questions
+  const handleSubmitFollowUp = async () => {
+    if (!followUpQuestion.trim()) {
+      toast.error("Please enter a question");
+      return;
+    }
+    
+    setFollowUpLoading(true);
+    
+    try {
+      // Check if there are enough tokens
+      if (!consumeToken()) {
+        setFollowUpLoading(false);
+        toast.error("Daily request limit reached");
+        return;
+      }
+      
+      // Build the prompt for the follow-up question
+      const promptText = `You previously provided feedback on a student's GCSE ${subject} answer, giving them a grade ${grade || 'N/A'}. 
+The student has a follow-up question about your feedback: "${followUpQuestion}"
+
+Your feedback was:
+---
+${feedback}
+---
+
+Please respond to their question clearly and constructively. Keep your answer concise but helpful. Remember you're speaking directly to the student.`;
+      
+      // Make a request to the API
+      const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: selectedModel,
+          messages: [
+            {
+              role: "user",
+              content: promptText
+            }
+          ],
+          temperature: 0.7
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorMessage = "Error processing follow-up question";
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.error?.message || errorJson.message || errorText;
+        } catch (e) {
+          errorMessage = errorText;
+        }
+        throw new Error(errorMessage);
+      }
+      
+      const responseData = await response.json();
+      const responseContent = responseData.choices?.[0]?.message?.content || 
+                             responseData.content || 
+                             responseData.text || 
+                             responseData.answer || 
+                             responseData.response || "";
+      
+      setFollowUpResponse(responseContent);
+      
+    } catch (error) {
+      console.error('Error processing follow-up question:', error);
+      toast.error(`Failed to process follow-up: ${error.message}`);
+    } finally {
+      setFollowUpLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -3371,6 +3494,8 @@ ${markScheme ? `8. Apply a rigorous mark-by-mark assessment using the provided m
                   processingProgress={processingProgress}
                   setActiveTab={setActiveTab}
                   markScheme={markScheme}
+                  onAskFollowUp={handleAskFollowUp}
+                  followUpEnabled={!!feedback && backendStatusRef.current === 'online'}
                 />
               </TabsContent>
 
@@ -3612,6 +3737,75 @@ ${markScheme ? `8. Apply a rigorous mark-by-mark assessment using the provided m
         item={previewItem} 
         onClose={() => setShowPreviewDialog(false)}
       />
+      
+      {/* ADDED: Follow-up Question Dialog */}
+      <Dialog open={showFollowUpDialog} onOpenChange={setShowFollowUpDialog}>
+        <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Ask a Follow-Up Question</DialogTitle>
+            <DialogDescription>
+              Need clarification about your feedback? Ask the AI for more help.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="follow-up-question">Your Question</Label>
+              <Textarea
+                id="follow-up-question"
+                placeholder="e.g., Can you explain more about why I lost marks on the first point? What would a better answer look like?"
+                value={followUpQuestion}
+                onChange={(e) => setFollowUpQuestion(e.target.value)}
+                className="min-h-[100px]"
+                disabled={followUpLoading}
+              />
+            </div>
+            
+            {followUpResponse && (
+              <div className="space-y-2 mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <Label>AI Response</Label>
+                <div className="p-4 rounded-md bg-muted/30 border border-border min-h-[100px]">
+                  <MathMarkdown>{followUpResponse}</MathMarkdown>
+                </div>
+              </div>
+            )}
+          </div>
+          
+          <DialogFooter className="flex flex-col sm:flex-row gap-2 justify-between sm:justify-end">
+            {followUpLoading && (
+              <div className="flex items-center text-muted-foreground text-sm">
+                <Loader2 className="animate-spin h-4 w-4 mr-2" />
+                Processing your question...
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setShowFollowUpDialog(false)} disabled={followUpLoading}>
+                Close
+              </Button>
+              {!followUpResponse && (
+                <Button onClick={handleSubmitFollowUp} disabled={followUpLoading || !followUpQuestion.trim()}>
+                  {followUpLoading ? (
+                    <>
+                      <Loader2 className="animate-spin h-4 w-4 mr-2" />
+                      Submitting...
+                    </>
+                  ) : (
+                    'Get Answer'
+                  )}
+                </Button>
+              )}
+              {followUpResponse && !followUpLoading && (
+                <Button onClick={() => {
+                  setFollowUpQuestion("");
+                  setFollowUpResponse("");
+                }}>
+                  Ask Another Question
+                </Button>
+              )}
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
