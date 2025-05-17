@@ -2607,7 +2607,10 @@ ${getSubjectGuidance(subject, examBoard)}`;
               <TabsList className="grid w-full grid-cols-3"> {/* MODIFIED: Added Bulk Mark Tab */} 
                 <TabsTrigger value="answer">Answer</TabsTrigger>
                 <TabsTrigger value="feedback">Feedback</TabsTrigger>
-                <TabsTrigger value="bulk">Bulk Mark</TabsTrigger> {/* ADDED */} 
+                <TabsTrigger value="bulk">
+                  Bulk Mark
+                  <Badge variant="outline" className="ml-2 text-amber-600 border-amber-400 bg-amber-50 dark:bg-amber-900/30 text-xs font-semibold">Very Beta</Badge>
+                </TabsTrigger> {/* ADDED */} 
               </TabsList>
               <TabsContent value="answer" className="pt-4 space-y-4">
                 {/* Question input */}
