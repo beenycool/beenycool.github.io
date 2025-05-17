@@ -3005,9 +3005,8 @@ ${markScheme ? `4. Clearly identify which mark scheme criteria the student has m
                                                   <div className="flex justify-between items-center">
                             <div>
                               <Label htmlFor="markScheme" className="text-sm">Mark Scheme <span className="text-muted-foreground text-xs">(Optional)</span></Label>
-                              <div className="text-xs flex items-center mt-0.5">
-                                <Badge variant="outline" className="mr-1.5 px-1 py-0 text-[10px] bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-300 border-yellow-200 dark:border-yellow-900/50">NEW</Badge>
-                                <span className="text-muted-foreground">Adding a mark scheme will enhance feedback with detailed criteria analysis</span>
+                              <div className="text-xs text-muted-foreground mt-0.5">
+                                Adding a mark scheme will enhance feedback with detailed criteria analysis
                               </div>
                             </div>
                             <div className="flex gap-2">
