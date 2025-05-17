@@ -1631,11 +1631,15 @@ const AIMarker = () => {
       }
 
       basePrompt += `\n\n2. FEEDBACK STRUCTURE:
-a) Summary of performance (1-2 sentences)
-b) 2-3 specific strengths with examples, explicitly referencing mark scheme criteria that were met or exceeded (if mark scheme is provided)
-c) 2-3 areas for improvement with ${userType === 'teacher' ? 'marking criteria' : 'actionable suggestions'}, clearly showing which mark scheme criteria were not fully met (if mark scheme is provided)
-d) One specific ${userType === 'teacher' ? 'assessment note' : '"next step" for the student'} to improve their grade
-e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number`;
+a) Performance overview that addresses the overall quality of the answer (2-3 sentences)
+b) 3-4 specific strengths with concrete examples from the student's work, using phrases like "You demonstrated...", "Your analysis of...", or "I was particularly impressed by..."
+c) 3-4 specific areas for improvement using the "WWW/EBI" format (What Went Well/Even Better If), with each point structured as:
+   * Clear identification of the issue
+   * Evidence from the student's work
+   * Specific, achievable action to improve
+   * Link to how this would affect their grade
+d) Clear progression pathway that explains exactly what would be needed to achieve the next grade level
+e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number, with a brief justification of the grade awarded`;
 
       // Add marks achieved format if total marks are provided or detected
       const detectedMarks = !totalMarks ? detectTotalMarksFromQuestion(question) : null;
@@ -1648,11 +1652,17 @@ e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number`;
       // Add mark scheme analysis instructions if provided
       if (markScheme) {
         basePrompt += `\n\n3. MARK SCHEME ANALYSIS:
-- Compare the student's answer directly against each point in the provided mark scheme
-- For criteria the student meets or exceeds: Quote the specific mark scheme criteria followed by concrete examples from their answer
-- For criteria not fully met: Explain specifically what was missing or incorrect, with reference to both the mark scheme and their answer
-- Use a clear format like "✓ Met: [criteria]" and "✗ Not Met: [criteria]" for easy identification
-- When determining the grade, justify it based on the proportion of mark scheme criteria that were met`;
+- Approach the mark scheme like an examiner, using precise analytical language
+- Assess each assessment objective (AO) point-by-point with specific examples:
+  * For each point awarded: "Credit given for [specific criteria] as evidenced by [exact quote/reference from answer]"
+  * For each point missed: "No credit for [specific criteria] because [specific explanation]"
+- Follow a structured marking pattern using annotations: 
+  * ✓ = criterion fully met with specific highlighted evidence
+  * ~ = criterion partially met with explanation of what's missing
+  * ✗ = criterion not met with specific guidance for improvement
+- Use precise examiner language (e.g., "demonstrates comprehensive understanding," "shows limited analysis," "lacks sufficient development")
+- Award marks according to level descriptors, explaining why the answer falls into a particular band
+- Clearly justify the final mark total with reference to the mark scheme bands`;
       }
 
       // Add math-specific LaTeX formatting instructions
@@ -1668,7 +1678,17 @@ $$
 - Number equations and reference them in your feedback`;
       } else {
         basePrompt += `\n\n4. SUBJECT-SPECIFIC GUIDANCE:
-${getSubjectGuidance(subject, examBoard)}`;
+${getSubjectGuidance(subject, examBoard)}
+
+5. PROFESSIONAL MARKING APPROACH:
+- Use exam board-specific terminology and assessment language
+- Focus on assessment objectives (AOs) relevant to ${subject}
+- Implement a tiered marking approach - first identify the band/level, then refine the exact mark within that band
+- Use marginal annotations to highlight specific points (e.g., "AO2 - Strong analysis here", "Limited evidence", "Good application of knowledge")
+- Balance critical assessment with encouraging language that motivates improvement
+- Ensure developmental feedback is specific and actionable
+- Apply a consistent marking standard throughout the assessment
+- Acknowledge partial understanding where appropriate`;
       }
 
       // Add thinking model specific instructions
@@ -1716,11 +1736,17 @@ ${getSubjectGuidance(subject, examBoard)}`;
       
       // Add specific instructions
       userPrompt += `INSTRUCTIONS:
-1. Assess the answer against GCSE criteria for ${subject} (${examBoard} exam board)
-2. Provide detailed, constructive feedback
-3. Assign a GCSE grade (9-1) in the format [GRADE:X]
-${markScheme ? `4. Clearly identify which mark scheme criteria the student has met, exceeded, or failed to meet
-5. Use direct quotes or references from the mark scheme to justify your assessment` : ''}`;
+1. Mark this answer as an experienced GCSE ${subject} examiner would for the ${examBoard} exam board
+2. Follow a methodical assessment process aligned with official marking standards
+3. Use professional examiner language and annotation techniques throughout
+4. Provide detailed, constructive feedback with specific evidence from the student's work
+5. Structure feedback using the WWW/EBI format (What Went Well/Even Better If)
+6. Assign a GCSE grade (9-1) in the format [GRADE:X] with clear justification
+7. Include specific guidance for improving to the next grade level
+${markScheme ? `8. Apply a rigorous mark-by-mark assessment using the provided mark scheme
+9. Annotate each assessment point with appropriate symbols (✓, ~, ✗)
+10. Reference specific mark scheme criteria and bands in your assessment
+11. Demonstrate clear reasoning for each mark awarded or withheld` : ''}`;
 
       if (marksToUse) {
         userPrompt += `\n4. Assign marks in the format [MARKS:Y/${marksToUse}]`;
@@ -2222,7 +2248,7 @@ ${markScheme ? `4. Clearly identify which mark scheme criteria the student has m
       if (currentSubjectDetails?.hasTiers) {
         basePrompt += `\n- This is a ${itemData.tier?.toUpperCase()} tier question`;
       }
-      basePrompt += `\n\n2. FEEDBACK STRUCTURE:\na) Summary of performance (1-2 sentences)\nb) 2-3 specific strengths with examples, explicitly referencing mark scheme criteria that were met or exceeded (if mark scheme is provided)\nc) 2-3 areas for improvement with ${itemData.userType === 'teacher' ? 'marking criteria' : 'actionable suggestions'}, clearly showing which mark scheme criteria were not fully met (if mark scheme is provided)\nd) One specific ${itemData.userType === 'teacher' ? 'assessment note' : '"next step" for the student'} to improve their grade\ne) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number`;
+      basePrompt += `\n\n2. FEEDBACK STRUCTURE:\na) Performance overview that addresses the overall quality of the answer (2-3 sentences)\nb) 3-4 specific strengths with concrete examples from the student's work, using phrases like "You demonstrated...", "Your analysis of...", or "I was particularly impressed by..."\nc) 3-4 specific areas for improvement using the "WWW/EBI" format (What Went Well/Even Better If), with each point structured as:\n   * Clear identification of the issue\n   * Evidence from the student's work\n   * Specific, achievable action to improve\n   * Link to how this would affect their grade\nd) Clear progression pathway that explains exactly what would be needed to achieve the next grade level\ne) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number, with a brief justification of the grade awarded`;
       
       // Check for detected marks if totalMarks is not provided
       const detectedMarks = !itemData.totalMarks ? detectTotalMarksFromQuestion(itemData.question) : null;
@@ -2235,17 +2261,32 @@ ${markScheme ? `4. Clearly identify which mark scheme criteria the student has m
     // Add mark scheme analysis instructions if provided
     if (itemData.markScheme) {
       basePrompt += `\n\n3. MARK SCHEME ANALYSIS:
-- Compare the student's answer directly against each point in the provided mark scheme
-- For criteria the student meets or exceeds: Quote the specific mark scheme criteria followed by concrete examples from their answer
-- For criteria not fully met: Explain specifically what was missing or incorrect, with reference to both the mark scheme and their answer
-- Use a clear format like "✓ Met: [criteria]" and "✗ Not Met: [criteria]" for easy identification
-- When determining the grade, justify it based on the proportion of mark scheme criteria that were met`;
+- Approach the mark scheme like an examiner, using precise analytical language
+- Assess each assessment objective (AO) point-by-point with specific examples:
+  * For each point awarded: "Credit given for [specific criteria] as evidenced by [exact quote/reference from answer]"
+  * For each point missed: "No credit for [specific criteria] because [specific explanation]"
+- Follow a structured marking pattern using annotations: 
+  * ✓ = criterion fully met with specific highlighted evidence
+  * ~ = criterion partially met with explanation of what's missing
+  * ✗ = criterion not met with specific guidance for improvement
+- Use precise examiner language (e.g., "demonstrates comprehensive understanding," "shows limited analysis," "lacks sufficient development")
+- Award marks according to level descriptors, explaining why the answer falls into a particular band
+- Clearly justify the final mark total with reference to the mark scheme bands`;
     }
     
     if (itemData.subject === "maths") {
         basePrompt += `\n\n4. MATHEMATICAL NOTATION:\n- Use LaTeX notation for mathematical expressions enclosed in $ $ for inline formulas and as separate blocks for complex formulas\n- Example inline: $x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$\n- Example block:\n$$\nx = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\n$$\n- Format solutions step-by-step with clear explanations\n- Number equations and reference them in your feedback`;
       } else {
-        basePrompt += `\n\n4. SUBJECT-SPECIFIC GUIDANCE:\n${getSubjectGuidance(itemData.subject, itemData.examBoard)}`;
+        basePrompt += `\n\n4. SUBJECT-SPECIFIC GUIDANCE:\n${getSubjectGuidance(itemData.subject, itemData.examBoard)}\n
+5. PROFESSIONAL MARKING APPROACH:
+- Use exam board-specific terminology and assessment language
+- Focus on assessment objectives (AOs) relevant to ${itemData.subject}
+- Implement a tiered marking approach - first identify the band/level, then refine the exact mark within that band
+- Use marginal annotations to highlight specific points (e.g., "AO2 - Strong analysis here", "Limited evidence", "Good application of knowledge")
+- Balance critical assessment with encouraging language that motivates improvement
+- Ensure developmental feedback is specific and actionable
+- Apply a consistent marking standard throughout the assessment
+- Acknowledge partial understanding where appropriate`;
       }
       if (currentModelForItem === "microsoft/mai-ds-r1:free") { 
         basePrompt += `\n\n5. THINKING PROCESS:\n- First, analyze the student's answer carefully...\n- Mark your thinking process with [THINKING] and your final feedback with [FEEDBACK]`;
@@ -2264,7 +2305,7 @@ ${markScheme ? `4. Clearly identify which mark scheme criteria the student has m
         userPromptText += `TOTAL MARKS: ${marksToUse}\n\n`;
       }
       
-      userPromptText += `INSTRUCTIONS:\n1. Assess the answer against GCSE criteria for ${itemData.subject} (${itemData.examBoard} exam board)\n2. Provide detailed, constructive feedback\n3. Assign a GCSE grade (9-1) in the format [GRADE:X]${itemData.markScheme ? `\n4. Clearly identify which mark scheme criteria the student has met, exceeded, or failed to meet\n5. Use direct quotes or references from the mark scheme to justify your assessment` : ''}`;
+      userPromptText += `INSTRUCTIONS:\n1. Mark this answer as an experienced GCSE ${itemData.subject} examiner would for the ${itemData.examBoard} exam board\n2. Follow a methodical assessment process aligned with official marking standards\n3. Use professional examiner language and annotation techniques throughout\n4. Provide detailed, constructive feedback with specific evidence from the student's work\n5. Structure feedback using the WWW/EBI format (What Went Well/Even Better If)\n6. Assign a GCSE grade (9-1) in the format [GRADE:X] with clear justification\n7. Include specific guidance for improving to the next grade level${itemData.markScheme ? `\n8. Apply a rigorous mark-by-mark assessment using the provided mark scheme\n9. Annotate each assessment point with appropriate symbols (✓, ~, ✗)\n10. Reference specific mark scheme criteria and bands in your assessment\n11. Demonstrate clear reasoning for each mark awarded or withheld` : ''}`;
       
       if (marksToUse) {
         userPromptText += `\n4. Assign marks in the format [MARKS:Y/${marksToUse}]`;
