@@ -2,6 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const OpenAI = require('openai');
+const fetch = require('node-fetch');
+const rateLimit = require('express-rate-limit');
 
 // Load environment variables
 dotenv.config();
@@ -20,6 +22,42 @@ const logger = {
     }
   }
 };
+
+// Create rate limiters
+const minuteRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10, // 10 requests per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests', message: 'Please try again later. Rate limit: 10 requests per minute.' },
+  keyGenerator: (req) => {
+    // Use IP address as the identifier
+    return req.ip;
+  },
+  handler: (req, res, next, options) => {
+    logger.info(`Rate limit exceeded: ${req.ip} - ${req.method} ${req.url}`);
+    res.status(429).json(options.message);
+  }
+});
+
+const dailyRateLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000, // 24 hours
+  max: 500, // 500 requests per day
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Daily limit exceeded', message: 'You have reached the daily limit of 500 requests. Please try again tomorrow.' },
+  keyGenerator: (req) => {
+    // Use IP address as the identifier
+    return req.ip;
+  },
+  handler: (req, res, next, options) => {
+    logger.info(`Daily rate limit exceeded: ${req.ip} - ${req.method} ${req.url}`);
+    res.status(429).json(options.message);
+  }
+});
+
+// Apply rate limiters to specific endpoints
+const geminiRateLimits = [dailyRateLimiter, minuteRateLimiter];
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -50,6 +88,7 @@ for (const origin of allowedOrigins) {
 
 logger.info(`Server starting with allowed origins:`, filteredOrigins);
 logger.info(`OpenRouter API Key exists: ${!!process.env.OPENROUTER_API_KEY}`);
+logger.info(`Gemini API Key exists: ${!!process.env.GEMINI_API_KEY}`);
 
 const corsOptions = {
   origin: function (origin, callback) {
@@ -135,6 +174,17 @@ app.get('/api/health', (req, res) => {
     },
     openaiClient: !!openai,
     apiKeyConfigured: !!process.env.OPENROUTER_API_KEY,
+    geminiApiKeyConfigured: !!process.env.GEMINI_API_KEY,
+    rateLimits: {
+      minute: {
+        max: minuteRateLimiter.max,
+        windowMs: minuteRateLimiter.windowMs
+      },
+      daily: {
+        max: dailyRateLimiter.max,
+        windowMs: dailyRateLimiter.windowMs
+      }
+    },
     corsConfig: {
       allowedOrigins
     }
@@ -361,6 +411,32 @@ app.get('/api/test-key', (req, res) => {
   });
 });
 
+// Add a test endpoint to verify Gemini API key
+app.get('/api/test-gemini-key', (req, res) => {
+  if (!process.env.GEMINI_API_KEY) {
+    return res.status(500).json({ 
+      error: 'Gemini API key not configured',
+      message: 'The Gemini API key is not configured on the server'
+    });
+  }
+  
+  // Only show first and last few characters of the key for security
+  const key = process.env.GEMINI_API_KEY;
+  const maskedKey = key.length > 8 
+    ? `${key.substring(0, 4)}...${key.substring(key.length - 4)}`
+    : '****';
+  
+  return res.json({
+    status: 'ok',
+    message: 'Gemini API key is configured',
+    keyInfo: {
+      configured: true,
+      masked: maskedKey,
+      length: key.length
+    }
+  });
+});
+
 // Add a CORS test endpoint
 app.get('/api/cors-test', (req, res) => {
   // Get the origin that made the request
@@ -381,6 +457,111 @@ app.get('/api/cors-test', (req, res) => {
       },
       received: req.headers
     }
+  });
+});
+
+// New direct Gemini API endpoint
+app.post('/api/gemini/generate', geminiRateLimits, async (req, res) => {
+  try {
+    const { contents } = req.body;
+    
+    if (!contents || !Array.isArray(contents)) {
+      logger.error('Gemini generation request missing or invalid contents');
+      return res.status(400).json({ error: 'Valid contents array is required' });
+    }
+
+    logger.info('Processing direct Gemini API request');
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      logger.error('Gemini API key not configured');
+      return res.status(500).json({ error: 'Gemini API key not configured' });
+    }
+
+    const timeoutMs = 30000; // 30 seconds
+    const timeout = setTimeout(() => {
+      logger.error(`Gemini request timed out after ${timeoutMs}ms`);
+      if (!res.headersSent) {
+        return res.status(504).json({ 
+          error: 'Request timed out',
+          message: 'The Gemini API took too long to respond'
+        });
+      }
+    }, timeoutMs);
+
+    const model = "gemini-2.5-flash-preview-04-17";
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+    logger.info(`Making request to Gemini API with model: ${model}`);
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ contents })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      clearTimeout(timeout);
+      logger.error(`Gemini API error: ${response.status} ${errorText}`);
+      return res.status(response.status).json({ 
+        error: 'Gemini API error',
+        message: errorText,
+        status: response.status
+      });
+    }
+
+    const data = await response.json();
+    logger.info('Gemini request completed successfully');
+    clearTimeout(timeout);
+    
+    // Format the response to match the expected format by the frontend
+    if (data.candidates && data.candidates[0] && data.candidates[0].content) {
+      return res.json({
+        choices: [{
+          message: {
+            content: data.candidates[0].content.parts[0].text
+          }
+        }]
+      });
+    } else {
+      return res.json(data); // Return original format if unexpected structure
+    }
+  } catch (error) {
+    logger.error('Gemini API error', error);
+    return res.status(500).json({ 
+      error: 'An error occurred while processing your Gemini request',
+      message: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+// Add a rate limit status endpoint
+app.get('/api/rate-limit-status', (req, res) => {
+  // Get the client's IP
+  const clientIP = req.ip;
+  
+  // This is a simplified version since we don't have direct access to the hit counters
+  // In a real implementation with Redis or a database, we could show actual counts
+  res.status(200).json({
+    status: 'ok',
+    message: 'Rate limit information',
+    limits: {
+      minute: {
+        max: minuteRateLimiter.max,
+        windowMs: minuteRateLimiter.windowMs,
+        resetTime: new Date(Date.now() + minuteRateLimiter.windowMs)
+      },
+      daily: {
+        max: dailyRateLimiter.max,
+        windowMs: dailyRateLimiter.windowMs,
+        resetTime: new Date(Date.now() + dailyRateLimiter.windowMs)
+      }
+    },
+    clientIP: clientIP
   });
 });
 

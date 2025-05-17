@@ -85,7 +85,7 @@ const USER_TYPES = [
 ];
 
 const AI_MODELS = [
-  { value: "google/gemini-2.5-pro-exp-03-25", label: "Gemini 2.5 Pro", description: "Best quality, limited to 1 request per minute" },
+  { value: "gemini-2.5-flash-preview-04-17", label: "Gemini 2.5 Flash Preview", description: "Best quality with faster response times" },
   { value: "microsoft/mai-ds-r1:free", label: "R1 (thinking model)", description: "More thorough reasoning process" },
   { value: "deepseek/deepseek-chat-v3-0324:free", label: "V3 (balanced model)", description: "Balanced speed and quality" },
   { value: "google/gemini-2.0-flash-exp:free", label: "Fast Response (lower quality)", description: "Quick responses, suitable for shorter answers" },
@@ -93,7 +93,7 @@ const AI_MODELS = [
 
 // Add fallback models for when primary models are rate limited
 const FALLBACK_MODELS = {
-  "google/gemini-2.5-pro-exp-03-25": "deepseek/deepseek-chat-v3-0324:free",
+  "gemini-2.5-flash-preview-04-17": "deepseek/deepseek-chat-v3-0324:free",
   "google/gemini-2.0-flash-exp:free": "deepseek/deepseek-chat-v3-0324:free",
   "deepseek/deepseek-chat-v3-0324:free": "microsoft/mai-ds-r1:free",
   "microsoft/mai-ds-r1:free": "google/gemini-2.0-flash-exp:free"
@@ -101,7 +101,7 @@ const FALLBACK_MODELS = {
 
 // Define model-specific rate limits (in milliseconds)
 const MODEL_RATE_LIMITS = {
-  "google/gemini-2.5-pro-exp-03-25": 60000, // 1 minute
+  "gemini-2.5-flash-preview-04-17": 60000, // 1 minute
   "google/gemini-2.0-flash-exp:free": 10000, // 10 seconds
   "deepseek/deepseek-chat-v3-0324:free": 10000, // 10 seconds
   "microsoft/mai-ds-r1:free": 10000 // 15 seconds
@@ -1263,7 +1263,7 @@ const AIMarker = () => {
   const [lastRequestTime, setLastRequestTime] = useState(0);
   const [dailyRequests, setDailyRequests] = useState(0); // This seems locally managed, let's use getRequestTokens for display
   const [lastRequestDate, setLastRequestDate] = useState(new Date().toDateString());
-  const [selectedModel, setSelectedModel] = useState("google/gemini-2.5-pro-exp-03-25");
+  const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash-preview-04-17");
   const [modelLastRequestTimes, setModelLastRequestTimes] = useState({});
   const [imageLoading, setImageLoading] = useState(false);
   const [backendError, setBackendError] = useState(false);
@@ -1664,27 +1664,55 @@ ${getSubjectGuidance(subject, examBoard)}`;
       let thinkingSteps = [];
       
       // Make a request to the backend API
-      const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: selectedModel,
-          messages: [
-            {
-              role: "system",
-              content: systemPrompt
-            },
-            {
-              role: "user",
-              content: userPrompt
-            }
-          ],
-          max_tokens: autoMaxTokens ? undefined : maxTokens,
-          temperature: 0.7
-        }),
-      });
+      let response;
+      let responseData;
+
+      // Use direct Gemini API for the new model
+      if (selectedModel === "gemini-2.5-flash-preview-04-17") {
+        setProcessingProgress("Sending request to direct Gemini API...");
+        
+        // Format request for the direct Gemini API
+        response = await fetch(`${API_BASE_URL}/api/gemini/generate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    text: `System: ${systemPrompt}\n\nUser: ${userPrompt}`
+                  }
+                ]
+              }
+            ]
+          }),
+        });
+      } else {
+        // Use the standard API for other models
+        response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: selectedModel,
+            messages: [
+              {
+                role: "system",
+                content: systemPrompt
+              },
+              {
+                role: "user",
+                content: userPrompt
+              }
+            ],
+            max_tokens: autoMaxTokens ? undefined : maxTokens,
+            temperature: 0.7
+          }),
+        });
+      }
       
       if (!response.ok) {
         const errorText = await response.text();
@@ -1723,24 +1751,24 @@ ${getSubjectGuidance(subject, examBoard)}`;
         return; // Ensure we don't proceed after setting error
       }
       
-      const data = await response.json();
+      responseData = await response.json();
       
       // Extract the response content from various possible API response formats
       let responseContent = "";
       
-      if (data.content) {
-        responseContent = data.content;
+      if (responseData.content) {
+        responseContent = responseData.content;
         console.log("Using data.content format");
-      } else if (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
-        responseContent = data.choices[0].message.content;
+      } else if (responseData.choices && responseData.choices[0] && responseData.choices[0].message && responseData.choices[0].message.content) {
+        responseContent = responseData.choices[0].message.content;
         console.log("Using data.choices[0].message.content format");
-      } else if (data.choices && data.choices[0] && data.choices[0].text) {
-        responseContent = data.choices[0].text;
+      } else if (responseData.choices && responseData.choices[0] && responseData.choices[0].text) {
+        responseContent = responseData.choices[0].text;
         console.log("Using data.choices[0].text format");
-      } else if (data.text || data.answer || data.response) {
-        responseContent = data.text || data.answer || data.response;
+      } else if (responseData.text || responseData.answer || responseData.response) {
+        responseContent = responseData.text || responseData.answer || responseData.response;
         console.log("Using data.text/answer/response format");
-      } else if (typeof data === 'object') {
+      } else if (typeof responseData === 'object') {
         // Try to find content in the response object
         console.log("Attempting to find content in response object");
         
@@ -1764,7 +1792,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
           return null;
         };
         
-        const extractedContent = extractContent(data);
+        const extractedContent = extractContent(responseData);
         if (extractedContent) {
           responseContent = extractedContent;
           console.log("Found content in nested object:", responseContent.substring(0, 50) + "...");
@@ -1999,7 +2027,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
                 </div>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Daily request limit: 500. Resets midnight.</p>
+                {/* Removed: <p>Daily request limit: 500. Resets midnight.</p> */}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -2957,10 +2985,10 @@ ${getSubjectGuidance(subject, examBoard)}`;
                           </SelectContent>
                         </Select>
                         
-                        {selectedModel === "google/gemini-2.5-pro-exp-03-25" && (
+                        {selectedModel === "gemini-2.5-flash-preview-04-17" && (
                           <div className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center">
                             <AlertTriangle className="h-3 w-3 mr-1" />
-                            <span>Limited to 1 request per minute due to API constraints</span>
+                            <span>Uses direct Gemini API with custom key, may need backend updates</span>
                           </div>
                         )}
                       </div>
