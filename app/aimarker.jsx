@@ -662,7 +662,7 @@ const printFeedback = (feedbackElement) => {
 };
 
 // Enhanced Feedback UI component
-const EnhancedFeedback = ({ feedback, grade, modelName, achievedMarks, totalMarks }) => {
+const EnhancedFeedback = ({ feedback, grade, modelName, achievedMarks, totalMarks, hasMarkScheme }) => {
   const feedbackRef = useRef(null);
   const [shareMessage, setShareMessage] = useState(null);
   
@@ -704,17 +704,27 @@ const EnhancedFeedback = ({ feedback, grade, modelName, achievedMarks, totalMark
               {grade}
             </div>
           )}
-          <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
-            Feedback
-            <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
-              by {modelName}
-            </span>
-          </h3>
-          {achievedMarks && totalMarks && (
-            <div className="ml-2 px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 text-xs font-medium rounded-full">
-              {achievedMarks}/{totalMarks} marks
-            </div>
-          )}
+          <div>
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 flex items-center">
+              Feedback
+              <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
+                by {modelName}
+              </span>
+              {hasMarkScheme && (
+                <Badge variant="outline" className="ml-2 px-1.5 py-0 text-[10px] bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-300 border-green-200 dark:border-green-900/50">
+                  Mark Scheme Analysis
+                </Badge>
+              )}
+            </h3>
+            {achievedMarks && totalMarks && (
+              <div className="mt-1 flex items-center">
+                <span className="text-xs font-medium text-gray-600 dark:text-gray-400 mr-1.5">Score:</span>
+                <div className="px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 text-xs font-medium rounded-full">
+                  {achievedMarks}/{totalMarks} marks
+                </div>
+              </div>
+            )}
+          </div>
         </div>
         
         <div className="flex items-center gap-1.5">
@@ -865,7 +875,8 @@ const FeedbackDisplay = ({
   achievedMarks, 
   totalMarks, 
   processingProgress,
-  setActiveTab 
+  setActiveTab,
+  markScheme
 }) => {
   // Get the model name for display
   const modelName = AI_MODELS.find(m => m.value === selectedModel)?.label || 'AI';
@@ -888,6 +899,7 @@ const FeedbackDisplay = ({
           modelName={modelName}
           achievedMarks={achievedMarks}
           totalMarks={totalMarks}
+          hasMarkScheme={!!markScheme}
         />
       ) : loading ? (
         <div className="min-h-[300px] flex flex-col items-center justify-center text-center p-6 border border-dashed border-border rounded-lg bg-muted/20">
@@ -1620,9 +1632,9 @@ const AIMarker = () => {
 
       basePrompt += `\n\n2. FEEDBACK STRUCTURE:
 a) Summary of performance (1-2 sentences)
-b) 2-3 specific strengths with examples
-c) 2-3 areas for improvement with ${userType === 'teacher' ? 'marking criteria' : 'actionable suggestions'}
-d) One specific ${userType === 'teacher' ? 'assessment note' : '"next step" for the student'}
+b) 2-3 specific strengths with examples, explicitly referencing mark scheme criteria that were met or exceeded (if mark scheme is provided)
+c) 2-3 areas for improvement with ${userType === 'teacher' ? 'marking criteria' : 'actionable suggestions'}, clearly showing which mark scheme criteria were not fully met (if mark scheme is provided)
+d) One specific ${userType === 'teacher' ? 'assessment note' : '"next step" for the student'} to improve their grade
 e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number`;
 
       // Add marks achieved format if total marks are provided or detected
@@ -1631,6 +1643,16 @@ e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number`;
       
       if (marksToUse) {
         basePrompt += `\nf) Marks achieved in the format: [MARKS:Y/${marksToUse}] where Y is the number of marks achieved`;
+      }
+
+      // Add mark scheme analysis instructions if provided
+      if (markScheme) {
+        basePrompt += `\n\n3. MARK SCHEME ANALYSIS:
+- Compare the student's answer directly against each point in the provided mark scheme
+- For criteria the student meets or exceeds: Quote the specific mark scheme criteria followed by concrete examples from their answer
+- For criteria not fully met: Explain specifically what was missing or incorrect, with reference to both the mark scheme and their answer
+- Use a clear format like "✓ Met: [criteria]" and "✗ Not Met: [criteria]" for easy identification
+- When determining the grade, justify it based on the proportion of mark scheme criteria that were met`;
       }
 
       // Add math-specific LaTeX formatting instructions
@@ -1696,7 +1718,9 @@ ${getSubjectGuidance(subject, examBoard)}`;
       userPrompt += `INSTRUCTIONS:
 1. Assess the answer against GCSE criteria for ${subject} (${examBoard} exam board)
 2. Provide detailed, constructive feedback
-3. Assign a GCSE grade (9-1) in the format [GRADE:X]`;
+3. Assign a GCSE grade (9-1) in the format [GRADE:X]
+${markScheme ? `4. Clearly identify which mark scheme criteria the student has met, exceeded, or failed to meet
+5. Use direct quotes or references from the mark scheme to justify your assessment` : ''}`;
 
       if (marksToUse) {
         userPrompt += `\n4. Assign marks in the format [MARKS:Y/${marksToUse}]`;
@@ -2198,17 +2222,27 @@ ${getSubjectGuidance(subject, examBoard)}`;
       if (currentSubjectDetails?.hasTiers) {
         basePrompt += `\n- This is a ${itemData.tier?.toUpperCase()} tier question`;
       }
-      basePrompt += `\n\n2. FEEDBACK STRUCTURE:\na) Summary of performance (1-2 sentences)\nb) 2-3 specific strengths with examples\nc) 2-3 areas for improvement with ${itemData.userType === 'teacher' ? 'marking criteria' : 'actionable suggestions'}\nd) One specific ${itemData.userType === 'teacher' ? 'assessment note' : '"next step" for the student'}\ne) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number`;
+      basePrompt += `\n\n2. FEEDBACK STRUCTURE:\na) Summary of performance (1-2 sentences)\nb) 2-3 specific strengths with examples, explicitly referencing mark scheme criteria that were met or exceeded (if mark scheme is provided)\nc) 2-3 areas for improvement with ${itemData.userType === 'teacher' ? 'marking criteria' : 'actionable suggestions'}, clearly showing which mark scheme criteria were not fully met (if mark scheme is provided)\nd) One specific ${itemData.userType === 'teacher' ? 'assessment note' : '"next step" for the student'} to improve their grade\ne) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number`;
       
       // Check for detected marks if totalMarks is not provided
       const detectedMarks = !itemData.totalMarks ? detectTotalMarksFromQuestion(itemData.question) : null;
       const marksToUse = itemData.totalMarks || detectedMarks;
       
-      if (marksToUse) {
-        basePrompt += `\nf) Marks achieved in the format: [MARKS:Y/${marksToUse}] where Y is the number of marks achieved`;
-      }
-      
-      if (itemData.subject === "maths") {
+          if (marksToUse) {
+      basePrompt += `\nf) Marks achieved in the format: [MARKS:Y/${marksToUse}] where Y is the number of marks achieved`;
+    }
+    
+    // Add mark scheme analysis instructions if provided
+    if (itemData.markScheme) {
+      basePrompt += `\n\n3. MARK SCHEME ANALYSIS:
+- Compare the student's answer directly against each point in the provided mark scheme
+- For criteria the student meets or exceeds: Quote the specific mark scheme criteria followed by concrete examples from their answer
+- For criteria not fully met: Explain specifically what was missing or incorrect, with reference to both the mark scheme and their answer
+- Use a clear format like "✓ Met: [criteria]" and "✗ Not Met: [criteria]" for easy identification
+- When determining the grade, justify it based on the proportion of mark scheme criteria that were met`;
+    }
+    
+    if (itemData.subject === "maths") {
         basePrompt += `\n\n4. MATHEMATICAL NOTATION:\n- Use LaTeX notation for mathematical expressions enclosed in $ $ for inline formulas and as separate blocks for complex formulas\n- Example inline: $x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$\n- Example block:\n$$\nx = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\n$$\n- Format solutions step-by-step with clear explanations\n- Number equations and reference them in your feedback`;
       } else {
         basePrompt += `\n\n4. SUBJECT-SPECIFIC GUIDANCE:\n${getSubjectGuidance(itemData.subject, itemData.examBoard)}`;
@@ -2230,7 +2264,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
         userPromptText += `TOTAL MARKS: ${marksToUse}\n\n`;
       }
       
-      userPromptText += `INSTRUCTIONS:\n1. Assess the answer against GCSE criteria for ${itemData.subject} (${itemData.examBoard} exam board)\n2. Provide detailed, constructive feedback\n3. Assign a GCSE grade (9-1) in the format [GRADE:X]`;
+      userPromptText += `INSTRUCTIONS:\n1. Assess the answer against GCSE criteria for ${itemData.subject} (${itemData.examBoard} exam board)\n2. Provide detailed, constructive feedback\n3. Assign a GCSE grade (9-1) in the format [GRADE:X]${itemData.markScheme ? `\n4. Clearly identify which mark scheme criteria the student has met, exceeded, or failed to meet\n5. Use direct quotes or references from the mark scheme to justify your assessment` : ''}`;
       
       if (marksToUse) {
         userPromptText += `\n4. Assign marks in the format [MARKS:Y/${marksToUse}]`;
@@ -2968,9 +3002,15 @@ ${getSubjectGuidance(subject, examBoard)}`;
                     <div className="mt-3 space-y-4 border p-4 rounded-md bg-muted border-border">
                       {/* Mark scheme section */}
                       <div className="space-y-2">
-                        <div className="flex justify-between items-center">
-                          <Label htmlFor="markScheme" className="text-sm">Mark Scheme <span className="text-muted-foreground text-xs">(Optional)</span></Label>
-                          <div className="flex gap-2">
+                                                  <div className="flex justify-between items-center">
+                            <div>
+                              <Label htmlFor="markScheme" className="text-sm">Mark Scheme <span className="text-muted-foreground text-xs">(Optional)</span></Label>
+                              <div className="text-xs flex items-center mt-0.5">
+                                <Badge variant="outline" className="mr-1.5 px-1 py-0 text-[10px] bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-300 border-yellow-200 dark:border-yellow-900/50">NEW</Badge>
+                                <span className="text-muted-foreground">Adding a mark scheme will enhance feedback with detailed criteria analysis</span>
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
                             <Button
                               variant="outline"
                               size="sm"
@@ -3290,6 +3330,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
                   totalMarks={totalMarks} 
                   processingProgress={processingProgress}
                   setActiveTab={setActiveTab}
+                  markScheme={markScheme}
                 />
               </TabsContent>
 
