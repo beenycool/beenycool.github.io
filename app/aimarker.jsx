@@ -112,6 +112,12 @@ const TASK_SPECIFIC_MODELS = {
   "image_processing": "google/gemini-2.0-flash-exp:free"
 };
 
+// Define default thinking budgets for models that support it
+const DEFAULT_THINKING_BUDGETS = {
+  "gemini-2.5-flash-preview-04-17": 1024,
+  "microsoft/mai-ds-r1:free": 0 // R1 thinking is handled differently via system prompt
+};
+
 const subjectKeywords = {
   english: ['shakespeare', 'poem', 'poetry', 'novel', 'character', 'theme', 'literature'],
   maths: ['equation', 'solve', 'calculate', 'algebra', 'geometry', 'trigonometry', 'formula'],
@@ -142,6 +148,44 @@ const QUESTION_TYPES = {
       { value: "general", label: "General Assessment" }
     ]
   }
+};
+
+// Add function to automatically detect total marks from question
+  const detectTotalMarksFromQuestion = (questionText) => {
+  if (!questionText) return null;
+  
+  // Common patterns for total marks in GCSE questions
+  const patterns = [
+    /\[(\d+) marks?\]/i,                 // [8 marks]
+    /\((\d+) marks?\)/i,                 // (8 marks)
+    /worth (\d+) marks?/i,               // worth 8 marks
+    /for (\d+) marks?/i,                 // for 8 marks
+    /total (?:of )?(\d+) marks?/i,       // total of 8 marks
+    /\[Total:? (\d+)(?:\s*marks?)?\]/i,  // [Total: 8] or [Total: 8 marks]
+    /\(Total:? (\d+)(?:\s*marks?)?\)/i,  // (Total: 8) or (Total: 8 marks)
+    /^(\d+) marks?:?/i,                  // 8 marks: at start of line
+    /\[(\d+)(?:\s*m)\]/i,                // [8m]
+    /\((\d+)(?:\s*m)\)/i                 // (8m)
+  ];
+  
+  for (const pattern of patterns) {
+    const match = questionText.match(pattern);
+    if (match && match[1]) {
+      const marks = parseInt(match[1]);
+      if (!isNaN(marks) && marks > 0) {
+        console.log(`Detected ${marks} total marks from question`);
+        
+        // Show a toast notification to inform the user
+        if (typeof toast !== 'undefined') {
+          toast.info(`Automatically detected ${marks} total marks from the question`);
+        }
+        
+        return marks.toString();
+      }
+    }
+  }
+  
+  return null;
 };
 
 // Helper function to copy feedback to clipboard
@@ -1032,6 +1076,15 @@ const BulkItemPreviewDialog = ({ open, onOpenChange, item, onClose }) => {
                 </div>
               </div>
               
+              {item.achievedMarks && item.totalMarks && (
+                <div className="flex items-center">
+                  <span className="font-medium mr-2">Marks:</span>
+                  <span className="px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 text-xs font-medium rounded-full">
+                    {item.achievedMarks}/{item.totalMarks}
+                  </span>
+                </div>
+              )}
+              
               {item.modelName && (
                 <div className="text-sm text-muted-foreground">
                   <span className="font-medium">Model:</span> {AI_MODELS.find(m => m.value === item.modelName)?.label || item.modelName}
@@ -1279,6 +1332,8 @@ const AIMarker = () => {
   const [autoMaxTokens, setAutoMaxTokens] = useState(true);
   const [maxTokens, setMaxTokens] = useState(2048);
   const [remainingRequestTokens, setRemainingRequestTokens] = useState(0);
+  const [thinkingBudget, setThinkingBudget] = useState(DEFAULT_THINKING_BUDGETS["gemini-2.5-flash-preview-04-17"] || 1024);
+  const [enableThinkingBudget, setEnableThinkingBudget] = useState(true);
 
   // Debounced save function for question and answer
   const debouncedSaveDraft = useCallback(
@@ -1570,9 +1625,12 @@ c) 2-3 areas for improvement with ${userType === 'teacher' ? 'marking criteria' 
 d) One specific ${userType === 'teacher' ? 'assessment note' : '"next step" for the student'}
 e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number`;
 
-      // Add marks achieved format if total marks are provided
-      if (totalMarks) {
-        basePrompt += `\nf) Marks achieved in the format: [MARKS:Y/${totalMarks}] where Y is the number of marks achieved`;
+      // Add marks achieved format if total marks are provided or detected
+      const detectedMarks = !totalMarks ? detectTotalMarksFromQuestion(question) : null;
+      const marksToUse = totalMarks || detectedMarks;
+      
+      if (marksToUse) {
+        basePrompt += `\nf) Marks achieved in the format: [MARKS:Y/${marksToUse}] where Y is the number of marks achieved`;
       }
 
       // Add math-specific LaTeX formatting instructions
@@ -1626,8 +1684,12 @@ ${getSubjectGuidance(subject, examBoard)}`;
         userPrompt += `RELEVANT MATERIAL:\n${relevantMaterial}\n\n`;
       }
       
-      if (totalMarks) {
-        userPrompt += `TOTAL MARKS: ${totalMarks}\n\n`;
+      // Check for detected marks if totalMarks is not provided
+      const detectedMarks = !totalMarks ? detectTotalMarksFromQuestion(question) : null;
+      const marksToUse = totalMarks || detectedMarks;
+      
+      if (marksToUse) {
+        userPrompt += `TOTAL MARKS: ${marksToUse}\n\n`;
       }
       
       // Add specific instructions
@@ -1636,8 +1698,8 @@ ${getSubjectGuidance(subject, examBoard)}`;
 2. Provide detailed, constructive feedback
 3. Assign a GCSE grade (9-1) in the format [GRADE:X]`;
 
-      if (totalMarks) {
-        userPrompt += `\n4. Assign marks in the format [MARKS:Y/${totalMarks}]`;
+      if (marksToUse) {
+        userPrompt += `\n4. Assign marks in the format [MARKS:Y/${marksToUse}]`;
       }
       
       return userPrompt;
@@ -1672,22 +1734,35 @@ ${getSubjectGuidance(subject, examBoard)}`;
         setProcessingProgress("Sending request to direct Gemini API...");
         
         // Format request for the direct Gemini API
+        const requestBody = {
+          contents: [
+            {
+              parts: [
+                {
+                  text: `System: ${systemPrompt}\n\nUser: ${userPrompt}`
+                }
+              ]
+            }
+          ]
+        };
+        
+        // Add thinking config if enabled
+        if (enableThinkingBudget && thinkingBudget > 0) {
+          requestBody.config = {
+            thinkingConfig: {
+              thinkingBudget: thinkingBudget
+            }
+          };
+          
+          console.log(`Using thinking budget of ${thinkingBudget} tokens for Gemini model`);
+        }
+        
         response = await fetch(`${API_BASE_URL}/api/gemini/generate`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    text: `System: ${systemPrompt}\n\nUser: ${userPrompt}`
-                  }
-                ]
-              }
-            ]
-          }),
+          body: JSON.stringify(requestBody),
         });
       } else {
         // Use the standard API for other models
@@ -1838,6 +1913,10 @@ ${getSubjectGuidance(subject, examBoard)}`;
       const marksMatch = responseContent.match(/\[MARKS:(\d+)\/(\d+)\]/i);
       if (marksMatch && marksMatch[1]) {
         setAchievedMarks(marksMatch[1]);
+        // Set totalMarks if not already set (for display)
+        if (!totalMarks && marksMatch[2]) {
+          setTotalMarks(marksMatch[2]);
+        }
       }
       
       // Clean up the response (remove the grade/marks tag)
@@ -2120,9 +2199,15 @@ ${getSubjectGuidance(subject, examBoard)}`;
         basePrompt += `\n- This is a ${itemData.tier?.toUpperCase()} tier question`;
       }
       basePrompt += `\n\n2. FEEDBACK STRUCTURE:\na) Summary of performance (1-2 sentences)\nb) 2-3 specific strengths with examples\nc) 2-3 areas for improvement with ${itemData.userType === 'teacher' ? 'marking criteria' : 'actionable suggestions'}\nd) One specific ${itemData.userType === 'teacher' ? 'assessment note' : '"next step" for the student'}\ne) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number`;
-      if (itemData.totalMarks) {
-        basePrompt += `\nf) Marks achieved in the format: [MARKS:Y/${itemData.totalMarks}] where Y is the number of marks achieved`;
+      
+      // Check for detected marks if totalMarks is not provided
+      const detectedMarks = !itemData.totalMarks ? detectTotalMarksFromQuestion(itemData.question) : null;
+      const marksToUse = itemData.totalMarks || detectedMarks;
+      
+      if (marksToUse) {
+        basePrompt += `\nf) Marks achieved in the format: [MARKS:Y/${marksToUse}] where Y is the number of marks achieved`;
       }
+      
       if (itemData.subject === "maths") {
         basePrompt += `\n\n4. MATHEMATICAL NOTATION:\n- Use LaTeX notation for mathematical expressions enclosed in $ $ for inline formulas and as separate blocks for complex formulas\n- Example inline: $x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$\n- Example block:\n$$\nx = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\n$$\n- Format solutions step-by-step with clear explanations\n- Number equations and reference them in your feedback`;
       } else {
@@ -2136,13 +2221,21 @@ ${getSubjectGuidance(subject, examBoard)}`;
 
     const buildUserPromptForItem = () => {
       let userPromptText = `Please mark this GCSE ${itemData.subject} answer.\n\nQUESTION:\n${itemData.question}\n\nSTUDENT ANSWER:\n${itemData.answer}\n\n`;
-      if (itemData.totalMarks) {
-        userPromptText += `TOTAL MARKS: ${itemData.totalMarks}\n\n`;
+      
+      // Check for detected marks if totalMarks is not provided
+      const detectedMarks = !itemData.totalMarks ? detectTotalMarksFromQuestion(itemData.question) : null;
+      const marksToUse = itemData.totalMarks || detectedMarks;
+      
+      if (marksToUse) {
+        userPromptText += `TOTAL MARKS: ${marksToUse}\n\n`;
       }
+      
       userPromptText += `INSTRUCTIONS:\n1. Assess the answer against GCSE criteria for ${itemData.subject} (${itemData.examBoard} exam board)\n2. Provide detailed, constructive feedback\n3. Assign a GCSE grade (9-1) in the format [GRADE:X]`;
-      if (itemData.totalMarks) {
-        userPromptText += `\n4. Assign marks in the format [MARKS:Y/${itemData.totalMarks}]`;
+      
+      if (marksToUse) {
+        userPromptText += `\n4. Assign marks in the format [MARKS:Y/${marksToUse}]`;
       }
+      
       return userPromptText;
     };
 
@@ -2184,8 +2277,9 @@ ${getSubjectGuidance(subject, examBoard)}`;
 
       const gradeValueMatch = apiResponseContent.match(/\[GRADE:(\d+)\]/i);
       const itemGrade = gradeValueMatch?.[1] || null;
-      const marksValueMatch = apiResponseContent.match(/\[MARKS:(\d+)\/\d+\]/i);
+      const marksValueMatch = apiResponseContent.match(/\[MARKS:(\d+)\/(\d+)\]/i);
       const itemAchievedMarks = marksValueMatch?.[1] || null;
+      const itemTotalMarks = marksValueMatch?.[2] || itemData.totalMarks;
       
       const finalFeedback = apiResponseContent.replace(/\[GRADE:\d+\]/gi, '').replace(/\[MARKS:\d+\/\d+\]/gi, '').trim();
       
@@ -2193,6 +2287,7 @@ ${getSubjectGuidance(subject, examBoard)}`;
         feedback: finalFeedback,
         grade: itemGrade,
         achievedMarks: itemAchievedMarks,
+        totalMarks: itemTotalMarks,
         modelThinking: itemModelThinking,
         modelName: currentModelForItem,
         error: null
@@ -2434,6 +2529,8 @@ ${getSubjectGuidance(subject, examBoard)}`;
           answer: currentItem.answer,
           feedback: result.feedback,
           grade: result.grade,
+          achievedMarks: result.achievedMarks,
+          totalMarks: result.totalMarks,
           modelName: result.modelName,
           error: result.error
         });
@@ -2920,6 +3017,9 @@ ${getSubjectGuidance(subject, examBoard)}`;
                           className="max-w-[120px]"
                           ref={node => setMarksInputRef(node)}
                         />
+                        <p className="text-xs text-muted-foreground">
+                          If not provided, system will attempt to detect total marks from the question (like "8 marks" or "[Total: 10]").
+                        </p>
                       </div>
                       
                       {/* Text extract - mainly for English */}
@@ -3061,6 +3161,77 @@ ${getSubjectGuidance(subject, examBoard)}`;
                            <p className="text-xs text-muted-foreground">
                             Defines the maximum length of the AI's response. (Min: 256, Max: 8192). Default is 2048.
                           </p>
+                        </div>
+                      )}
+                      
+                      {/* Add Thinking Budget control for Gemini 2.5 */}
+                      {selectedModel === "gemini-2.5-flash-preview-04-17" && (
+                        <div className="space-y-2 pt-2 border-t border-border mt-4">
+                          <div className="flex items-center justify-between">
+                            <Label htmlFor="enableThinkingBudget" className="text-sm flex items-center">
+                              Enable Thinking Budget
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <HelpCircle className="h-3 w-3 ml-1.5 text-muted-foreground cursor-help" />
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" className="max-w-xs">
+                                    <p>When enabled, the model will use a thinking budget to solve more complex tasks. This may improve answer quality but might increase response time.</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            </Label>
+                            <Switch
+                              id="enableThinkingBudget"
+                              checked={enableThinkingBudget}
+                              onCheckedChange={setEnableThinkingBudget}
+                            />
+                          </div>
+                          
+                          {enableThinkingBudget && (
+                            <div className="space-y-2 mt-3">
+                              <Label htmlFor="thinkingBudgetSlider" className="text-sm">
+                                Thinking Budget: {thinkingBudget}
+                              </Label>
+                              <div className="flex items-center gap-3">
+                                <Slider
+                                  id="thinkingBudgetSlider"
+                                  min={512}
+                                  max={24576}
+                                  step={512}
+                                  value={[thinkingBudget]}
+                                  onValueChange={(value) => setThinkingBudget(value[0])}
+                                  className="flex-grow"
+                                />
+                                <Input
+                                  id="thinkingBudgetInput"
+                                  type="number"
+                                  value={thinkingBudget}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value);
+                                    if (!isNaN(val)) {
+                                      if (val >= 0 && val <= 24576) {
+                                        setThinkingBudget(val);
+                                      } else if (val < 0) {
+                                        setThinkingBudget(0);
+                                      } else if (val > 24576) {
+                                        setThinkingBudget(24576);
+                                      }
+                                    } else if (e.target.value === '') {
+                                      setThinkingBudget(0);
+                                    }
+                                  }}
+                                  className="w-24 text-sm h-9"
+                                  min={0}
+                                  max={24576}
+                                  step={512}
+                                />
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                Defines the maximum tokens used for thinking. Higher values may improve quality for complex tasks. (Min: 0, Max: 24576)
+                              </p>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -3315,12 +3486,14 @@ ${getSubjectGuidance(subject, examBoard)}`;
                           onClick={() => {
                             // Create CSV content
                             const csvContent = [
-                              ["Item", "Question", "Answer", "Grade", "Feedback"].join(","),
+                              ["Item", "Question", "Answer", "Grade", "Marks", "Total Marks", "Feedback"].join(","),
                               ...bulkResults.map((item, index) => [
                                 index + 1,
                                 `"${item.question?.replace(/"/g, '""') || ''}"`,
                                 `"${item.answer?.replace(/"/g, '""') || ''}"`,
                                 item.grade || 'N/A',
+                                item.achievedMarks || '',
+                                item.totalMarks || '',
                                 `"${item.feedback?.replace(/"/g, '""') || item.error?.replace(/"/g, '""') || ''}"`,
                               ].join(","))
                             ].join("\n");
