@@ -86,7 +86,7 @@ const USER_TYPES = [
 
 const AI_MODELS = [
   { value: "gemini-2.5-flash-preview-04-17", label: "Gemini 2.5 Flash Preview", description: "Best quality with faster response times" },
-  { value: "microsoft/mai-ds-r1:free", label: "R1 (thinking model)", description: "More thorough reasoning process" },
+  { value: "microsoft/mai-ds-r1:free", label: "R1 (thinking model)", description: "Most thorough reasoning process (may take 1-2 minutes)" },
   { value: "deepseek/deepseek-chat-v3-0324:free", label: "V3 (balanced model)", description: "Balanced speed and quality" },
   { value: "google/gemini-2.0-flash-exp:free", label: "Fast Response (lower quality)", description: "Quick responses, suitable for shorter answers" },
 ];
@@ -150,8 +150,13 @@ const QUESTION_TYPES = {
   }
 };
 
+// Simple placeholder function since we removed the test button
+const testMarkSchemeGeneration = () => {
+  toast.info("Test generation functionality has been removed");
+};
+
 // Add function to automatically detect total marks from question
-  const detectTotalMarksFromQuestion = (questionText) => {
+const detectTotalMarksFromQuestion = (questionText) => {
   if (!questionText) return null;
   
   // Common patterns for total marks in GCSE questions
@@ -2075,69 +2080,112 @@ ${markScheme ? `8. Apply a rigorous mark-by-mark assessment using the provided m
   ]);
 
   const generateMarkScheme = async () => {
-    // ... (initial checks)
-
-    // MODIFIED error handling within generateMarkScheme loop
-    while (retryCount <= maxRetries && !successFlag) { // Renamed success to successFlag to avoid conflict
-      try {
-        // ... (model selection, API call setup)
-
-        if (isRateLimited) {
-          console.log(`Model ${currentModel} is rate limited, will try another model for mark scheme`);
-          failedModels.add(currentModel);
-          const fallbackForScheme = FALLBACK_MODELS[currentModel];
-          // If this was the last model in modelsToTry or no specific fallback, set a generic error
-          if (retryCount >= modelsToTry.length -1 || !fallbackForScheme) {
-             setError({
-                type: "rate_limit", // Generic rate limit type
-                message: `${modelLabel} is rate limited. Other models will be tried or please wait.`,
-                // No direct retry for this specific alert, loop handles it
-             });
-        } else {
-            // If there's a fallback, we can hint at it, though the loop will try it
-             setError({
-                type: "rate_limit_with_fallback", 
-                message: `${modelLabel} is rate limited. Trying fallback ${AI_MODELS.find(m => m.value === fallbackForScheme)?.label || fallbackForScheme} next for mark scheme.`, 
-                fallbackModel: fallbackForScheme, // For potential UI hint, though loop handles retry
-                // No direct onRetryFallback here, the loop manages model cycling
-             });
-          }
-          // ... (logic to select next model in modelsToTry)
-          throw new Error(`Rate limit for ${currentModel} during mark scheme generation.`);
-        }
-
-        if (!response.ok) {
-          // ... (error parsing)
-          // More generic error for mark scheme generation failure
-          setError({
-              type: "api_error",
-              message: `Mark scheme generation failed with ${modelLabel}: ${errorMessage}`,
-              onRetry: generateMarkScheme // Retry the whole generation process
-          });
-          throw new Error(`HTTP error: ${response.status}. ${errorMessage}`);
-        }
-        // ... (success handling for mark scheme)
-      } catch (error) {
-        console.error("Error generating mark scheme (attempt ${retryCount + 1}):", error);
-        // ... (retry delay logic)
-        if (retryCount >= maxRetries) {
-          if (error.name === 'AbortError') {
-            setError({
-              type: "timeout", message: "Mark scheme generation timed out.",
-              onRetry: generateMarkScheme
-            });
-          } else {
-            setError({
-              type: "api_error",
-              message: `Failed to generate mark scheme after multiple attempts: ${error.message}`,
-              onRetry: generateMarkScheme
-            });
-          }
-          break;
-        }
-      }
+    // Check if we have a question
+    if (!question) {
+      setError({
+        type: "validation",
+        message: "Please enter a question to generate a mark scheme"
+      });
+      return;
     }
-    // ... (final setLoading)
+    
+    setLoading(true);
+    setError(null);
+    setSuccess({
+      message: "Generating mark scheme..."
+    });
+    
+    // Variables for retry logic
+    let retryCount = 0;
+    const maxRetries = 3;
+    let successFlag = false;
+    const failedModels = new Set();
+    const modelsToTry = [selectedModel, ...Object.values(FALLBACK_MODELS)];
+    
+    try {
+      // We'll start with the selected model and fall back to others if needed
+      let currentModel = selectedModel;
+      let modelLabel = AI_MODELS.find(m => m.value === currentModel)?.label || currentModel;
+      
+      const systemPrompt = `You are an experienced GCSE examiner for ${subject}. Create a detailed mark scheme for the provided question based on ${examBoard} examination standards. 
+      Include clear assessment objectives, point-by-point criteria, level descriptors if applicable, and a total mark allocation.`;
+      
+      const userPrompt = `Please create a detailed mark scheme for this GCSE ${subject} question for the ${examBoard} exam board:
+      
+      QUESTION: ${question}
+      
+      FORMAT YOUR RESPONSE AS A PROFESSIONAL MARK SCHEME WITH:
+      1. Clear assessment criteria
+      2. Point-by-point allocation of marks
+      3. Examples of acceptable answers where appropriate
+      4. Level descriptors for extended responses
+      5. Total mark allocation`;
+      
+      let response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: currentModel,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt }
+          ],
+          temperature: 0.3
+        }),
+        signal: AbortSignal.timeout(60000) // 60 second timeout
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorMessage = "Unknown error occurred";
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.error?.message || errorJson.message || JSON.stringify(errorJson);
+        } catch (e) {
+          errorMessage = errorText || response.statusText;
+        }
+        
+        throw new Error(`Mark scheme generation failed: ${errorMessage}`);
+      }
+      
+      const data = await response.json();
+      
+      // Extract the response content
+      let markSchemeText = "";
+      if (data.choices && data.choices[0] && data.choices[0].message) {
+        markSchemeText = data.choices[0].message.content;
+      } else if (data.content) {
+        markSchemeText = data.content;
+      } else {
+        throw new Error("Unexpected API response format");
+      }
+      
+      // Update the mark scheme field
+      setMarkScheme(markSchemeText);
+      setSuccess({
+        message: "Mark scheme generated successfully!"
+      });
+      successFlag = true;
+      
+    } catch (error) {
+      console.error("Error generating mark scheme:", error);
+      
+      if (error.name === 'AbortError') {
+        setError({
+          type: "timeout", 
+          message: "Mark scheme generation timed out.",
+          onRetry: generateMarkScheme
+        });
+      } else {
+        setError({
+          type: "api_error",
+          message: `Failed to generate mark scheme: ${error.message}`,
+          onRetry: generateMarkScheme
+        });
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Reset form fields
@@ -3174,16 +3222,7 @@ Please respond to their question clearly and constructively. Keep your answer co
                               </div>
                             </div>
                             <div className="flex gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-xs h-7"
-                              onClick={() => testMarkSchemeGeneration()}
-                              disabled={loading || !question || backendStatusRef.current !== 'online'}
-                            >
-                              <Code className="mr-1 h-3 w-3" />
-                              Test Gen
-                            </Button>
+
                             <Button
                               variant="outline"
                               size="sm"
