@@ -1243,6 +1243,9 @@ const AIMarker = () => {
   const [totalMarks, setTotalMarks] = useState("");
   const [textExtract, setTextExtract] = useState("");
   const [relevantMaterial, setRelevantMaterial] = useState("");
+  const [relevantMaterialImage, setRelevantMaterialImage] = useState(null);
+  const [relevantMaterialImageBase64, setRelevantMaterialImageBase64] = useState(null);
+  const [relevantMaterialImageLoading, setRelevantMaterialImageLoading] = useState(false);
   const [modelThinking, setModelThinking] = useState("");
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
   const [isGitHubPages, setIsGitHubPages] = useState(false);
@@ -1290,6 +1293,29 @@ const AIMarker = () => {
       setImage(selectedImage);
       // Clear previous preview if any
       setOcrTextPreview("");
+    }
+  };
+  
+  // Handle relevant material image upload
+  const handleRelevantMaterialImageChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      const selectedImage = e.target.files[0];
+      setRelevantMaterialImage(selectedImage);
+      setRelevantMaterialImageLoading(true);
+      
+      // Convert image to base64 for Gemini API
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result.split(',')[1];
+        setRelevantMaterialImageBase64(base64String);
+        setRelevantMaterialImageLoading(false);
+        toast.success("Image added as relevant material");
+      };
+      reader.onerror = () => {
+        setRelevantMaterialImageLoading(false);
+        toast.error("Failed to process image");
+      };
+      reader.readAsDataURL(selectedImage);
     }
   };
   
@@ -1772,6 +1798,11 @@ ${getSubjectGuidance(subject, examBoard)}
         userPrompt += `RELEVANT MATERIAL:\n${relevantMaterial}\n\n`;
       }
       
+      // Note about image if using Gemini 2.5 with image
+      if (selectedModel === "gemini-2.5-flash-preview-04-17" && relevantMaterialImage) {
+        userPrompt += `IMAGE PROVIDED: An image has been attached to this prompt as relevant material. Please analyze this image in relation to the student's answer.\n\n`;
+      }
+      
       // Check for detected marks if totalMarks is not provided
       const detectedMarks = !totalMarks ? detectTotalMarksFromQuestion(question) : null;
       const marksToUse = totalMarks || detectedMarks;
@@ -1841,6 +1872,25 @@ ${markScheme ? `8. Apply a rigorous mark-by-mark assessment using the provided m
             }
           ]
         };
+        
+        // Add image to the request if available
+        if (relevantMaterialImage && relevantMaterialImageBase64) {
+          setProcessingProgress("Including image in request to Gemini API...");
+          console.log("Including relevant material image in the request");
+          
+          // Add image as a part in the first content item
+          requestBody.contents[0].parts.push({
+            inline_data: {
+              mime_type: relevantMaterialImage.type,
+              data: relevantMaterialImageBase64
+            }
+          });
+          
+          // Add a text part after the image explaining it's relevant material
+          requestBody.contents[0].parts.push({
+            text: "This image is provided as relevant material for the assessment. Please consider it when evaluating the student's answer."
+          });
+        }
         
         // Add thinking config if enabled
         if (enableThinkingBudget && thinkingBudget > 0) {
@@ -2196,6 +2246,8 @@ ${markScheme ? `8. Apply a rigorous mark-by-mark assessment using the provided m
     setImage(null);
     setTextExtract("");
     setRelevantMaterial("");
+    setRelevantMaterialImage(null);
+    setRelevantMaterialImageBase64(null);
     setTotalMarks("");
     setFeedback("");
     setGrade("");
@@ -3390,6 +3442,67 @@ Please respond to their question clearly and constructively. Keep your answer co
                           value={relevantMaterial}
                           onChange={(e) => setRelevantMaterial(e.target.value)}
                         />
+                        {/* Add image upload for relevant material */}
+                        <div className="mt-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-muted-foreground">
+                              Add image as relevant material
+                            </span>
+                            {selectedModel !== "gemini-2.5-flash-preview-04-17" && (
+                              <Badge variant="outline" className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/50">
+                                Only works with Gemini 2.5 Flash
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mt-2">
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={() => document.getElementById('relevant-material-image').click()}
+                              className="text-xs h-7"
+                              disabled={selectedModel !== "gemini-2.5-flash-preview-04-17" || relevantMaterialImageLoading}
+                            >
+                              {relevantMaterialImageLoading ? (
+                                <><Loader2 className="mr-1 h-3 w-3 animate-spin" /> Processing...</>
+                              ) : (
+                                <><Upload className="mr-1 h-3 w-3" /> Upload Image</>
+                              )}
+                            </Button>
+                            {selectedModel !== "gemini-2.5-flash-preview-04-17" && (
+                              <Button
+                                variant="link"
+                                size="sm"
+                                className="text-xs h-7 text-amber-600 dark:text-amber-400 px-0"
+                                onClick={() => setSelectedModel("gemini-2.5-flash-preview-04-17")}
+                              >
+                                Switch to Gemini 2.5 Flash
+                              </Button>
+                            )}
+                          </div>
+                          <input
+                            type="file"
+                            id="relevant-material-image"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleRelevantMaterialImageChange}
+                            disabled={selectedModel !== "gemini-2.5-flash-preview-04-17" || relevantMaterialImageLoading}
+                          />
+                          {relevantMaterialImage && (
+                            <div className="mt-2 flex items-center">
+                              <Badge variant="outline" className="text-xs">
+                                {relevantMaterialImage.name} ({Math.round(relevantMaterialImage.size / 1024)} KB)
+                              </Badge>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 w-6 p-0 ml-2"
+                                onClick={() => setRelevantMaterialImage(null)}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                       
                       {/* AI Model Selection */}
