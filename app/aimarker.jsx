@@ -2194,12 +2194,18 @@ ${markScheme ? `8. Apply a rigorous mark-by-mark assessment using the provided m
       let currentModel = selectedModel;
       let modelLabel = AI_MODELS.find(m => m.value === currentModel)?.label || currentModel;
       
+      // Detect total marks if not already set
+      const detectedMarks = !totalMarks ? detectTotalMarksFromQuestion(question) : null;
+      const marksToUse = totalMarks || detectedMarks;
+
       const systemPrompt = `You are an experienced GCSE examiner for ${subject}. Create a detailed mark scheme for the provided question based on ${examBoard} examination standards. 
-      Include clear assessment objectives, point-by-point criteria, level descriptors if applicable, and a total mark allocation.`;
+      Include clear assessment objectives, point-by-point criteria, level descriptors if applicable, and a total mark allocation. ${marksToUse ? `The question is out of ${marksToUse} marks.` : ''}`;
       
       const userPrompt = `Please create a detailed mark scheme for this GCSE ${subject} question for the ${examBoard} exam board:
       
       QUESTION: ${question}
+      ${marksToUse ? `
+TOTAL MARKS: ${marksToUse}` : ''}
       
       FORMAT YOUR RESPONSE AS A PROFESSIONAL MARK SCHEME WITH:
       1. Clear assessment criteria
