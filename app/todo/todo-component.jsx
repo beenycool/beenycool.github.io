@@ -14,7 +14,9 @@ import {
   Calendar,
   ArrowLeft,
   CheckCheck,
-  Sparkles
+  Sparkles,
+  ChevronDown,
+  ListTodo
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +28,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import Link from 'next/link';
 
 // Define Todo item structure
@@ -39,13 +42,27 @@ const TodoComponent = () => {
   const [priority, setPriority] = useState('medium');
   const [showCompleted, setShowCompleted] = useState(true);
   const [isLoaded, setIsLoaded] = useState(false);
+  
+  // State for subtasks
+  const [newSubtaskText, setNewSubtaskText] = useState('');
+  const [addingSubtaskFor, setAddingSubtaskFor] = useState(null);
+  const [editingSubtaskId, setEditingSubtaskId] = useState(null);
+  const [editSubtaskText, setEditSubtaskText] = useState('');
+  const [expandedTodos, setExpandedTodos] = useState([]);
 
   // Load todos from localStorage on mount
   useEffect(() => {
     const savedTodos = localStorage.getItem('todos');
     if (savedTodos) {
       try {
-        setTodos(JSON.parse(savedTodos));
+        const parsedTodos = JSON.parse(savedTodos);
+        setTodos(parsedTodos);
+        
+        // Initialize expanded state for todos with subtasks
+        const initialExpanded = parsedTodos
+          .filter(todo => todo.subtasks && todo.subtasks.length > 0)
+          .map(todo => todo.id);
+        setExpandedTodos(initialExpanded);
       } catch (e) {
         console.error('Failed to parse todos from localStorage:', e);
       }
@@ -71,7 +88,8 @@ const TodoComponent = () => {
       text: newTodoText.trim(),
       completed: false,
       priority,
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      subtasks: []
     };
     
     setTodos([newTodo, ...todos]);
@@ -81,9 +99,21 @@ const TodoComponent = () => {
   // Toggle a todo's completed status
   const toggleTodo = (id) => {
     setTodos(
-      todos.map(todo =>
-        todo.id === id ? { ...todo, completed: !todo.completed } : todo
-      )
+      todos.map(todo => {
+        if (todo.id === id) {
+          // If marking as complete, also mark all subtasks as complete
+          const updatedSubtasks = todo.completed 
+            ? todo.subtasks 
+            : todo.subtasks.map(subtask => ({...subtask, completed: true}));
+          
+          return { 
+            ...todo, 
+            completed: !todo.completed,
+            subtasks: updatedSubtasks
+          };
+        }
+        return todo;
+      })
     );
   };
 
@@ -114,6 +144,110 @@ const TodoComponent = () => {
   // Cancel editing
   const cancelEdit = () => {
     setEditingId(null);
+  };
+
+  // Toggle expanded state for a todo
+  const toggleExpanded = (id) => {
+    setExpandedTodos(prev => 
+      prev.includes(id) 
+        ? prev.filter(todoId => todoId !== id)
+        : [...prev, id]
+    );
+  };
+
+  // Add a subtask to a todo
+  const addSubtask = (todoId) => {
+    if (!newSubtaskText.trim()) return;
+    
+    setTodos(todos.map(todo => {
+      if (todo.id === todoId) {
+        const newSubtask = {
+          id: `${todoId}-sub-${Date.now()}`,
+          text: newSubtaskText.trim(),
+          completed: false,
+          createdAt: Date.now()
+        };
+        
+        return {
+          ...todo,
+          subtasks: [...todo.subtasks, newSubtask]
+        };
+      }
+      return todo;
+    }));
+    
+    setNewSubtaskText('');
+    setAddingSubtaskFor(null);
+  };
+  
+  // Toggle a subtask's completed status
+  const toggleSubtask = (todoId, subtaskId) => {
+    setTodos(todos.map(todo => {
+      if (todo.id === todoId) {
+        const updatedSubtasks = todo.subtasks.map(subtask => 
+          subtask.id === subtaskId 
+            ? {...subtask, completed: !subtask.completed} 
+            : subtask
+        );
+        
+        // If all subtasks are complete, mark the todo as complete too
+        const allComplete = updatedSubtasks.every(subtask => subtask.completed);
+        
+        return {
+          ...todo,
+          subtasks: updatedSubtasks,
+          completed: allComplete ? true : todo.completed
+        };
+      }
+      return todo;
+    }));
+  };
+  
+  // Delete a subtask
+  const deleteSubtask = (todoId, subtaskId) => {
+    setTodos(todos.map(todo => {
+      if (todo.id === todoId) {
+        return {
+          ...todo,
+          subtasks: todo.subtasks.filter(subtask => subtask.id !== subtaskId)
+        };
+      }
+      return todo;
+    }));
+  };
+  
+  // Start editing a subtask
+  const startEditingSubtask = (todoId, subtask) => {
+    setEditingSubtaskId(subtask.id);
+    setEditSubtaskText(subtask.text);
+  };
+  
+  // Save edited subtask
+  const saveSubtaskEdit = (todoId) => {
+    if (editingSubtaskId === null) return;
+    
+    setTodos(todos.map(todo => {
+      if (todo.id === todoId) {
+        return {
+          ...todo,
+          subtasks: todo.subtasks.map(subtask =>
+            subtask.id === editingSubtaskId 
+              ? {...subtask, text: editSubtaskText.trim()} 
+              : subtask
+          )
+        };
+      }
+      return todo;
+    }));
+    
+    setEditingSubtaskId(null);
+    setEditSubtaskText('');
+  };
+  
+  // Cancel editing subtask
+  const cancelSubtaskEdit = () => {
+    setEditingSubtaskId(null);
+    setEditSubtaskText('');
   };
 
   // Filter todos based on current filter
@@ -331,58 +465,199 @@ const TodoComponent = () => {
                                 </div>
                               </div>
                             ) : (
-                              <div className="flex items-start justify-between">
-                                <div className="flex items-start gap-3">
-                                  <button 
-                                    onClick={() => toggleTodo(todo.id)}
-                                    className="mt-1 flex-shrink-0 hover:scale-110 transition-transform"
-                                    title={todo.completed ? "Mark as incomplete" : "Mark as complete"}
-                                  >
-                                    {todo.completed ? (
-                                      <CheckCircle2 className="h-6 w-6 text-primary" />
-                                    ) : (
-                                      <Circle className="h-6 w-6 text-muted-foreground hover:text-primary" />
-                                    )}
-                                  </button>
-                                  
-                                  <div className="space-y-2">
-                                    <p className={`${todo.completed ? 'line-through text-muted-foreground' : 'font-medium'}`}>
-                                      {todo.text}
-                                    </p>
-                                    <div className="flex flex-wrap items-center gap-2 text-xs">
-                                      <Badge variant="outline" className={`${getPriorityBadgeColor(todo.priority)}`}>
-                                        {todo.priority.charAt(0).toUpperCase() + todo.priority.slice(1)}
-                                      </Badge>
-                                      <span className="flex items-center text-muted-foreground">
-                                        <Calendar className="h-3 w-3 mr-0.5" />
-                                        {formatDate(todo.createdAt)}
-                                      </span>
+                              <div className="space-y-2">
+                                <div className="flex items-start justify-between">
+                                  <div className="flex items-start gap-3">
+                                    <button 
+                                      onClick={() => toggleTodo(todo.id)}
+                                      className="mt-1 flex-shrink-0 hover:scale-110 transition-transform"
+                                      title={todo.completed ? "Mark as incomplete" : "Mark as complete"}
+                                    >
+                                      {todo.completed ? (
+                                        <CheckCircle2 className="h-6 w-6 text-primary" />
+                                      ) : (
+                                        <Circle className="h-6 w-6 text-muted-foreground hover:text-primary" />
+                                      )}
+                                    </button>
+                                    
+                                    <div className="space-y-2">
+                                      <p className={`${todo.completed ? 'line-through text-muted-foreground' : 'font-medium'}`}>
+                                        {todo.text}
+                                      </p>
+                                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                                        <Badge variant="outline" className={`${getPriorityBadgeColor(todo.priority)}`}>
+                                          {todo.priority.charAt(0).toUpperCase() + todo.priority.slice(1)}
+                                        </Badge>
+                                        
+                                        {todo.subtasks && todo.subtasks.length > 0 && (
+                                          <Badge variant="outline" className="bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800/50">
+                                            <ListTodo className="h-3 w-3 mr-1" />
+                                            {todo.subtasks.filter(st => st.completed).length}/{todo.subtasks.length}
+                                          </Badge>
+                                        )}
+                                        
+                                        <span className="flex items-center text-muted-foreground">
+                                          <Calendar className="h-3 w-3 mr-0.5" />
+                                          {formatDate(todo.createdAt)}
+                                        </span>
+                                      </div>
                                     </div>
                                   </div>
-                                </div>
-                                
-                                <div className="flex space-x-1 ml-2">
-                                  {!todo.completed && (
+                                  
+                                  <div className="flex space-x-1 ml-2">
+                                    {!todo.completed && (
+                                      <>
+                                        <Button 
+                                          size="sm" 
+                                          variant="ghost" 
+                                          onClick={() => {
+                                            setAddingSubtaskFor(todo.id);
+                                            setNewSubtaskText('');
+                                            if (!expandedTodos.includes(todo.id)) {
+                                              toggleExpanded(todo.id);
+                                            }
+                                          }}
+                                          className="h-8 w-8 p-0 hover:bg-primary/10 hover:text-primary"
+                                          title="Add subtask"
+                                        >
+                                          <Plus className="h-4 w-4" />
+                                        </Button>
+                                        <Button 
+                                          size="sm" 
+                                          variant="ghost" 
+                                          onClick={() => startEditing(todo)}
+                                          className="h-8 w-8 p-0 hover:bg-primary/10 hover:text-primary"
+                                          title="Edit task"
+                                        >
+                                          <Edit2 className="h-4 w-4" />
+                                        </Button>
+                                      </>
+                                    )}
                                     <Button 
                                       size="sm" 
                                       variant="ghost" 
-                                      onClick={() => startEditing(todo)}
-                                      className="h-8 w-8 p-0 hover:bg-primary/10 hover:text-primary"
-                                      title="Edit task"
+                                      onClick={() => deleteTodo(todo.id)}
+                                      className="h-8 w-8 p-0 hover:bg-destructive/10 hover:text-destructive"
+                                      title="Delete task"
                                     >
-                                      <Edit2 className="h-4 w-4" />
+                                      <Trash2 className="h-4 w-4" />
                                     </Button>
-                                  )}
-                                  <Button 
-                                    size="sm" 
-                                    variant="ghost" 
-                                    onClick={() => deleteTodo(todo.id)}
-                                    className="h-8 w-8 p-0 hover:bg-destructive/10 hover:text-destructive"
-                                    title="Delete task"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
+                                  </div>
                                 </div>
+                                
+                                {/* Subtasks section */}
+                                {todo.subtasks && todo.subtasks.length > 0 && (
+                                  <Collapsible 
+                                    open={expandedTodos.includes(todo.id)}
+                                    onOpenChange={() => toggleExpanded(todo.id)}
+                                    className="ml-9 mt-2"
+                                  >
+                                    <div className="flex items-center">
+                                      <CollapsibleTrigger asChild>
+                                        <Button variant="ghost" size="sm" className="p-0 h-6 hover:bg-transparent">
+                                          {expandedTodos.includes(todo.id) ? (
+                                            <ChevronDown className="h-4 w-4 mr-1 text-muted-foreground" />
+                                          ) : (
+                                            <ChevronRight className="h-4 w-4 mr-1 text-muted-foreground" />
+                                          )}
+                                          <span className="text-xs text-muted-foreground">
+                                            {expandedTodos.includes(todo.id) ? 'Hide' : 'Show'} {todo.subtasks.length} subtask{todo.subtasks.length !== 1 ? 's' : ''}
+                                          </span>
+                                        </Button>
+                                      </CollapsibleTrigger>
+                                    </div>
+                                    
+                                    <CollapsibleContent className="mt-1">
+                                      <div className="space-y-2 border-l-2 border-muted pl-3">
+                                        {todo.subtasks.map(subtask => (
+                                          <div key={subtask.id} className={`py-1 px-2 rounded ${subtask.completed ? 'bg-muted/30' : 'bg-card'}`}>
+                                            {editingSubtaskId === subtask.id ? (
+                                              <div className="flex items-center gap-2">
+                                                <Input 
+                                                  value={editSubtaskText}
+                                                  onChange={(e) => setEditSubtaskText(e.target.value)}
+                                                  onKeyDown={(e) => e.key === 'Enter' && saveSubtaskEdit(todo.id)}
+                                                  autoFocus
+                                                  className="flex-grow h-7 text-sm"
+                                                />
+                                                <div className="flex space-x-1">
+                                                  <Button size="sm" variant="ghost" onClick={() => saveSubtaskEdit(todo.id)} className="h-7 w-7 p-0">
+                                                    <Save className="h-3 w-3" />
+                                                  </Button>
+                                                  <Button size="sm" variant="ghost" onClick={cancelSubtaskEdit} className="h-7 w-7 p-0">
+                                                    <X className="h-3 w-3" />
+                                                  </Button>
+                                                </div>
+                                              </div>
+                                            ) : (
+                                              <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                  <button 
+                                                    onClick={() => toggleSubtask(todo.id, subtask.id)}
+                                                    className="flex-shrink-0"
+                                                  >
+                                                    {subtask.completed ? (
+                                                      <CheckCircle2 className="h-4 w-4 text-primary" />
+                                                    ) : (
+                                                      <Circle className="h-4 w-4 text-muted-foreground hover:text-primary" />
+                                                    )}
+                                                  </button>
+                                                  <span className={`text-sm ${subtask.completed ? 'line-through text-muted-foreground' : ''}`}>
+                                                    {subtask.text}
+                                                  </span>
+                                                </div>
+                                                
+                                                <div className="flex space-x-1">
+                                                  {!subtask.completed && (
+                                                    <Button 
+                                                      size="sm" 
+                                                      variant="ghost" 
+                                                      onClick={() => startEditingSubtask(todo.id, subtask)}
+                                                      className="h-6 w-6 p-0"
+                                                    >
+                                                      <Edit2 className="h-3 w-3" />
+                                                    </Button>
+                                                  )}
+                                                  <Button 
+                                                    size="sm" 
+                                                    variant="ghost" 
+                                                    onClick={() => deleteSubtask(todo.id, subtask.id)}
+                                                    className="h-6 w-6 p-0"
+                                                  >
+                                                    <Trash2 className="h-3 w-3" />
+                                                  </Button>
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        ))}
+                                        
+                                        {/* Add new subtask UI */}
+                                        {addingSubtaskFor === todo.id && (
+                                          <div className="flex items-center gap-2 mt-1">
+                                            <Input
+                                              value={newSubtaskText}
+                                              onChange={(e) => setNewSubtaskText(e.target.value)}
+                                              placeholder="Add new subtask..."
+                                              className="flex-grow h-7 text-sm"
+                                              onKeyDown={(e) => e.key === 'Enter' && addSubtask(todo.id)}
+                                              autoFocus
+                                            />
+                                            <div className="flex space-x-1">
+                                              <Button size="sm" variant="default" onClick={() => addSubtask(todo.id)} className="h-7">
+                                                <Plus className="h-3 w-3 mr-1" />
+                                                Add
+                                              </Button>
+                                              <Button size="sm" variant="ghost" onClick={() => setAddingSubtaskFor(null)} className="h-7 p-0 w-7">
+                                                <X className="h-3 w-3" />
+                                              </Button>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </CollapsibleContent>
+                                  </Collapsible>
+                                )}
                               </div>
                             )}
                           </motion.div>
