@@ -2199,7 +2199,8 @@ ${markScheme ? `8. Apply a rigorous mark-by-mark assessment using the provided m
       const marksToUse = totalMarks || detectedMarks;
 
       const systemPrompt = `You are an experienced GCSE examiner for ${subject}. Create a detailed mark scheme for the provided question based on ${examBoard} examination standards. 
-      Include clear assessment objectives, point-by-point criteria, level descriptors if applicable, and a total mark allocation. ${marksToUse ? `The question is out of ${marksToUse} marks.` : ''}`;
+      Include clear assessment objectives, point-by-point criteria, level descriptors if applicable, and a total mark allocation. ${marksToUse ? `The question is out of ${marksToUse} marks.` : ''}
+      IMPORTANT: Please provide the mark scheme in plain text format only. Do NOT use any Markdown formatting (e.g., no headings, bold text, lists, etc.).`;
       
       const userPrompt = `Please create a detailed mark scheme for this GCSE ${subject} question for the ${examBoard} exam board:
       
