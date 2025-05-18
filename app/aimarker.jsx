@@ -713,11 +713,15 @@ const EnhancedFeedback = ({
       
       <div className="flex justify-between items-center mb-3">
         <div className="flex items-center gap-2">
-          {grade && (
-            <div className="inline-flex items-center justify-center h-10 w-10 bg-gradient-to-br from-indigo-600 to-purple-600 dark:from-indigo-500 dark:to-purple-500 text-white font-bold rounded-full shadow-md">
-              {grade}
+          {/* START MODIFIED SECTION */}
+          {grade && achievedMarks && totalMarks && (
+            <div className="flex flex-col items-start">
+              <div className="inline-flex items-center justify-center px-3 py-1.5 bg-gradient-to-br from-indigo-600 to-purple-600 dark:from-indigo-500 dark:to-purple-500 text-white font-bold rounded-md shadow-md">
+                {achievedMarks}/{totalMarks} marks (Grade: {grade})
+              </div>
             </div>
           )}
+          {/* END MODIFIED SECTION */}
           <div>
             <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 flex items-center">
               Feedback
@@ -730,14 +734,15 @@ const EnhancedFeedback = ({
                 </Badge>
               )}
             </h3>
-            {achievedMarks && totalMarks && (
+            {/* REMOVED existing score display as it's now combined with grade */}
+            {/* {achievedMarks && totalMarks && (
               <div className="mt-1 flex items-center">
                 <span className="text-xs font-medium text-gray-600 dark:text-gray-400 mr-1.5">Score:</span>
                 <div className="px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 text-xs font-medium rounded-full">
                   {achievedMarks}/{totalMarks} marks
                 </div>
               </div>
-            )}
+            )} */}
           </div>
         </div>
         
@@ -1710,6 +1715,7 @@ c) 3-4 specific areas for improvement using the "WWW/EBI" format (What Went Well
    * Evidence from the student's work
    * Specific, achievable action to improve
    * Link to how this would affect their grade
+   If structural improvements are needed (e.g., unclear topic sentences, weak paragraph structure, lack of logical flow between points), suggest specific techniques like using PEEL (Point, Evidence, Explanation, Link) or improving transitions.
 d) Clear progression pathway that explains exactly what would be needed to achieve the next grade level
 e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number, with a brief justification of the grade awarded`;
 
@@ -1720,6 +1726,10 @@ e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number, with a
       if (marksToUse) {
         basePrompt += `\nf) Marks achieved in the format: [MARKS:Y/${marksToUse}] where Y is the number of marks achieved`;
       }
+
+      basePrompt += `\nIMPORTANT: The [GRADE:X] and [MARKS:Y/...] tags MUST be on their own separate lines and be the only content on those lines for parsing.`;
+
+      basePrompt += `\ng) Technical Accuracy: A distinct section summarizing observations on spelling, grammar, punctuation, and use of specialist terminology. Provide examples if common errors are noted.`;
 
       // Add mark scheme analysis instructions if provided
       if (markScheme) {
@@ -1760,7 +1770,11 @@ ${getSubjectGuidance(subject, examBoard)}
 - Balance critical assessment with encouraging language that motivates improvement
 - Ensure developmental feedback is specific and actionable
 - Apply a consistent marking standard throughout the assessment
-- Acknowledge partial understanding where appropriate`;
+- Acknowledge partial understanding where appropriate
+- When assessing analytical or evaluative skills (like AO3), if the student's response lacks depth in comparing factors, quantifying impacts, or weighing arguments, your feedback should:
+    * Clearly identify this as an area for improvement.
+    * Provide specific examples of phrases or approaches the student could use to demonstrate higher-level evaluation (e.g., "Compared to X, Y is more significant because...", "The scale of impact from Z is far greater due to...").
+    * If relevant, model a brief example of such comparative or quantitative reasoning.`;
       }
 
       // Add thinking model specific instructions
