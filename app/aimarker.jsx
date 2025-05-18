@@ -2744,6 +2744,13 @@ ${markScheme ? `8. Apply a rigorous mark-by-mark assessment using the provided m
     setShowFollowUpDialog(true);
     setFollowUpQuestion("");
     setFollowUpResponse("");
+    // Use a different model for follow-up questions if the current one has issues
+    // Prioritize the faster model for follow-ups
+    if (selectedModel === "microsoft/mai-ds-r1:free") {
+      const fastModel = "google/gemini-2.0-flash-exp:free";
+      console.log(`Temporarily switching from ${selectedModel} to ${fastModel} for follow-up`);
+      setSelectedModel(fastModel);
+    }
   };
   
   // ADDED: Handler for submitting follow-up questions
@@ -2763,6 +2770,15 @@ ${markScheme ? `8. Apply a rigorous mark-by-mark assessment using the provided m
         return;
       }
       
+      // Check if backend is online
+      if (backendStatusRef.current !== 'online') {
+        setFollowUpLoading(false);
+        toast.error("Backend API is not available. Please check connection status.");
+        return;
+      }
+      
+      console.log("Submitting follow-up question:", followUpQuestion);
+      
       // Build the prompt for the follow-up question
       const promptText = `You previously provided feedback on a student's GCSE ${subject} answer, giving them a grade ${grade || 'N/A'}. 
 The student has a follow-up question about your feedback: "${followUpQuestion}"
@@ -2775,25 +2791,75 @@ ${feedback}
 Please respond to their question clearly and constructively. Keep your answer concise but helpful. Remember you're speaking directly to the student.`;
       
       // Make a request to the API
-      const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: selectedModel,
-          messages: [
+      let response;
+      
+      // Use different endpoints and request formats based on the model
+      if (selectedModel === "gemini-2.5-flash-preview-04-17") {
+        // Format for Gemini direct API
+        const requestBody = {
+          contents: [
             {
-              role: "user",
-              content: promptText
+              parts: [
+                {
+                  text: promptText
+                }
+              ]
             }
           ],
-          temperature: 0.7
-        }),
-      });
+          generationConfig: {
+            temperature: 0.7
+          }
+        };
+        
+        // Add thinking config if enabled
+        if (enableThinkingBudget && thinkingBudget > 0) {
+          requestBody.config = {
+            thinkingConfig: {
+              thinkingBudget: thinkingBudget
+            }
+          };
+        }
+        
+        console.log("Sending follow-up to Gemini API:", requestBody);
+        
+        response = await fetch(`${API_BASE_URL}/api/gemini/generate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
+          signal: AbortSignal.timeout(60000)
+        });
+      } else {
+        // Standard API request for other models
+        response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: selectedModel,
+            messages: [
+              {
+                role: "system",
+                content: `You are an AI tutor helping a student understand their GCSE feedback. Be clear, concise, and supportive.`
+              },
+              {
+                role: "user",
+                content: promptText
+              }
+            ],
+            max_tokens: autoMaxTokens ? undefined : maxTokens,
+            temperature: 0.7
+          }),
+          // Add a timeout
+          signal: AbortSignal.timeout(60000)
+        });
+      }
       
       if (!response.ok) {
         const errorText = await response.text();
+        console.error("API error response for follow-up:", errorText);
         let errorMessage = "Error processing follow-up question";
         try {
           const errorJson = JSON.parse(errorText);
@@ -2805,17 +2871,49 @@ Please respond to their question clearly and constructively. Keep your answer co
       }
       
       const responseData = await response.json();
-      const responseContent = responseData.choices?.[0]?.message?.content || 
-                             responseData.content || 
-                             responseData.text || 
-                             responseData.answer || 
-                             responseData.response || "";
+      console.log("Follow-up response data:", responseData);
+      
+      let responseContent = "";
+      
+      // Handle different API response formats
+      if (selectedModel === "gemini-2.5-flash-preview-04-17") {
+        // Extract content from Gemini API response
+        if (responseData.candidates && responseData.candidates[0] && responseData.candidates[0].content) {
+          const content = responseData.candidates[0].content;
+          if (content.parts && content.parts[0] && content.parts[0].text) {
+            responseContent = content.parts[0].text;
+          }
+        }
+      } else {
+        // Standard API response format
+        responseContent = responseData.choices?.[0]?.message?.content || 
+                         responseData.content || 
+                         responseData.text || 
+                         responseData.answer || 
+                         responseData.response || "";
+      }
+      
+      if (!responseContent) {
+        console.error("Empty or missing response content:", responseData);
+        throw new Error("Received empty response from API");
+      }
       
       setFollowUpResponse(responseContent);
       
     } catch (error) {
       console.error('Error processing follow-up question:', error);
-      toast.error(`Failed to process follow-up: ${error.message}`);
+      
+      // Handle different error types
+      if (error.name === 'AbortError') {
+        toast.error("The request timed out. The server took too long to respond.");
+      } else if (error.message.includes("rate limit") || error.message.includes("429")) {
+        toast.error(`Rate limit exceeded. Please try again in a minute or try a different model.`);
+      } else {
+        toast.error(`Failed to process follow-up: ${error.message}`);
+      }
+      
+      // Set a basic response to indicate the error
+      setFollowUpResponse("I'm sorry, I couldn't process your question due to a technical issue. Please try again later or try a different model.");
     } finally {
       setFollowUpLoading(false);
     }
@@ -3788,17 +3886,54 @@ Please respond to their question clearly and constructively. Keep your answer co
           </DialogHeader>
           
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="follow-up-question">Your Question</Label>
-              <Textarea
-                id="follow-up-question"
-                placeholder="e.g., Can you explain more about why I lost marks on the first point? What would a better answer look like?"
-                value={followUpQuestion}
-                onChange={(e) => setFollowUpQuestion(e.target.value)}
-                className="min-h-[100px]"
-                disabled={followUpLoading}
-              />
-            </div>
+                      <div className="space-y-2">
+            <Label htmlFor="follow-up-question">Your Question</Label>
+            <Textarea
+              id="follow-up-question"
+              placeholder="e.g., Can you explain more about why I lost marks on the first point? What would a better answer look like?"
+              value={followUpQuestion}
+              onChange={(e) => setFollowUpQuestion(e.target.value)}
+              className="min-h-[100px]"
+              disabled={followUpLoading}
+            />
+          </div>
+          
+          {/* Add model selector for follow-up */}
+          <div className="space-y-2">
+            <Label htmlFor="follow-up-model">Model to use</Label>
+            <Select
+              value={selectedModel}
+              onValueChange={(value) => {
+                // Check for rate limiting when switching models
+                const now = Date.now();
+                const modelLimit = MODEL_RATE_LIMITS[value] || 10000;
+                const lastModelRequest = modelLastRequestTimes[value] || 0;
+                const timeSince = now - lastModelRequest;
+                
+                if (timeSince < modelLimit) {
+                  const waitTime = Math.ceil((modelLimit - timeSince) / 1000);
+                  toast.warning(`Model was used recently. Switching anyway, but response may be delayed.`);
+                }
+                setSelectedModel(value);
+              }}
+              disabled={followUpLoading}
+            >
+              <SelectTrigger id="follow-up-model" className="w-full">
+                <SelectValue placeholder="Select AI model" />
+              </SelectTrigger>
+              <SelectContent>
+                {AI_MODELS.map((model) => (
+                  <SelectItem key={model.value} value={model.value} className="py-2">
+                    <div className="flex flex-col">
+                      <span>{model.label}</span>
+                      <span className="text-xs text-muted-foreground">{model.description}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">If one model isn't responding, try another model for this follow-up.</p>
+          </div>
             
             {followUpResponse && (
               <div className="space-y-2 mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
