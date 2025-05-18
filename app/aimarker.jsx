@@ -2287,12 +2287,19 @@ TOTAL MARKS: ${marksToUse}` : ''}
       let markSchemeText = "";
       if (currentModel === "gemini-2.5-flash-preview-04-17") {
         // Extract from Gemini response structure
-        if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0]) {
+        if (
+          data.candidates &&
+          data.candidates.length > 0 &&
+          data.candidates[0].content &&
+          data.candidates[0].content.parts &&
+          data.candidates[0].content.parts.length > 0 &&
+          typeof data.candidates[0].content.parts[0].text === 'string'
+        ) {
           markSchemeText = data.candidates[0].content.parts[0].text;
         } else {
           // Fallback or error if structure is not as expected
-           console.warn("Unexpected Gemini API response format for mark scheme:", data);
-           throw new Error("Unexpected Gemini API response format for mark scheme generation");
+           console.warn("Unexpected Gemini API response format for mark scheme. Actual data:", JSON.stringify(data, null, 2));
+           throw new Error("Unexpected Gemini API response format or missing text content for mark scheme generation");
         }
       } else if (data.choices && data.choices[0] && data.choices[0].message) {
         markSchemeText = data.choices[0].message.content;
