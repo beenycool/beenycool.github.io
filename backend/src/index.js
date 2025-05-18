@@ -346,7 +346,7 @@ app.post('/api/image/extract', async (req, res) => {
 
     logger.info('Processing image extraction request');
 
-    const timeoutMs = 30000; // 30 seconds
+    const timeoutMs = 60000; // 60 seconds to match frontend timeout
     const timeout = setTimeout(() => {
       logger.error(`Image extraction request timed out after ${timeoutMs}ms`);
       if (!res.headersSent) {
@@ -478,7 +478,7 @@ app.post('/api/gemini/generate', geminiRateLimits, async (req, res) => {
       return res.status(500).json({ error: 'Gemini API key not configured' });
     }
 
-    const timeoutMs = 30000; // 30 seconds
+    const timeoutMs = 60000; // 60 seconds to match frontend timeout
     const timeout = setTimeout(() => {
       logger.error(`Gemini request timed out after ${timeoutMs}ms`);
       if (!res.headersSent) {

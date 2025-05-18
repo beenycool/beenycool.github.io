@@ -1903,13 +1903,36 @@ ${markScheme ? `8. Apply a rigorous mark-by-mark assessment using the provided m
           console.log(`Using thinking budget of ${thinkingBudget} tokens for Gemini model`);
         }
         
-        response = await fetch(`${API_BASE_URL}/api/gemini/generate`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(requestBody),
-        });
+        const maxRetries = 3;
+        let retryCount = 0;
+        let success = false;
+        
+        while (retryCount < maxRetries && !success) {
+          try {
+            response = await fetch(`${API_BASE_URL}/api/gemini/generate`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(requestBody),
+              signal: AbortSignal.timeout(60000) // Ensure timeout is set for each attempt
+            });
+            success = true; // If fetch is successful, mark as success
+          } catch (error) {
+            if (error.name === 'AbortError' || (error.message && error.message.toLowerCase().includes('timeout'))) {
+              retryCount++;
+              console.log(`Retrying Gemini API request in handleSubmitForMarking (${retryCount}/${maxRetries})...`);
+              if (retryCount < maxRetries) {
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before retrying
+              } else {
+                // If all retries fail, rethrow the error or handle it as a final failure
+                throw error;
+              }
+            } else {
+              throw error; // For non-timeout errors, rethrow immediately
+            }
+          }
+        }
       } else {
         // Use the standard API for other models
         response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
@@ -2874,14 +2897,36 @@ Please respond to their question clearly and constructively. Keep your answer co
         
         console.log("Sending follow-up to Gemini API:", requestBody);
         
-        response = await fetch(`${API_BASE_URL}/api/gemini/generate`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(requestBody),
-          signal: AbortSignal.timeout(60000)
-        });
+        const maxRetriesFollowUp = 3;
+        let retryCountFollowUp = 0;
+        let successFollowUp = false;
+        
+        while (retryCountFollowUp < maxRetriesFollowUp && !successFollowUp) {
+          try {
+            response = await fetch(`${API_BASE_URL}/api/gemini/generate`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(requestBody),
+              signal: AbortSignal.timeout(60000)
+            });
+            successFollowUp = true; // If fetch is successful, mark as success
+          } catch (error) {
+            if (error.name === 'AbortError' || (error.message && error.message.toLowerCase().includes('timeout'))) {
+              retryCountFollowUp++;
+              console.log(`Retrying Gemini API request in handleSubmitFollowUp (${retryCountFollowUp}/${maxRetriesFollowUp})...`);
+              if (retryCountFollowUp < maxRetriesFollowUp) {
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before retrying
+              } else {
+                // If all retries fail, rethrow the error or handle it as a final failure
+                throw error;
+              }
+            } else {
+              throw error; // For non-timeout errors, rethrow immediately
+            }
+          }
+        }
       } else {
         // Standard API request for other models
         response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
