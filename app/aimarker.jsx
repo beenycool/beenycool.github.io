@@ -1471,6 +1471,9 @@ const AIMarker = () => {
     const tokens = getRequestTokens();
     setRemainingRequestTokens(tokens.count);
 
+    // Add default thinking budget for selected model
+    setThinkingBudget(DEFAULT_THINKING_BUDGETS[selectedModel] || 1024);
+
   }, []); // Empty dependency array means this runs once on mount
 
   // Effects for saving preferences to localStorage when they change
@@ -1484,6 +1487,8 @@ const AIMarker = () => {
 
   useEffect(() => {
     localStorage.setItem(LOCALSTORAGE_KEYS.MODEL, selectedModel);
+    // Update thinking budget when model changes
+    setThinkingBudget(DEFAULT_THINKING_BUDGETS[selectedModel] || 1024);
   }, [selectedModel]);
 
   useEffect(() => {
@@ -2215,19 +2220,53 @@ TOTAL MARKS: ${marksToUse}` : ''}
       4. Level descriptors for extended responses
       5. Total mark allocation`;
       
-      let response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: currentModel,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt }
+      let response;
+      let data;
+
+      if (currentModel === "gemini-2.5-flash-preview-04-17") {
+        const requestBody = {
+          contents: [
+            {
+              parts: [
+                {
+                  text: `System: ${systemPrompt}\n\nUser: ${userPrompt}`
+                }
+              ]
+            }
           ],
-          temperature: 0.3
-        }),
-        signal: AbortSignal.timeout(60000) // 60 second timeout
-      });
+          generationConfig: { // Added generationConfig for consistency, can be tuned
+            temperature: 0.3
+          }
+        };
+         // Add thinking config if enabled (though less critical for mark scheme generation)
+        if (enableThinkingBudget && thinkingBudget > 0 && DEFAULT_THINKING_BUDGETS[currentModel]) {
+          requestBody.config = {
+            thinkingConfig: {
+              thinkingBudget: thinkingBudget
+            }
+          };
+        }
+        response = await fetch(`${API_BASE_URL}/api/gemini/generate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+          signal: AbortSignal.timeout(60000)
+        });
+      } else {
+        response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: currentModel,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt }
+            ],
+            temperature: 0.3
+          }),
+          signal: AbortSignal.timeout(60000) // 60 second timeout
+        });
+      }
       
       if (!response.ok) {
         const errorText = await response.text();
@@ -2242,11 +2281,20 @@ TOTAL MARKS: ${marksToUse}` : ''}
         throw new Error(`Mark scheme generation failed: ${errorMessage}`);
       }
       
-      const data = await response.json();
+      data = await response.json();
       
       // Extract the response content
       let markSchemeText = "";
-      if (data.choices && data.choices[0] && data.choices[0].message) {
+      if (currentModel === "gemini-2.5-flash-preview-04-17") {
+        // Extract from Gemini response structure
+        if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0]) {
+          markSchemeText = data.candidates[0].content.parts[0].text;
+        } else {
+          // Fallback or error if structure is not as expected
+           console.warn("Unexpected Gemini API response format for mark scheme:", data);
+           throw new Error("Unexpected Gemini API response format for mark scheme generation");
+        }
+      } else if (data.choices && data.choices[0] && data.choices[0].message) {
         markSchemeText = data.choices[0].message.content;
       } else if (data.content) {
         markSchemeText = data.content;
@@ -3590,6 +3638,8 @@ Please respond to their question clearly and constructively. Keep your answer co
                               return;
                             }
                             setSelectedModel(value);
+                            // Update thinking budget when model changes for follow-up
+                            setThinkingBudget(DEFAULT_THINKING_BUDGETS[value] || 1024);
                           }}
                         >
                           <SelectTrigger>
@@ -3729,20 +3779,20 @@ Please respond to their question clearly and constructively. Keep your answer co
                                   onChange={(e) => {
                                     const val = parseInt(e.target.value);
                                     if (!isNaN(val)) {
-                                      if (val >= 0 && val <= 24576) {
+                                      if (val >= 0 && val <= 24576) { // Max is 24576
                                         setThinkingBudget(val);
                                       } else if (val < 0) {
                                         setThinkingBudget(0);
-                                      } else if (val > 24576) {
-                                        setThinkingBudget(24576);
+                                      } else if (val > 24576) { // Max is 24576
+                                        setThinkingBudget(24576); // Max is 24576
                                       }
                                     } else if (e.target.value === '') {
-                                      setThinkingBudget(0);
+                                      setThinkingBudget(0); // Default to 0 if empty
                                     }
                                   }}
                                   className="w-24 text-sm h-9"
                                   min={0}
-                                  max={24576}
+                                  max={24576} // Max is 24576
                                   step={512}
                                 />
                               </div>
@@ -4094,6 +4144,8 @@ Please respond to their question clearly and constructively. Keep your answer co
                   toast.warning(`Model was used recently. Switching anyway, but response may be delayed.`);
                 }
                 setSelectedModel(value);
+                // Update thinking budget when model changes for follow-up
+                setThinkingBudget(DEFAULT_THINKING_BUDGETS[value] || 1024);
               }}
               disabled={followUpLoading}
             >
