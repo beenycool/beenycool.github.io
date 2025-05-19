@@ -910,27 +910,43 @@ let retries = 0;
 const MAX_RETRIES = 5;
 
 function startServer(port) {
-  server.listen(port, () => {
-    console.log(`Chess server running on port ${port}`);
-  }).on('error', (err) => {
-    if (err.code === 'EADDRINUSE') {
-      retries += 1;
-      if (retries <= MAX_RETRIES) {
-        currentPort = port + retries;
-        console.log(`Port ${port} is in use, trying ${currentPort} instead...`);
-        startServer(currentPort);
+  server.listen(port)
+    .on('listening', () => {
+      console.log(`Chess server running on port ${port}`);
+      // Store the successful port in environment variable to help with reconnection
+      process.env.ACTIVE_CHESS_PORT = port;
+    })
+    .on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        retries += 1;
+        if (retries <= MAX_RETRIES) {
+          // Try a port with significant offset to avoid other processes' sequential ports
+          currentPort = port + 1000 + Math.floor(Math.random() * 1000);
+          console.log(`Port ${port} is in use, trying ${currentPort} instead...`);
+          setTimeout(() => {
+            startServer(currentPort);
+          }, 1000); // Add delay before retry to let system release resources
+        } else {
+          console.error(`Could not find an available port after ${MAX_RETRIES} retries.`);
+          // Inform main server about the failure
+          if (process.send) {
+            process.send({ type: 'chess-server-failed' });
+          }
+        }
       } else {
-        console.error(`Could not find an available port after ${MAX_RETRIES} retries.`);
-        // Inform main server about the failure
-        process.send && process.send({ type: 'chess-server-failed' });
+        console.error('Error starting chess server:', err);
       }
-    } else {
-      console.error('Error starting chess server:', err);
-    }
-  });
+    });
 }
 
-startServer(currentPort);
+// Add check to see if we have a stored port from a previous run
+const storedPort = process.env.ACTIVE_CHESS_PORT;
+if (storedPort && parseInt(storedPort) !== PORT) {
+  console.log(`Using previously successful port: ${storedPort}`);
+  startServer(parseInt(storedPort));
+} else {
+  startServer(currentPort);
+}
 
 // Cleanup on server shutdown
 process.on('SIGINT', () => {
