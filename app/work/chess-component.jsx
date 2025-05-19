@@ -52,6 +52,14 @@ import {
 // Import custom CSS
 import './theme.css';
 
+// Board themes definition
+const boardThemes = [
+  { name: 'Default', lightMode: { light: '#f0d9b5', dark: '#b58863' }, darkMode: { light: '#6e8b8a', dark: '#40686a' } },
+  { name: 'Ocean', lightMode: { light: '#cdd1e0', dark: '#99aacc' }, darkMode: { light: '#6b7b99', dark: '#414f66' } },
+  { name: 'Forest', lightMode: { light: '#ebecd0', dark: '#779952' }, darkMode: { light: '#607243', dark: '#4c5b35' } },
+  { name: 'Graphite', lightMode: { light: '#bdbdbd', dark: '#616161' }, darkMode: { light: '#525252', dark: '#313131' } },
+];
+
 // Use the existing backend API URL if available, or fallback to local Socket.io
 const useExistingBackend = true;
 const SOCKET_SERVER_URL = useExistingBackend 
@@ -184,6 +192,33 @@ const getPieceValue = (piece) => {
   return values[piece] || 0;
 };
 
+// New function to update check and game over status
+const updateGameStatus = (currentGame) => {
+  if (!currentGame) return;
+  setIsCheck(currentGame.isCheck());
+  if (currentGame.isGameOver()) {
+    setIsGameOverState(true);
+    if (currentGame.isCheckmate()) {
+      const winner = currentGame.turn() === 'w' ? 'Black' : 'White';
+      setGameOverMessage(`Checkmate! ${winner} wins.`);
+    } else if (currentGame.isStalemate()) {
+      setGameOverMessage("Stalemate!");
+    } else if (currentGame.isDraw()) {
+      let reason = "Draw";
+      if (currentGame.isThreefoldRepetition()) reason = "Draw by threefold repetition.";
+      else if (currentGame.isInsufficientMaterial()) reason = "Draw by insufficient material.";
+      else if (currentGame.isFiftyMoveRule()) reason = "Draw by 50-move rule.";
+      setGameOverMessage(reason);
+    } else {
+      // Should be covered by specific conditions, but as a fallback
+      setGameOverMessage("Game Over"); 
+    }
+  } else {
+    setIsGameOverState(false);
+    setGameOverMessage("");
+  }
+};
+
 export default function ChessComponent({ systemTheme }) {
   const [game, setGame] = useState(new Chess());
   const [boardWidth, setBoardWidth] = useState(480);
@@ -199,19 +234,18 @@ export default function ChessComponent({ systemTheme }) {
   const [waitingForOpponent, setWaitingForOpponent] = useState(false);
   const [gameMode, setGameMode] = useState("local"); // "local" or "online"
   const [linkCopied, setLinkCopied] = useState(false);
-  const [isYourTurn, setIsYourTurn] = useState(true);
   const [playerName, setPlayerName] = useState("");
   const [opponentName, setOpponentName] = useState("");
   const [spectatorCount, setSpectatorCount] = useState(0);
   
   // UI state
-  const [timeControl, setTimeControl] = useState({ white: 600, black: 600 });
+  const [timeControl, setTimeControl] = useState({ white: 600, black: 600, increment: 5 }); // Default: 10 mins + 5s increment
   const [chatMessages, setChatMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [showChat, setShowChat] = useState(false);
   const [showMatchmaking, setShowMatchmaking] = useState(false);
   const [isInMatchmaking, setIsInMatchmaking] = useState(false);
-  const [gameResult, setGameResult] = useState(null);
+  const [gameResult, setGameResult] = useState(null); // { result: 'win'/'loss'/'draw', winner?: 'white'/'black' }
   const [playerStats, setPlayerStats] = useState(null);
   const { theme, setTheme } = useTheme();
   const [darkMode, setDarkMode] = useState(systemTheme === 'dark');
@@ -243,6 +277,19 @@ export default function ChessComponent({ systemTheme }) {
   const [opponentScore, setOpponentScore] = useState(0);
   const [showScores, setShowScores] = useState(false);
   
+  // Pre-move state
+  const [preMove, setPreMove] = useState(null); // { from, to, promotion }
+  const [isYourTurn, setIsYourTurn] = useState(true); // Tracks whose turn it is
+  
+  // Customization state
+  const [currentBoardThemeName, setCurrentBoardThemeName] = useState(boardThemes[0].name);
+  
+  // User Account State (basic stubs)
+  const [currentUser, setCurrentUser] = useState(null); // e.g., { username: 'Player1' } or null
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [authForm, setAuthForm] = useState({ username: '', password: '' });
+  
   const socketRef = useRef(null);
   const messageContainerRef = useRef(null);
   const audioRef = useRef({
@@ -253,6 +300,11 @@ export default function ChessComponent({ systemTheme }) {
     gameEnd: typeof Audio !== 'undefined' ? new Audio('/sounds/game-end.mp3') : null,
     notify: typeof Audio !== 'undefined' ? new Audio('/sounds/notify.mp3') : null,
   });
+  
+  // New state for check and game over status
+  const [isCheck, setIsCheck] = useState(false);
+  const [gameOverMessage, setGameOverMessage] = useState(""); 
+  const [isGameOverState, setIsGameOverState] = useState(false); // Renamed to avoid conflict with game.isGameOver()
   
   // Scroll chat to bottom when new messages arrive
   useEffect(() => {
@@ -410,8 +462,34 @@ export default function ChessComponent({ systemTheme }) {
           setTimeControl(remainingTime);
         }
         
-        // Set player's turn
-        setIsYourTurn(true);
+        updateGameStatus(newGame);
+        setIsYourTurn(true); // It's now our turn
+
+        // Attempt to play pre-move if one exists
+        if (preMove) {
+          const { from, to, promotion } = preMove;
+          const tempGame = new Chess(newGame.fen()); // Use a copy to try the move
+          const legalMove = tempGame.move({ from, to, promotion });
+
+          if (legalMove) {
+            setGame(new Chess(tempGame.fen())); // Apply the move
+            updateGameStatus(tempGame);
+            setLastMove({ from, to }); // Highlight the executed pre-move
+
+            if (gameMode === "online" && socketRef.current) {
+              socketRef.current.emit('move', {
+                roomId,
+                move: { from, to, promotion, color: playerColor === 'white' ? 'w' : 'b' },
+                gameState: tempGame.fen()
+              });
+            }
+            setIsYourTurn(false); // Turn ends after successful pre-move
+            setChatMessages(prev => [...prev, { sender: 'System', message: 'Pre-move executed.', timestamp: new Date().toISOString(), system: true }]);
+          } else {
+            setChatMessages(prev => [...prev, { sender: 'System', message: 'Pre-move was invalid and has been cleared.', timestamp: new Date().toISOString(), system: true }]);
+          }
+          setPreMove(null); // Clear pre-move whether it succeeded or failed
+        }
       });
       
       socketRef.current.on('clockUpdate', ({ white, black }) => {
@@ -726,27 +804,41 @@ export default function ChessComponent({ systemTheme }) {
 
   // Handle a piece drop
   const onDrop = (sourceSquare, targetSquare) => {
-    // In online mode, only allow moves if it's your turn
-    if (gameMode === "online" && !isYourTurn) {
-      return false;
+    const piece = game.get(sourceSquare);
+
+    // Pre-move logic for online games when it's not your turn
+    if (gameMode === "online" && !isYourTurn && piece && piece.color === playerColor[0]) {
+      setPreMove({ from: sourceSquare, to: targetSquare, promotion: 'q' });
+      // Visual feedback for pre-move will be handled by customSquareStyles
+      setChatMessages(prev => [...prev, { sender: 'System', message: `Pre-move set: ${sourceSquare}-${targetSquare}`, timestamp: new Date().toISOString(), system: true }]);
+      return false; // Don't make the move yet
+    }
+
+    // If it is your turn, clear any existing pre-move
+    if (isYourTurn && preMove) {
+      setPreMove(null);
     }
     
     try {
+      const currentPromotion = (piece?.type === 'p' && (targetSquare.endsWith('8') || targetSquare.endsWith('1'))) ? 'q' : undefined;
       const move = game.move({
         from: sourceSquare,
         to: targetSquare,
-        promotion: 'q', // always promote to queen for simplicity
+        promotion: currentPromotion,
       });
 
       if (move === null) return false; // illegal move
+      setLastMove({ from: sourceSquare, to: targetSquare });
 
       // Update game and history when a valid move is made
-      setGame(new Chess(game.fen()));
+      const newGameInstance = new Chess(game.fen());
+      setGame(newGameInstance);
+      updateGameStatus(newGameInstance);
       
       if (gameMode === "local") {
-        const newHistory = [...moveHistory.slice(0, currentPosition), game.fen()];
+        const newHistory = [...moveHistory.slice(0, currentPosition + 1), game.fen()];
         setMoveHistory(newHistory);
-        setCurrentPosition(newHistory.length);
+        setCurrentPosition(newHistory.length -1); // Ensure currentPosition points to the latest move
       }
       
       // In online mode, send move to opponent and switch turns
@@ -756,7 +848,7 @@ export default function ChessComponent({ systemTheme }) {
           move: {
             from: sourceSquare,
             to: targetSquare,
-            promotion: 'q',
+            promotion: currentPromotion,
             color: playerColor === 'white' ? 'w' : 'b'
           },
           gameState: game.fen()
@@ -767,6 +859,7 @@ export default function ChessComponent({ systemTheme }) {
       
       return true;
     } catch (error) {
+      console.error("Error making move:", error);
       return false;
     }
   };
@@ -778,6 +871,11 @@ export default function ChessComponent({ systemTheme }) {
     setMoveHistory([newGame.fen()]);
     setCurrentPosition(0);
     setGameResult(null);
+    setIsGameOverState(false);
+    setGameOverMessage("");
+    setIsCheck(false);
+    setPreMove(null); // Clear pre-move on reset
+    setLastMove(null); // Clear last move highlight
     
     if (gameMode === "online") {
       setIsYourTurn(playerColor === "white");
@@ -1128,11 +1226,79 @@ export default function ChessComponent({ systemTheme }) {
     }
   }, []);
 
+  const onSquareClick = (square) => {
+    if (preMove) {
+      // If a pre-move is set and the clicked square is part of it, cancel it
+      if (preMove.from === square || preMove.to === square) {
+        setPreMove(null);
+        setChatMessages(prev => [...prev, { sender: 'System', message: 'Pre-move cancelled.', timestamp: new Date().toISOString(), system: true }]);
+      }
+    }
+    // Add other square click logic if needed in the future (e.g., highlighting legal moves)
+  };
+
+  const handleThemeChange = (themeName) => {
+    setCurrentBoardThemeName(themeName);
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem('chessBoardTheme', themeName);
+    }
+  };
+
+  const selectedBoardTheme = boardThemes.find(t => t.name === currentBoardThemeName) || boardThemes[0];
+  const currentStyles = darkMode ? selectedBoardTheme.darkMode : selectedBoardTheme.lightMode;
+
+  // Dummy Auth Functions (replace with actual API calls)
+  const handleAuthInputChange = (e) => {
+    const { name, value } = e.target;
+    setAuthForm(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleRegister = (e) => {
+    e.preventDefault();
+    // STUB: API call to register { authForm.username, authForm.password }
+    console.log("Register attempt:", authForm);
+    // On success:
+    // setCurrentUser({ username: authForm.username });
+    // setShowRegisterModal(false); 
+    // setAuthForm({ username: '', password: '' });
+    alert("Registration functionality not yet connected to backend.");
+  };
+
+  const handleLogin = (e) => {
+    e.preventDefault();
+    // STUB: API call to login { authForm.username, authForm.password }
+    console.log("Login attempt:", authForm);
+    // On success:
+    setCurrentUser({ username: authForm.username }); // Simulate login
+    setShowLoginModal(false);
+    setAuthForm({ username: '', password: '' });
+    // alert("Login functionality not yet connected to backend.");
+  };
+
+  const handleLogout = () => {
+    // STUB: API call to logout
+    setCurrentUser(null);
+    console.log("Logged out");
+  };
+
   return (
     <div className={`flex flex-col items-center min-h-screen p-4 bg-gray-50 text-gray-900 ${darkMode ? 'dark-mode dark:bg-gray-900 dark:text-gray-100' : ''}`}>
       <header className="w-full max-w-5xl flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Chess</h1>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          <Select value={currentBoardThemeName} onValueChange={handleThemeChange}>
+            <SelectTrigger className="w-[130px] h-8 text-xs" title="Change board theme">
+              <SelectValue placeholder="Board Theme" />
+            </SelectTrigger>
+            <SelectContent>
+              {boardThemes.map(theme => (
+                <SelectItem key={theme.name} value={theme.name} className="text-xs">
+                  {theme.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           <button 
             onClick={() => setSoundEnabled(!soundEnabled)}
             className="control-button"
@@ -1147,11 +1313,111 @@ export default function ChessComponent({ systemTheme }) {
           >
             {darkMode ? <Sun size={18} /> : <Moon size={18} />}
           </button>
+
+          {currentUser ? (
+            <div className="flex items-center gap-2">
+              <span className="text-sm">Hi, {currentUser.username}!</span>
+              <button onClick={handleLogout} className="control-button text-xs h-8 px-2" title="Logout">
+                Logout
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <button onClick={() => setShowLoginModal(true)} className="control-button text-xs h-8 px-2" title="Login">
+                Login
+              </button>
+              <button onClick={() => setShowRegisterModal(true)} className="control-button text-xs h-8 px-2" title="Register">
+                Register
+              </button>
+            </div>
+          )}
         </div>
       </header>
       
-      {/* Player name input (for online play) */}
-      {!playerName && gameMode === "online" && (
+      {/* Login Modal */}
+      {showLoginModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="game-room-container p-6 shadow-lg max-w-md w-full">
+            <h2 className="text-xl font-bold mb-4">Login</h2>
+            <form onSubmit={handleLogin}>
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-1">Username</label>
+                <input 
+                  type="text" 
+                  name="username" 
+                  value={authForm.username} 
+                  onChange={handleAuthInputChange} 
+                  className="w-full rounded-md border border-gray-300 dark:border-gray-600 p-2 bg-white dark:bg-gray-700" 
+                  required 
+                />
+              </div>
+              <div className="mb-6">
+                <label className="block text-sm font-medium mb-1">Password</label>
+                <input 
+                  type="password" 
+                  name="password" 
+                  value={authForm.password} 
+                  onChange={handleAuthInputChange} 
+                  className="w-full rounded-md border border-gray-300 dark:border-gray-600 p-2 bg-white dark:bg-gray-700" 
+                  required 
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setShowLoginModal(false)} className="chess-button chess-button-secondary">
+                  Cancel
+                </button>
+                <button type="submit" className="chess-button chess-button-primary">
+                  Login
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Register Modal */}
+      {showRegisterModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="game-room-container p-6 shadow-lg max-w-md w-full">
+            <h2 className="text-xl font-bold mb-4">Register</h2>
+            <form onSubmit={handleRegister}>
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-1">Username</label>
+                <input 
+                  type="text" 
+                  name="username" 
+                  value={authForm.username} 
+                  onChange={handleAuthInputChange} 
+                  className="w-full rounded-md border border-gray-300 dark:border-gray-600 p-2 bg-white dark:bg-gray-700" 
+                  required 
+                />
+              </div>
+              <div className="mb-6">
+                <label className="block text-sm font-medium mb-1">Password</label>
+                <input 
+                  type="password" 
+                  name="password" 
+                  value={authForm.password} 
+                  onChange={handleAuthInputChange} 
+                  className="w-full rounded-md border border-gray-300 dark:border-gray-600 p-2 bg-white dark:bg-gray-700" 
+                  required 
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setShowRegisterModal(false)} className="chess-button chess-button-secondary">
+                  Cancel
+                </button>
+                <button type="submit" className="chess-button chess-button-primary">
+                  Register
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Player name input (for online play) - Conditionally render if not logged in and no name set */}
+      {!currentUser && !playerName && gameMode === "online" && (
         <div className="w-full max-w-md mb-6 game-room-container p-6 shadow-md">
           <form onSubmit={(e) => {
             e.preventDefault();
@@ -1386,20 +1652,25 @@ export default function ChessComponent({ systemTheme }) {
                 boardWidth={boardWidth}
                 position={fen}
                 onPieceDrop={onDrop}
+                onSquareClick={onSquareClick}
                 boardOrientation={gameMode === "online" ? playerColor : "white"}
                 customBoardStyle={{
                   borderRadius: '4px',
                   boxShadow: '0 5px 15px rgba(0, 0, 0, 0.1)'
                 }}
                 customSquareStyles={{
+                  ...(lastMove && {
+                    [lastMove.from]: { backgroundColor: darkMode ? 'rgba(255, 255, 0, 0.2)' : 'rgba(255, 255, 0, 0.4)' },
+                    [lastMove.to]: { backgroundColor: darkMode ? 'rgba(255, 255, 0, 0.2)' : 'rgba(255, 255, 0, 0.4)' }
+                  }),
+                  ...(preMove && {
+                    [preMove.from]: { backgroundColor: darkMode ? 'rgba(0, 255, 0, 0.15)' : 'rgba(0, 255, 0, 0.25)' },
+                    [preMove.to]: { backgroundColor: darkMode ? 'rgba(0, 255, 0, 0.2)' : 'rgba(0, 255, 0, 0.35)' }
+                  }),
                   ...highlightedSquares,
-                  ...(lastMove ? {
-                    [lastMove.from]: { backgroundColor: 'rgba(255, 255, 0, 0.3)' },
-                    [lastMove.to]: { backgroundColor: 'rgba(255, 255, 0, 0.3)' }
-                  } : {})
                 }}
-                customDarkSquareStyle={{ backgroundColor: darkMode ? '#40686a' : '#b58863' }}
-                customLightSquareStyle={{ backgroundColor: darkMode ? '#6e8b8a' : '#f0d9b5' }}
+                customDarkSquareStyle={{ backgroundColor: currentStyles.dark }}
+                customLightSquareStyle={{ backgroundColor: currentStyles.light }}
               />
             </div>
 
@@ -1496,24 +1767,16 @@ export default function ChessComponent({ systemTheme }) {
               </div>
             )}
             
-            {/* Game result banner */}
-            {gameResult && (
-              <div className="game-result bg-blue-100 dark:bg-blue-900">
-                <div className="font-bold text-lg">
-                  Game Over: {gameResult.result}
+            {/* Game result banner - MODIFIED */}
+            {isGameOverState && gameOverMessage && (
+              <div className="game-result bg-blue-100 dark:bg-blue-900 text-center"> {/* Added text-center */}
+                <div className="font-bold text-lg mb-2"> {/* Added mb-2 */}
+                  {gameOverMessage}
                 </div>
-                {gameResult.winner && (
-                  <div className="mt-2">
-                    <Award className="inline-block mr-1" size={20} />
-                    <span className="text-lg font-medium">
-                      {gameResult.winner === 'white' ? 'White' : 'Black'} wins!
-                    </span>
-                  </div>
-                )}
-                
-                {/* Add new score display here */}
-                {showScores && (
-                  <div className="mt-4 p-3 bg-white dark:bg-gray-800 rounded-md">
+                {/* Score display can remain as is if gameResult also drives it, or integrate here */}
+                {/* For simplicity, let's keep the existing score display logic that uses gameResult */}
+                {gameResult && showScores && (
+                   <div className="mt-4 p-3 bg-white dark:bg-gray-800 rounded-md">
                     <h3 className="font-bold text-center mb-2">Player Scores</h3>
                     <div className="flex justify-between items-center">
                       <div className="text-center">
@@ -1540,7 +1803,7 @@ export default function ChessComponent({ systemTheme }) {
                 <div className="mt-3">
                   <button 
                     onClick={resetGame}
-                    disabled={gameMode === "online" && opponentConnected}
+                    disabled={gameMode === "online" && opponentConnected && !gameResult} // Ensure gameResult is present before enabling reset in online
                     className="chess-button chess-button-primary mx-auto"
                   >
                     <RefreshCcw size={16} className="mr-1" />

@@ -5,6 +5,12 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 
+// Import models
+const User = require('./models/User');
+const ChessGame = require('./models/ChessGame');
+const ActivityLog = require('./models/ActivityLog');
+const Guild = require('./models/Guild');
+
 // Create Express app and HTTP server
 const app = express();
 app.use(cors());
@@ -283,116 +289,304 @@ io.on('connection', (socket) => {
   });
 
   // Join a game room
-  socket.on('joinRoom', ({ roomId, username }) => {
-    console.log(`User ${socket.id} (${username}) joining room ${roomId}`);
-
-    // Check if room exists
-    if (!gameRooms.has(roomId)) {
-      // Create new room
-      gameRooms.set(roomId, {
-        white: socket.id,
-        whiteName: username || 'Anonymous',
-        black: null,
-        blackName: null,
-        spectators: [],
-        gameState: null,
-        moves: [],
-        chat: [],
-        createdAt: new Date().toISOString(),
-        timeControl: {
-          initial: 600, // Default 10 minutes
-          increment: 5,  // Default 5 second increment
-          whiteTime: 600,
-          blackTime: 600
-        },
-        currentTurn: 'white'
-      });
+  socket.on('joinRoom', async ({ roomId, username, isResuming, password, userId }) => {
+    try {
+      let user = null;
       
+      // If userId is provided, find the user in the database
+      if (userId) {
+        user = await User.findById(userId);
+        username = user ? user.username : username || 'Anonymous';
+      }
+      
+      // Check if room exists
+      let room = gameRooms.get(roomId);
+      
+      // If room doesn't exist, create it
+      if (!room) {
+        room = {
+          white: null,
+          black: null,
+          whiteName: null,
+          blackName: null,
+          spectators: [],
+          gameState: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', // Initial position
+          moves: [],
+          chat: [],
+          hasPassword: false,
+          password: null,
+          createdAt: new Date().toISOString(),
+          timeControl: {
+            initial: 600, // 10 minutes default
+            increment: 5, // 5 seconds increment
+            whiteTime: 600,
+            blackTime: 600
+          },
+          currentTurn: 'white',
+          preMoves: [] // Store pre-moves
+        };
+        
+        gameRooms.set(roomId, room);
+      }
+      
+      // Password check
+      if (room.hasPassword && !isResuming) {
+        if (!password || password !== room.password) {
+          socket.emit('passwordRequired');
+          return;
+        }
+      }
+      
+      // If resuming a game, restore state
+      if (isResuming) {
+        // We should restore the previous state
+        socket.emit('gameResumed', {
+          gameState: room.gameState,
+          moveHistory: room.moves,
+          chatHistory: room.chat,
+          playerColor: room.white === socket.id ? 'white' : room.black === socket.id ? 'black' : null,
+          opponentName: room.white === socket.id ? room.blackName : room.whiteName,
+          timeControl: {
+            white: room.timeControl.whiteTime,
+            black: room.timeControl.blackTime,
+            increment: room.timeControl.increment
+          }
+        });
+      }
+      
+      // Join the socket room
       socket.join(roomId);
-      socket.emit('joinedAsColor', {
-        color: 'white',
-        timeControl: gameRooms.get(roomId).timeControl
-      });
-    } else {
-      // Join existing room
-      const room = gameRooms.get(roomId);
-
-      if (!room.black) {
-        // Join as black
+      
+      // Determine if player will be white, black, or spectator
+      let playerColor = null;
+      
+      if (!room.white) {
+        room.white = socket.id;
+        room.whiteName = username;
+        playerColor = 'white';
+        if (user) {
+          // Create or update the ChessGame record
+          await ChessGame.findOneAndUpdate(
+            { gameId: roomId },
+            { 
+              'players.white.user': user._id,
+              'players.white.username': username,
+              'players.white.rating': user.chessRating
+            },
+            { upsert: true, new: true }
+          );
+        }
+      } else if (!room.black && room.white !== socket.id) {
         room.black = socket.id;
-        room.blackName = username || 'Anonymous';
-        socket.join(roomId);
-        socket.emit('joinedAsColor', {
-          color: 'black',
-          timeControl: room.timeControl
+        room.blackName = username;
+        playerColor = 'black';
+        if (user) {
+          // Update the ChessGame record
+          await ChessGame.findOneAndUpdate(
+            { gameId: roomId },
+            { 
+              'players.black.user': user._id,
+              'players.black.username': username,
+              'players.black.rating': user.chessRating
+            },
+            { upsert: true, new: true }
+          );
+        }
+        
+        // Both players are now connected, notify them
+        io.to(roomId).emit('gameReady', {
+          white: room.whiteName,
+          black: room.blackName
         });
         
-        // Notify white player that black has joined
-        io.to(room.white).emit('opponentJoined', {
-          opponentName: room.blackName
-        });
-        
-        // Start the chess clock if both players are present
+        // Start the chess clock
         startChessClock(roomId);
+      } else if (room.white === socket.id) {
+        playerColor = 'white';
+      } else if (room.black === socket.id) {
+        playerColor = 'black';
       } else {
-        // Join as spectator
+        // Add as spectator
         room.spectators.push({
           id: socket.id,
-          username: username || 'Spectator'
-        });
-        socket.join(roomId);
-        socket.emit('joinedAsSpectator', {
-          gameState: room.gameState,
-          moves: room.moves,
-          timeControl: room.timeControl
+          name: username
         });
         
         // Notify players of new spectator
         socket.to(roomId).emit('spectatorJoined', {
-          spectatorName: username || 'Spectator',
+          spectatorName: username,
           spectatorCount: room.spectators.length
         });
+        
+        // Notify spectator of current game state
+        socket.emit('gameState', {
+          gameState: room.gameState,
+          moveHistory: room.moves,
+          chatHistory: room.chat,
+          white: room.whiteName,
+          black: room.blackName,
+          timeControl: {
+            white: room.timeControl.whiteTime,
+            black: room.timeControl.blackTime
+          }
+        });
       }
+      
+      // If this is a player (not a spectator), send color assignment and notify opponent
+      if (playerColor) {
+        socket.emit('joinedAsColor', {
+          color: playerColor,
+          timeControl: {
+            whiteTime: room.timeControl.whiteTime,
+            blackTime: room.timeControl.blackTime,
+            increment: room.timeControl.increment
+          }
+        });
+        
+        // If opponent is connected, notify them
+        if (playerColor === 'white' && room.black) {
+          socket.to(room.black).emit('opponentJoined', { opponentName: username });
+        } else if (playerColor === 'black' && room.white) {
+          socket.to(room.white).emit('opponentJoined', { opponentName: username });
+        }
+        
+        // Log activity
+        if (user) {
+          const ipAddress = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
+          
+          await ActivityLog.create({
+            user: user._id,
+            username: user.username,
+            ipAddress,
+            actionType: 'chess_game_start',
+            actionDetails: {
+              roomId,
+              playerColor,
+              opponent: playerColor === 'white' ? room.blackName : room.whiteName
+            },
+            performedAt: new Date()
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error in joinRoom:', error);
+      socket.emit('errorMessage', { message: 'An error occurred while joining the game' });
     }
   });
 
   // Handle move
-  socket.on('move', ({ roomId, move, gameState }) => {
-    const room = gameRooms.get(roomId);
-    if (!room) return;
-
-    // Update game state
-    room.gameState = gameState;
-    
-    // Add move to history
-    room.moves.push(move);
-    
-    // Switch current turn
-    room.currentTurn = room.currentTurn === 'white' ? 'black' : 'white';
-    
-    // Add increment time
-    if (room.timeControl) {
-      if (move.color === 'w') {
-        room.timeControl.whiteTime += room.timeControl.increment;
-      } else {
-        room.timeControl.blackTime += room.timeControl.increment;
+  socket.on('move', async ({ roomId, move, gameState }) => {
+    try {
+      const room = gameRooms.get(roomId);
+      if (!room) return;
+      
+      const playerColor = room.white === socket.id ? 'white' : 'black';
+      const opponentSocketId = playerColor === 'white' ? room.black : room.white;
+      
+      // Validate that it's the player's turn
+      if (playerColor !== room.currentTurn) {
+        socket.emit('errorMessage', { message: 'Not your turn' });
+        return;
       }
+      
+      // Apply move
+      room.gameState = gameState;
+      room.moves.push(gameState);
+      
+      // Update current turn
+      room.currentTurn = playerColor === 'white' ? 'black' : 'white';
+      
+      // Apply clock increment for the player who just moved
+      const timeKey = playerColor === 'white' ? 'whiteTime' : 'blackTime';
+      room.timeControl[timeKey] += room.timeControl.increment;
+      
+      // Clear pre-moves for the player who just moved
+      room.preMoves = room.preMoves.filter(pm => pm.color !== playerColor);
+      
+      // Notify opponent and spectators
+      if (opponentSocketId) {
+        io.to(opponentSocketId).emit('opponentMove', {
+          move,
+          gameState,
+          remainingTime: room.timeControl
+        });
+      }
+      
+      // Notify spectators
+      room.spectators.forEach(spectator => {
+        io.to(spectator.id).emit('gameUpdate', {
+          moveFrom: move.from,
+          moveTo: move.to,
+          gameState,
+          playerColor,
+          remainingTime: room.timeControl
+        });
+      });
+      
+      // Get user IDs to update records
+      let whiteUserId = null;
+      let blackUserId = null;
+      
+      // Find the ChessGame record and update it
+      const game = await ChessGame.findOne({ gameId: roomId });
+      if (game) {
+        if (game.players.white.user) {
+          whiteUserId = game.players.white.user;
+        }
+        if (game.players.black.user) {
+          blackUserId = game.players.black.user;
+        }
+        
+        // Add the move to the game record
+        game.addMove({
+          from: move.from,
+          to: move.to,
+          piece: move.piece || 'unknown',
+          promotion: move.promotion,
+          wasPreMove: false,
+          fen: gameState,
+          timestamp: new Date()
+        });
+      }
+      
+      // Log move activity for the player
+      const userId = playerColor === 'white' ? whiteUserId : blackUserId;
+      if (userId) {
+        await ActivityLog.create({
+          user: userId,
+          username: playerColor === 'white' ? room.whiteName : room.blackName,
+          actionType: 'chess_move',
+          actionDetails: {
+            roomId,
+            from: move.from,
+            to: move.to,
+            piece: move.piece
+          },
+          performedAt: new Date()
+        });
+      }
+      
+      // Check if there are pre-moves for the new current turn and execute if valid
+      const opponentPreMoves = room.preMoves.filter(pm => pm.color === room.currentTurn);
+      if (opponentPreMoves.length > 0) {
+        const preMove = opponentPreMoves[0]; // Take the first pre-move
+        
+        // Notify the opponent that their pre-move is being executed
+        if (opponentSocketId) {
+          io.to(opponentSocketId).emit('preMoveExecuted', {
+            from: preMove.from,
+            to: preMove.to,
+            promotion: preMove.promotion
+          });
+        }
+        
+        // Remove this pre-move from the list
+        room.preMoves = room.preMoves.filter(pm => pm !== preMove);
+      }
+    } catch (error) {
+      console.error('Error in move:', error);
+      socket.emit('errorMessage', { message: 'An error occurred while making the move' });
     }
-    
-    // Save game state periodically
-    if (room.moves.length % 5 === 0) {
-      saveGameForReplay(roomId);
-    }
-
-    // Broadcast move to everyone in the room except sender
-    socket.to(roomId).emit('opponentMove', { 
-      move,
-      gameState,
-      remainingTime: room.timeControl ? {
-        white: room.timeControl.whiteTime,
-        black: room.timeControl.blackTime
-      } : null
-    });
   });
   
   // Handle chat message
@@ -427,38 +621,158 @@ io.on('connection', (socket) => {
   });
   
   // Handle game over
-  socket.on('gameOver', ({ roomId, result, winner }) => {
-    const room = gameRooms.get(roomId);
-    if (!room) return;
-    
-    // Broadcast game over to everyone
-    io.to(roomId).emit('gameOver', {
-      result,
-      winner
-    });
-    
-    // Update player stats
-    if (winner === 'white' && room.white) {
-      updatePlayerStats(room.white, true);
-      if (room.black) updatePlayerStats(room.black, false);
-    } else if (winner === 'black' && room.black) {
-      updatePlayerStats(room.black, true);
-      if (room.white) updatePlayerStats(room.white, false);
-    } else if (winner === 'draw') {
-      if (room.white) updatePlayerStats(room.white, null);
-      if (room.black) updatePlayerStats(room.black, null);
-    }
-    
-    // Save game for replay
-    saveGameForReplay(roomId, {
-      result,
-      winner
-    });
-    
-    // Stop the chess clock
-    if (activeClocks.has(roomId)) {
-      clearInterval(activeClocks.get(roomId));
-      activeClocks.delete(roomId);
+  socket.on('gameOver', async ({ roomId, result, winner }) => {
+    try {
+      const room = gameRooms.get(roomId);
+      if (!room) return;
+      
+      // Find the ChessGame record
+      const game = await ChessGame.findOne({ gameId: roomId });
+      if (!game) {
+        console.error('Game not found:', roomId);
+        return;
+      }
+      
+      // Determine the game result in standard format
+      let resultCode;
+      let terminationReason;
+      
+      if (result.includes('checkmate')) {
+        terminationReason = 'checkmate';
+        resultCode = winner === 'white' ? '1-0' : '0-1';
+      } else if (result.includes('timeout') || result.includes('time')) {
+        terminationReason = 'timeout';
+        resultCode = winner === 'white' ? '1-0' : '0-1';
+      } else if (result.includes('resignation')) {
+        terminationReason = 'resignation';
+        resultCode = winner === 'white' ? '1-0' : '0-1';
+      } else if (result.includes('draw') || result.includes('stalemate')) {
+        resultCode = '1/2-1/2';
+        
+        if (result.includes('stalemate')) {
+          terminationReason = 'stalemate';
+        } else if (result.includes('repetition')) {
+          terminationReason = 'threefold_repetition';
+        } else if (result.includes('insufficient')) {
+          terminationReason = 'insufficient_material';
+        } else if (result.includes('fifty')) {
+          terminationReason = 'fifty_move_rule';
+        } else {
+          terminationReason = 'agreement';
+        }
+      }
+      
+      // Update game result
+      game.result = resultCode;
+      game.termination = terminationReason;
+      game.finalPosition = room.gameState;
+      game.endTime = new Date();
+      await game.save();
+      
+      // Update player stats
+      if (game.players.white.user && game.players.black.user) {
+        const whiteUser = await User.findById(game.players.white.user);
+        const blackUser = await User.findById(game.players.black.user);
+        
+        if (whiteUser && blackUser) {
+          // Update game stats
+          whiteUser.stats.chess.gamesPlayed += 1;
+          blackUser.stats.chess.gamesPlayed += 1;
+          
+          if (resultCode === '1-0') {
+            whiteUser.stats.chess.wins += 1;
+            blackUser.stats.chess.losses += 1;
+          } else if (resultCode === '0-1') {
+            blackUser.stats.chess.wins += 1;
+            whiteUser.stats.chess.losses += 1;
+          } else if (resultCode === '1/2-1/2') {
+            whiteUser.stats.chess.draws += 1;
+            blackUser.stats.chess.draws += 1;
+          }
+          
+          // Calculate Elo rating changes
+          const { newWhiteRating, newBlackRating } = calculateNewRatings(
+            whiteUser.chessRating,
+            blackUser.chessRating,
+            resultCode
+          );
+          
+          // Record rating changes
+          game.players.white.ratingChange = newWhiteRating - whiteUser.chessRating;
+          game.players.black.ratingChange = newBlackRating - blackUser.chessRating;
+          
+          // Update ratings
+          whiteUser.chessRating = newWhiteRating;
+          blackUser.chessRating = newBlackRating;
+          
+          // Save user updates
+          await whiteUser.save();
+          await blackUser.save();
+          await game.save();
+          
+          // Update guild stats if users are in guilds
+          if (whiteUser.guild) {
+            const whiteGuild = await Guild.findById(whiteUser.guild);
+            if (whiteGuild) {
+              whiteGuild.stats.totalGames += 1;
+              if (resultCode === '1-0') {
+                whiteGuild.stats.totalWins += 1;
+              }
+              await whiteGuild.recalculateStats();
+            }
+          }
+          
+          if (blackUser.guild) {
+            const blackGuild = await Guild.findById(blackUser.guild);
+            if (blackGuild) {
+              blackGuild.stats.totalGames += 1;
+              if (resultCode === '0-1') {
+                blackGuild.stats.totalWins += 1;
+              }
+              await blackGuild.recalculateStats();
+            }
+          }
+          
+          // Log activity
+          const gameActivityDetails = {
+            roomId,
+            result: resultCode,
+            termination: terminationReason,
+            opponent: blackUser.username,
+            ratingChange: game.players.white.ratingChange
+          };
+          
+          await ActivityLog.create({
+            user: whiteUser._id,
+            username: whiteUser.username,
+            actionType: 'chess_game_end',
+            actionDetails: gameActivityDetails,
+            performedAt: new Date()
+          });
+          
+          gameActivityDetails.opponent = whiteUser.username;
+          gameActivityDetails.ratingChange = game.players.black.ratingChange;
+          
+          await ActivityLog.create({
+            user: blackUser._id,
+            username: blackUser.username,
+            actionType: 'chess_game_end',
+            actionDetails: gameActivityDetails,
+            performedAt: new Date()
+          });
+        }
+      }
+      
+      // Stop the chess clock
+      if (activeClocks.has(roomId)) {
+        clearInterval(activeClocks.get(roomId));
+        activeClocks.delete(roomId);
+      }
+      
+      // Broadcast result to all players and spectators
+      io.to(roomId).emit('gameOver', { result, winner });
+    } catch (error) {
+      console.error('Error in gameOver:', error);
     }
   });
   
@@ -496,7 +810,7 @@ io.on('connection', (socket) => {
           const newPlayer = room.spectators.shift();
           if (room.white === socket.id) {
             room.white = newPlayer.id;
-            room.whiteName = newPlayer.username;
+            room.whiteName = newPlayer.name;
             io.to(newPlayer.id).emit('promotedToPlayer', {
               color: 'white',
               gameState: room.gameState,
@@ -504,7 +818,7 @@ io.on('connection', (socket) => {
             });
           } else {
             room.black = newPlayer.id;
-            room.blackName = newPlayer.username;
+            room.blackName = newPlayer.name;
             io.to(newPlayer.id).emit('promotedToPlayer', {
               color: 'black',
               gameState: room.gameState,
@@ -614,5 +928,32 @@ process.on('SIGINT', () => {
   
   process.exit();
 });
+
+// Elo rating calculation helper function
+function calculateNewRatings(whiteRating, blackRating, result) {
+  // K-factor determines the magnitude of rating change
+  const K = 32;
+  
+  // Convert result to score
+  let whiteScore;
+  if (result === '1-0') {
+    whiteScore = 1;
+  } else if (result === '0-1') {
+    whiteScore = 0;
+  } else {
+    whiteScore = 0.5;
+  }
+  const blackScore = 1 - whiteScore;
+  
+  // Calculate expected scores based on current ratings
+  const whiteExpected = 1 / (1 + Math.pow(10, (blackRating - whiteRating) / 400));
+  const blackExpected = 1 / (1 + Math.pow(10, (whiteRating - blackRating) / 400));
+  
+  // Calculate new ratings
+  const newWhiteRating = Math.round(whiteRating + K * (whiteScore - whiteExpected));
+  const newBlackRating = Math.round(blackRating + K * (blackScore - blackExpected));
+  
+  return { newWhiteRating, newBlackRating };
+}
 
 module.exports = { app, server }; 
