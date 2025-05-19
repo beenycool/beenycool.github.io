@@ -7,9 +7,25 @@ const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const morgan = require('morgan');
 const helmet = require('helmet');
-const OpenAI = require('openai');
-const fetch = require('node-fetch');
 const rateLimit = require('express-rate-limit');
+
+// Try to load OpenAI, but continue if not available
+let OpenAI;
+try {
+  OpenAI = require('openai');
+  console.log('OpenAI module loaded successfully');
+} catch (error) {
+  console.warn('OpenAI module not available. Some AI features will be disabled.');
+}
+
+// Try to load node-fetch, but continue if not available
+let fetch;
+try {
+  fetch = require('node-fetch');
+  console.log('node-fetch module loaded successfully');
+} catch (error) {
+  console.warn('node-fetch module not available. Some features will be disabled.');
+}
 
 // Load environment variables
 dotenv.config();
@@ -49,7 +65,7 @@ app.use(helmet()); // Security headers
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // Limit each IP to 100 requests per windowMs
-  message: {
+            message: {
     success: false,
     message: 'Too many requests, please try again later.'
   }
