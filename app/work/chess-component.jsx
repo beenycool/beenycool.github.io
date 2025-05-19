@@ -5,6 +5,9 @@ import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
 import { io } from 'socket.io-client';
 import { v4 as uuidv4 } from 'uuid';
+import { motion, AnimatePresence } from 'framer-motion';
+import confetti from 'canvas-confetti';
+import { useTheme } from 'next-themes';
 import { 
   RotateCcw, 
   ArrowLeftCircle, 
@@ -27,8 +30,24 @@ import {
   ChevronUp,
   Flag,
   Sparkles,
-  User
+  User,
+  Crown,
+  Wand,
+  BadgeAlert
 } from 'lucide-react';
+
+// Import UI components
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
+import { ChessNotification } from '@/components/ui/chess-notification';
+import { useKonamiCode } from '@/lib/useKonamiCode';
+import { 
+  KONAMI_CODE, 
+  SPECIAL_POSITIONS, 
+  SPECIAL_MOVE_SEQUENCES, 
+  easterEggEffects,
+  easterEggAnimations 
+} from './chess-easter-eggs';
 
 // Import custom CSS
 import './theme.css';
@@ -165,7 +184,7 @@ const getPieceValue = (piece) => {
   return values[piece] || 0;
 };
 
-export default function ChessComponent() {
+export default function ChessComponent({ systemTheme }) {
   const [game, setGame] = useState(new Chess());
   const [boardWidth, setBoardWidth] = useState(480);
   const [moveHistory, setMoveHistory] = useState([]);
@@ -194,10 +213,17 @@ export default function ChessComponent() {
   const [isInMatchmaking, setIsInMatchmaking] = useState(false);
   const [gameResult, setGameResult] = useState(null);
   const [playerStats, setPlayerStats] = useState(null);
-  const [darkMode, setDarkMode] = useState(false);
+  const { theme, setTheme } = useTheme();
+  const [darkMode, setDarkMode] = useState(systemTheme === 'dark');
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showMoveList, setShowMoveList] = useState(false);
   const [highlightedSquares, setHighlightedSquares] = useState({});
+  
+  // Easter egg state
+  const [easterEggNotification, setEasterEggNotification] = useState(null);
+  const [activeAnimation, setActiveAnimation] = useState(null);
+  const [secretVariation, setSecretVariation] = useState(null);
+  const { success: konamiSuccess } = useKonamiCode();
   const [lastMove, setLastMove] = useState(null);
   const [isInCheck, setIsInCheck] = useState(false);
   const [customPieceStyle, setCustomPieceStyle] = useState('default'); // 'default', 'neo', '8bit'
@@ -527,6 +553,98 @@ export default function ChessComponent() {
       }
     }
   }, [playerName]);
+
+  // Theme synchronization
+  useEffect(() => {
+    setDarkMode(theme === 'dark');
+  }, [theme]);
+
+  // Konami code effect
+  useEffect(() => {
+    if (konamiSuccess) {
+      const effect = easterEggEffects.konamiCodeEffect();
+      setEasterEggNotification({ 
+        title: effect.title,
+        message: effect.message,
+        variant: effect.variant,
+        open: true 
+      });
+    }
+  }, [konamiSuccess]);
+
+  // Check for Easter Eggs after each move
+  useEffect(() => {
+    if (moveHistory.length === 0) return;
+    
+    // Only check for easter eggs in local mode
+    if (gameMode !== 'local') return;
+    
+    // Check for special move sequences
+    const currentMoves = game.history();
+    
+    Object.entries(SPECIAL_MOVE_SEQUENCES).forEach(([key, sequence]) => {
+      // Check if the move sequence matches the beginning of one of our special sequences
+      if (currentMoves.length >= sequence.length) {
+        const lastMoves = currentMoves.slice(-sequence.length);
+        if (JSON.stringify(lastMoves) === JSON.stringify(sequence)) {
+          const effect = easterEggEffects.moveSequenceEffects[key]();
+          setEasterEggNotification({
+            title: effect.title,
+            message: effect.message,
+            variant: effect.variant,
+            open: true
+          });
+          
+          if (effect.animation) {
+            setActiveAnimation(effect.animation);
+            setTimeout(() => setActiveAnimation(null), 3000);
+          }
+          
+          if (effect.sound && soundEnabled) {
+            const audio = new Audio(effect.sound);
+            audio.play();
+          }
+        }
+      }
+    });
+    
+    // Check for special positions
+    const position = game.board();
+    
+    // Flatten the position and check against special positions
+    const flatPosition = position.flat().filter(p => p !== null);
+    
+    Object.entries(SPECIAL_POSITIONS).forEach(([key, specialPos]) => {
+      // Check if all pieces in the special position are on the board
+      const match = specialPos.every(specPiece => 
+        flatPosition.some(p => 
+          p.type === specPiece.piece && 
+          p.color === specPiece.color && 
+          game.get(specPiece.square) !== null
+        )
+      );
+      
+      if (match) {
+        const effect = easterEggEffects.positionEffects[key]();
+        setEasterEggNotification({
+          title: effect.title,
+          message: effect.message,
+          variant: effect.variant,
+          open: true
+        });
+        
+        if (effect.animation) {
+          setActiveAnimation(effect.animation);
+          setTimeout(() => setActiveAnimation(null), 3000);
+        }
+        
+        if (effect.sound && soundEnabled) {
+          const audio = new Audio(effect.sound);
+          audio.play();
+        }
+      }
+    });
+  }, [moveHistory, game, gameMode, soundEnabled]);
 
   // Responsive board sizing
   useEffect(() => {

@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import React from 'react';
+import { useTheme } from 'next-themes';
 
 // Dynamic import for the Chess component
 const ChessComponent = dynamic(
@@ -13,5 +14,11 @@ const ChessComponent = dynamic(
 );
 
 export default function ChessClientWrapper() {
-  return <ChessComponent />;
+  const { theme } = useTheme();
+  
+  return (
+    <div className="container mx-auto px-4 py-6">
+      <ChessComponent systemTheme={theme} />
+    </div>
+  );
 } 
