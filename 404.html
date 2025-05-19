@@ -43,6 +43,25 @@
 </head>
 <body class="font-sans antialiased min-h-screen bg-background">
     <script>
+    // GitHub Pages SPA redirect script
+    (function() {
+      // Handle routing for GitHub Pages SPA
+      var segmentCount = 0;
+      var l = window.location;
+      
+      // Special handling for known routes
+      var knownRoutes = ['work', 'todo', 'debug'];
+      var path = l.pathname.split('/')[1];
+      
+      if (knownRoutes.includes(path)) {
+        // Redirect to the correct route with trailing slash
+        l.replace(
+          l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
+          '/' + path + '/' + (l.search ? l.search : '')
+        );
+      }
+    })();
+    
     // Theme handling script remains unchanged
     ((e,t,r,n,o,a,i,l)=>{let u=document.documentElement,s=["light","dark"];function c(t){(Array.isArray(e)?e:[e]).forEach(e=>{let r="class"===e,n=r&&a?o.map(e=>a[e]||e):o;r?(u.classList.remove(...n),u.classList.add(a&&a[t]?a[t]:t)):u.setAttribute(e,t)}),l&&s.includes(t)&&(u.style.colorScheme=t)}if(n)c(n);else try{let e=localStorage.getItem(t)||r,n=i&&"system"===e?window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light":e;c(n)}catch(e){}})("class","theme","system",null,["light","dark"],null,true,true)
     </script>

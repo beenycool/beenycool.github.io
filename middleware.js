@@ -19,10 +19,27 @@ export default function middleware(request) {
     return response;
   }
 
+  // Handle 404s for GitHub Pages by redirecting to the correct path
+  if (request.nextUrl.pathname.endsWith('.html') || 
+      request.nextUrl.pathname.endsWith('/')) {
+    return NextResponse.next();
+  }
+
+  // Add trailing slash for consistent routing
+  if (!request.nextUrl.pathname.endsWith('/') && 
+      !request.nextUrl.pathname.includes('.')) {
+    const url = request.nextUrl.clone();
+    url.pathname += '/';
+    return NextResponse.redirect(url);
+  }
+
   return NextResponse.next();
 }
 
 // Configure which routes use this middleware
 export const config = {
-  matcher: ['/api/chess-socket/:path*'],
+  matcher: [
+    '/api/chess-socket/:path*',
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'
+  ],
 }; 

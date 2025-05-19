@@ -1,13 +1,14 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // Remove the static export for now to support API routes and WebSockets
-  // output: 'export',
+  // Enable static export for GitHub Pages
+  output: 'export',
   images: {
     unoptimized: true
   },
   basePath: '',
   assetPrefix: '',
+  trailingSlash: true,
   env: {
     NEXT_PUBLIC_API_BASE_URL: 'https://beenycool-github-io.onrender.com',
   },

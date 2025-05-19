@@ -36,7 +36,9 @@ import './theme.css';
 // Use the existing backend API URL if available, or fallback to local Socket.io
 const useExistingBackend = true;
 const SOCKET_SERVER_URL = useExistingBackend 
-  ? '/api/chess-socket' // This would be the endpoint in your existing backend
+  ? (typeof window !== 'undefined' && window.location.hostname === 'beenycool.github.io'
+     ? 'https://beenycool-github-io.onrender.com/api/chess-socket' // External backend for GitHub Pages
+     : '/api/chess-socket') // Local API route for development
   : 'http://localhost:3001';
 
 // Player scoring algorithm
