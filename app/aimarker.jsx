@@ -2246,26 +2246,56 @@ TOTAL MARKS: ${marksToUse}` : ''}
             }
           };
         }
-        response = await fetch(`${API_BASE_URL}/api/gemini/generate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestBody),
-          signal: AbortSignal.timeout(60000)
-        });
+        
+        try {
+          response = await fetch(`${API_BASE_URL}/api/gemini/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody),
+            signal: AbortSignal.timeout(60000)
+          });
+          
+          // If we get a 400 error with the specific model ID, try the fallback endpoint
+          if (!response.ok && response.status === 400) {
+            const errorText = await response.text();
+            if (errorText.includes("not a valid model ID")) {
+              console.warn(`Model ${currentModel} not supported by direct Gemini API, falling back to standard chat API`);
+              
+              // Fallback to using the standard chat API endpoint
+              response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  model: FALLBACK_MODELS[currentModel], // Use a fallback model
+                  messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: userPrompt }
+                  ],
+                  temperature: 0.3
+                }),
+                signal: AbortSignal.timeout(60000)
+              });
+            } else {
+              throw new Error(`Mark scheme generation failed with Gemini API: ${errorText}`);
+            }
+          }
+        } catch (error) {
+          throw error; // Re-throw to be handled by the main try/catch
+        }
       } else {
         response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: currentModel,
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: userPrompt }
-            ],
-            temperature: 0.3
-          }),
-          signal: AbortSignal.timeout(60000) // 60 second timeout
-        });
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: currentModel,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt }
+          ],
+          temperature: 0.3
+        }),
+        signal: AbortSignal.timeout(60000) // 60 second timeout
+      });
       }
       
       if (!response.ok) {
@@ -2285,28 +2315,72 @@ TOTAL MARKS: ${marksToUse}` : ''}
       
       // Extract the response content
       let markSchemeText = "";
-      if (currentModel === "gemini-2.5-flash-preview-04-17") {
-        // Extract from Gemini response structure
-        if (
-          data.candidates &&
-          data.candidates.length > 0 &&
-          data.candidates[0].content &&
-          data.candidates[0].content.parts &&
-          data.candidates[0].content.parts.length > 0 &&
-          typeof data.candidates[0].content.parts[0].text === 'string'
-        ) {
-          markSchemeText = data.candidates[0].content.parts[0].text;
-        } else {
-          // Fallback or error if structure is not as expected
-           console.warn("Unexpected Gemini API response format for mark scheme. Actual data:", JSON.stringify(data, null, 2));
-           throw new Error("Unexpected Gemini API response format or missing text content for mark scheme generation");
+      
+      // Log the data structure for debugging
+      console.log("API response format:", Object.keys(data).join(", "));
+      
+      try {
+        if (data.candidates && data.candidates.length > 0 && data.candidates[0].content) {
+          // Gemini API format
+          if (data.candidates[0].content.parts && data.candidates[0].content.parts.length > 0) {
+            markSchemeText = data.candidates[0].content.parts[0].text;
+            console.log("Using data.candidates[0].content.parts[0].text format");
+          } else if (typeof data.candidates[0].content.text === 'string') {
+            markSchemeText = data.candidates[0].content.text;
+            console.log("Using data.candidates[0].content.text format");
+          }
+        } else if (data.choices && data.choices[0] && data.choices[0].message) {
+          // Standard OpenAI-compatible API format
+          markSchemeText = data.choices[0].message.content;
+          console.log("Using data.choices[0].message.content format");
+        } else if (data.content) {
+          // Simple content format
+          markSchemeText = data.content;
+          console.log("Using data.content format");
+        } else if (typeof data === 'object' && Object.keys(data).length > 0) {
+          // Try to extract any text content from unknown format
+          const extractTextFromObject = (obj) => {
+            if (typeof obj === 'string') return obj;
+            if (!obj || typeof obj !== 'object') return '';
+            
+            // Check for content key
+            if (obj.content && typeof obj.content === 'string') return obj.content;
+            
+            // Check for text key
+            if (obj.text && typeof obj.text === 'string') return obj.text;
+            
+            // Check for message.content
+            if (obj.message && obj.message.content && typeof obj.message.content === 'string') {
+              return obj.message.content;
+            }
+            
+            // Try to find any string that might be the content
+            for (const key in obj) {
+              if (typeof obj[key] === 'string' && obj[key].length > 100) {
+                return obj[key]; // Assumes large string is content
+              }
+              
+              if (typeof obj[key] === 'object') {
+                const extracted = extractTextFromObject(obj[key]);
+                if (extracted) return extracted;
+              }
+            }
+            
+            return '';
+          };
+          
+          markSchemeText = extractTextFromObject(data);
+          if (markSchemeText) {
+            console.log("Extracted content from unknown format");
+          }
         }
-      } else if (data.choices && data.choices[0] && data.choices[0].message) {
-        markSchemeText = data.choices[0].message.content;
-      } else if (data.content) {
-        markSchemeText = data.content;
-      } else {
-        throw new Error("Unexpected API response format");
+      } catch (e) {
+        console.error("Error parsing API response:", e);
+      }
+      
+      if (!markSchemeText) {
+        console.warn("Unexpected API response format for mark scheme:", data);
+        throw new Error("Unable to extract mark scheme text from API response");
       }
       
       // Update the mark scheme field
