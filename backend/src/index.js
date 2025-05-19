@@ -60,7 +60,7 @@ const dailyRateLimiter = rateLimit({
 const geminiRateLimits = [dailyRateLimiter, minuteRateLimiter];
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3005;
 
 // Configure allowed origins - ENSURE GitHub Pages domain is explicitly included
 const allowedOrigins = process.env.ALLOWED_ORIGINS 
@@ -517,18 +517,18 @@ app.post('/api/gemini/generate', geminiRateLimits, async (req, res) => {
     logger.info('Gemini request completed successfully');
     clearTimeout(timeout);
     
-    // Format the response to match the expected format by the frontend
-    if (data.candidates && data.candidates[0] && data.candidates[0].content) {
-      return res.json({
-        choices: [{
-          message: {
-            content: data.candidates[0].content.parts[0].text
-          }
-        }]
-      });
-    } else {
-      return res.json(data); // Return original format if unexpected structure
-    }
+    // Keep original Gemini response structure so client can extract from correct fields
+    logger.info('Sending Gemini API response to client');
+    
+    // Log the structure for debugging
+    logger.debug('Gemini response structure:', 
+      data.candidates && data.candidates[0] ? 
+      { hasContent: !!data.candidates[0].content, hasText: !!(data.candidates[0].content?.parts?.[0]?.text) } : 
+      { noValidResponse: true }
+    );
+    
+    // Return the original data structure to allow frontend to handle specific APIs
+    return res.json(data);
   } catch (error) {
     logger.error('Gemini API error', error);
     return res.status(500).json({ 
