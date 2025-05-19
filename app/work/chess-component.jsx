@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
 import { io } from 'socket.io-client';
@@ -35,6 +35,7 @@ import {
   Wand,
   BadgeAlert
 } from 'lucide-react';
+import axios from 'axios';
 
 // Import UI components
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
@@ -232,7 +233,7 @@ export default function ChessComponent({ systemTheme }) {
   const [playerColor, setPlayerColor] = useState("white");
   const [opponentConnected, setOpponentConnected] = useState(false);
   const [waitingForOpponent, setWaitingForOpponent] = useState(false);
-  const [gameMode, setGameMode] = useState("local"); // "local" or "online"
+  const [gameMode, setGameMode] = useState("local"); // "local", "computer", "online"
   const [linkCopied, setLinkCopied] = useState(false);
   const [playerName, setPlayerName] = useState("");
   const [opponentName, setOpponentName] = useState("");
@@ -289,6 +290,7 @@ export default function ChessComponent({ systemTheme }) {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [authForm, setAuthForm] = useState({ username: '', password: '' });
+  const [authError, setAuthError] = useState(null);
   
   const socketRef = useRef(null);
   const messageContainerRef = useRef(null);
@@ -312,6 +314,15 @@ export default function ChessComponent({ systemTheme }) {
       messageContainerRef.current.scrollTop = messageContainerRef.current.scrollHeight;
     }
   }, [chatMessages]);
+  
+  // Check for existing auth token on component mount
+  useEffect(() => {
+    const token = localStorage.getItem('authToken');
+    
+    if (token && fetchUserData) {
+      fetchUserData(token);
+    }
+  }, []);
   
   // Connect to socket when component mounts
   useEffect(() => {
@@ -1247,38 +1258,122 @@ export default function ChessComponent({ systemTheme }) {
   const selectedBoardTheme = boardThemes.find(t => t.name === currentBoardThemeName) || boardThemes[0];
   const currentStyles = darkMode ? selectedBoardTheme.darkMode : selectedBoardTheme.lightMode;
 
-  // Dummy Auth Functions (replace with actual API calls)
+  // API URL for backend
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://beenycool-github-io.onrender.com';
+  
+  // Fetch user data with token
+  const fetchUserData = async (token) => {
+    try {
+      const response = await axios.get(`${API_URL}/api/auth/user`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      
+      if (response.data.success) {
+        setCurrentUser({
+          id: response.data.user.id,
+          username: response.data.user.username,
+          role: response.data.user.role
+        });
+      }
+    } catch (error) {
+      console.error('Failed to fetch user data:', error);
+      localStorage.removeItem('authToken');
+    }
+  };
+  
   const handleAuthInputChange = (e) => {
     const { name, value } = e.target;
     setAuthForm(prev => ({ ...prev, [name]: value }));
+    // Clear any error when user starts typing
+    if (authError) setAuthError(null);
   };
 
-  const handleRegister = (e) => {
+  const handleRegister = async (e) => {
     e.preventDefault();
-    // STUB: API call to register { authForm.username, authForm.password }
-    console.log("Register attempt:", authForm);
-    // On success:
-    // setCurrentUser({ username: authForm.username });
-    // setShowRegisterModal(false); 
-    // setAuthForm({ username: '', password: '' });
-    alert("Registration functionality not yet connected to backend.");
+    
+    try {
+      const response = await axios.post(`${API_URL}/api/auth/register`, {
+        username: authForm.username,
+        password: authForm.password
+      });
+      
+      if (response.data.success) {
+        // Store token
+        localStorage.setItem('authToken', response.data.token);
+        
+        // Set current user
+        setCurrentUser({
+          id: response.data.user.id,
+          username: response.data.user.username,
+          role: response.data.user.role
+        });
+        
+        // Close modal and reset form
+        setShowRegisterModal(false);
+        setAuthForm({ username: '', password: '' });
+      }
+    } catch (error) {
+      console.error('Registration error:', error);
+      setAuthError(error.response?.data?.message || 'Registration failed. Please try again.');
+    }
   };
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    // STUB: API call to login { authForm.username, authForm.password }
-    console.log("Login attempt:", authForm);
-    // On success:
-    setCurrentUser({ username: authForm.username }); // Simulate login
-    setShowLoginModal(false);
-    setAuthForm({ username: '', password: '' });
-    // alert("Login functionality not yet connected to backend.");
+    
+    try {
+      const response = await axios.post(`${API_URL}/api/auth/login`, {
+        username: authForm.username,
+        password: authForm.password
+      });
+      
+      if (response.data.success) {
+        // Store token
+        localStorage.setItem('authToken', response.data.token);
+        
+        // Set current user
+        setCurrentUser({
+          id: response.data.user.id,
+          username: response.data.user.username,
+          role: response.data.user.role
+        });
+        
+        // Close modal and reset form
+        setShowLoginModal(false);
+        setAuthForm({ username: '', password: '' });
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      setAuthError(error.response?.data?.message || 'Invalid username or password.');
+    }
   };
 
-  const handleLogout = () => {
-    // STUB: API call to logout
-    setCurrentUser(null);
-    console.log("Logged out");
+  const handleLogout = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      
+      if (token) {
+        // Call logout endpoint if it exists
+        try {
+          await axios.post(`${API_URL}/api/auth/logout`, {}, {
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          });
+        } catch (e) {
+          // Ignore if logout endpoint doesn't exist
+          console.log('Logout endpoint not available');
+        }
+      }
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      // Always clear local storage and reset user state
+      localStorage.removeItem('authToken');
+      setCurrentUser(null);
+    }
   };
 
   return (
@@ -1339,6 +1434,14 @@ export default function ChessComponent({ systemTheme }) {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="game-room-container p-6 shadow-lg max-w-md w-full">
             <h2 className="text-xl font-bold mb-4">Login</h2>
+            
+            {/* Error Message */}
+            {authError && (
+              <div className="mb-4 p-3 bg-red-50 text-red-700 border border-red-200 rounded-md text-sm">
+                {authError}
+              </div>
+            )}
+            
             <form onSubmit={handleLogin}>
               <div className="mb-4">
                 <label className="block text-sm font-medium mb-1">Username</label>
@@ -1380,6 +1483,14 @@ export default function ChessComponent({ systemTheme }) {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="game-room-container p-6 shadow-lg max-w-md w-full">
             <h2 className="text-xl font-bold mb-4">Register</h2>
+            
+            {/* Error Message */}
+            {authError && (
+              <div className="mb-4 p-3 bg-red-50 text-red-700 border border-red-200 rounded-md text-sm">
+                {authError}
+              </div>
+            )}
+            
             <form onSubmit={handleRegister}>
               <div className="mb-4">
                 <label className="block text-sm font-medium mb-1">Username</label>
@@ -1415,7 +1526,7 @@ export default function ChessComponent({ systemTheme }) {
           </div>
         </div>
       )}
-
+      
       {/* Player name input (for online play) - Conditionally render if not logged in and no name set */}
       {!currentUser && !playerName && gameMode === "online" && (
         <div className="w-full max-w-md mb-6 game-room-container p-6 shadow-md">
