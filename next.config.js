@@ -1,7 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  output: 'export',
+  // Remove the static export for now to support API routes and WebSockets
+  // output: 'export',
   images: {
     unoptimized: true
   },
