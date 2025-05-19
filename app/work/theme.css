@@ -1,0 +1,308 @@
+/* Chess board theme customization */
+.chess-board {
+  transition: all 0.3s ease;
+  box-shadow: rgba(0, 0, 0, 0.15) 0px 5px 15px 0px;
+  border-radius: 4px;
+  background-clip: padding-box;
+}
+
+.chess-board-dark {
+  box-shadow: rgba(255, 255, 255, 0.1) 0px 5px 15px 0px;
+}
+
+/* Chess square customization */
+.square-light {
+  background-color: #f0d9b5 !important;
+}
+
+.square-dark {
+  background-color: #b58863 !important;
+}
+
+.dark-mode .square-light {
+  background-color: #6e8b8a !important;
+}
+
+.dark-mode .square-dark {
+  background-color: #40686a !important;
+}
+
+/* Highlights for selected squares */
+.highlight-square {
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 150, 0.8);
+}
+
+.check-highlight {
+  box-shadow: inset 0 0 0 3px rgba(255, 0, 0, 0.6);
+}
+
+.last-move-highlight {
+  background: rgba(255, 255, 0, 0.3) !important;
+}
+
+/* Move indicators and annotations */
+.move-arrow {
+  position: absolute;
+  pointer-events: none;
+}
+
+/* Piece movement animations */
+.piece-animation {
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Game room UI */
+.game-room-container {
+  border-radius: 8px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  background: #ffffff;
+}
+
+.dark-mode .game-room-container {
+  background: #1f2937;
+}
+
+/* Game status and messages */
+.status-message {
+  padding: 0.5rem 1rem;
+  margin: 0.5rem 0;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.status-info {
+  background-color: rgba(59, 130, 246, 0.2);
+  border-left: 3px solid #3b82f6;
+}
+
+.status-success {
+  background-color: rgba(34, 197, 94, 0.2);
+  border-left: 3px solid #22c55e;
+}
+
+.status-warning {
+  background-color: rgba(245, 158, 11, 0.2);
+  border-left: 3px solid #f59e0b;
+}
+
+.status-error {
+  background-color: rgba(239, 68, 68, 0.2);
+  border-left: 3px solid #ef4444;
+}
+
+/* Chat components */
+.chat-container {
+  border-radius: 6px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.chat-message {
+  padding: 0.5rem;
+  margin: 0.25rem 0;
+  border-radius: 4px;
+  position: relative;
+}
+
+.chat-message-player {
+  background-color: rgba(59, 130, 246, 0.1);
+  margin-right: 1rem;
+  margin-left: 0.25rem;
+}
+
+.chat-message-opponent {
+  background-color: rgba(107, 114, 128, 0.1);
+  margin-left: 1rem;
+  margin-right: 0.25rem;
+}
+
+.chat-message-system {
+  background-color: rgba(107, 114, 128, 0.05);
+  font-style: italic;
+  font-size: 0.8rem;
+  text-align: center;
+  padding: 0.25rem;
+}
+
+/* Button and control styling */
+.chess-button {
+  transition: all 0.15s ease;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.chess-button-primary {
+  background-color: #3b82f6;
+  color: white;
+}
+
+.chess-button-primary:hover {
+  background-color: #2563eb;
+}
+
+.chess-button-secondary {
+  background-color: #e5e7eb;
+  color: #374151;
+}
+
+.dark-mode .chess-button-secondary {
+  background-color: #374151;
+  color: #e5e7eb;
+}
+
+.chess-button-secondary:hover {
+  background-color: #d1d5db;
+}
+
+.dark-mode .chess-button-secondary:hover {
+  background-color: #4b5563;
+}
+
+/* Player info area */
+.player-info {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem;
+  margin-bottom: 0.5rem;
+  border-radius: 6px;
+  background-color: rgba(229, 231, 235, 0.5);
+}
+
+.dark-mode .player-info {
+  background-color: rgba(55, 65, 81, 0.5);
+}
+
+.player-avatar {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background-color: #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 0.5rem;
+  font-weight: bold;
+}
+
+.player-name {
+  font-weight: 500;
+}
+
+.player-time {
+  margin-left: auto;
+  font-family: monospace;
+  font-size: 1.125rem;
+}
+
+/* Game result display */
+.game-result {
+  text-align: center;
+  padding: 1rem;
+  margin: 1rem 0;
+  border-radius: 8px;
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Modern chess controls */
+.chess-controls {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.control-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background-color: #f3f4f6;
+  color: #374151;
+  transition: all 0.15s ease;
+}
+
+.dark-mode .control-button {
+  background-color: #374151;
+  color: #f3f4f6;
+}
+
+.control-button:hover:not(:disabled) {
+  background-color: #e5e7eb;
+  transform: translateY(-2px);
+}
+
+.dark-mode .control-button:hover:not(:disabled) {
+  background-color: #4b5563;
+}
+
+.control-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Move list */
+.move-list {
+  max-height: 15rem;
+  overflow-y: auto;
+  padding: 0.5rem;
+  border-radius: 6px;
+  background-color: #f9fafb;
+  font-family: monospace;
+}
+
+.dark-mode .move-list {
+  background-color: #1f2937;
+}
+
+.move-item {
+  display: flex;
+  padding: 0.25rem 0;
+}
+
+.move-number {
+  width: 2rem;
+  color: #6b7280;
+}
+
+.move-text {
+  flex: 1;
+}
+
+.move-text-white, .move-text-black {
+  display: inline-block;
+  width: 45%;
+}
+
+.current-move {
+  background-color: rgba(59, 130, 246, 0.1);
+  border-radius: 4px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .game-container {
+    flex-direction: column;
+  }
+  
+  .game-sidebar {
+    width: 100%;
+    margin-top: 1rem;
+  }
+} 
