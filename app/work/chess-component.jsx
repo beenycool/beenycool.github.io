@@ -37,7 +37,7 @@ import './theme.css';
 const useExistingBackend = true;
 const SOCKET_SERVER_URL = useExistingBackend 
   ? (typeof window !== 'undefined' && window.location.hostname === 'beenycool.github.io'
-     ? 'https://beenycool-github-io.onrender.com/api/chess-socket' // External backend for GitHub Pages
+     ? 'https://beenycool-github-io.onrender.com' // External backend for GitHub Pages (removed /api/chess-socket)
      : '/api/chess-socket') // Local API route for development
   : 'http://localhost:3001';
 
@@ -224,8 +224,67 @@ export default function ChessComponent() {
   // Connect to socket when component mounts
   useEffect(() => {
     if (gameMode === "online") {
-      // Connect to the socket server
-      socketRef.current = io(SOCKET_SERVER_URL);
+      // Connect to the socket server with reconnection options
+      socketRef.current = io(SOCKET_SERVER_URL, {
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+        timeout: 10000,
+        transports: ['websocket', 'polling']
+      });
+      
+      let connectionRetries = 0;
+      const maxRetries = 3;
+      
+      // Connection error handling
+      socketRef.current.on('connect_error', (error) => {
+        console.error('Socket connection error:', error);
+        connectionRetries++;
+        
+        setChatMessages(prev => [...prev, {
+          sender: 'System',
+          message: `Connection error: ${error.message}. Trying to reconnect... (${connectionRetries}/${maxRetries})`,
+          timestamp: new Date().toISOString(),
+          system: true
+        }]);
+        
+        // If we've tried too many times, switch to local mode
+        if (connectionRetries >= maxRetries) {
+          setChatMessages(prev => [...prev, {
+            sender: 'System',
+            message: `Unable to connect to online server. Switching to local mode.`,
+            timestamp: new Date().toISOString(),
+            system: true
+          }]);
+          
+          // Disconnect and switch to local mode
+          socketRef.current.disconnect();
+          setGameMode("local");
+          setShowChat(false);
+          
+          // Show a notification to the user
+          if (audioRef.current?.notify) {
+            audioRef.current.notify.play();
+          }
+        }
+      });
+      
+      socketRef.current.on('connect', () => {
+        console.log('Socket connected successfully');
+        setChatMessages(prev => [...prev, {
+          sender: 'System',
+          message: 'Connected to game server',
+          timestamp: new Date().toISOString(),
+          system: true
+        }]);
+        
+        // Join room if we have a roomId
+        if (roomId) {
+          socketRef.current.emit('joinRoom', { 
+            roomId,
+            username: playerName || 'Player'
+          });
+        }
+      });
       
       // Set up event listeners
       socketRef.current.on('joinedAsColor', ({ color, timeControl }) => {
@@ -628,8 +687,18 @@ export default function ChessComponent() {
     
     socketRef.current.emit('sendMessage', {
       roomId,
-      message: newMessage.trim()
+      message: newMessage.trim(),
+      sender: playerName || 'Player',
+      role: playerColor
     });
+    
+    // Add message locally to ensure it appears immediately
+    setChatMessages(prev => [...prev, {
+      sender: playerName || 'Player',
+      message: newMessage.trim(),
+      timestamp: new Date().toISOString(),
+      role: playerColor
+    }]);
     
     setNewMessage('');
   };
@@ -1076,13 +1145,22 @@ export default function ChessComponent() {
                   <p className="text-gray-500 italic p-4 text-center">No messages yet.</p>
                 ) : (
                   chatMessages.map((msg, idx) => (
-                    <div key={idx} className={`chat-message ${
-                      msg.system ? 'chat-message-system' :
-                      msg.role === playerColor ? 'chat-message-player' :
-                      'chat-message-opponent'
-                    }`}>
-                      <span className="font-medium">{msg.sender}: </span>
-                      <span>{msg.message}</span>
+                    <div 
+                      key={idx} 
+                      className={`chat-message p-2 rounded-lg mb-1 ${
+                        msg.system 
+                          ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-center italic' 
+                          : msg.role === playerColor 
+                            ? 'bg-blue-100 dark:bg-blue-900 ml-4 text-blue-800 dark:text-blue-200' 
+                            : 'bg-gray-200 dark:bg-gray-700 mr-4'
+                      }`}
+                    >
+                      {!msg.system && (
+                        <div className="font-medium text-xs opacity-75 mb-1">
+                          {msg.sender} • {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        </div>
+                      )}
+                      <div>{msg.message}</div>
                     </div>
                   ))
                 )}
@@ -1097,10 +1175,14 @@ export default function ChessComponent() {
                 />
                 <button 
                   type="submit"
-                  className="chess-button chess-button-primary !p-2"
                   disabled={!newMessage.trim()}
+                  className={`p-2 rounded-md ${
+                    newMessage.trim() 
+                      ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                      : 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed'
+                  }`}
                 >
-                  <Send size={16} />
+                  <Send size={18} />
                 </button>
               </form>
             </div>
