@@ -8,7 +8,7 @@ First, commit and push your changes to your GitHub repository:
 
 ```bash
 git add .
-git commit -m "Fixed backend OpenAI dependency issue"
+git commit -m "Fixed backend OpenAI dependency issue and removed invalid guild delete route"
 git push origin main
 ```
 
@@ -39,7 +39,11 @@ After deployment completes, test your backend using these endpoints:
 - Health check: `https://beenycool-github-io.onrender.com/api/health`
 - Authentication: `https://beenycool-github-io.onrender.com/api/auth/login`
 
-## 6. Optional: Add OpenAI API Key
+## 6. Fixed Route.delete() Error
+
+The previous deployment had an error: `Route.delete() requires a callback function but got a [object Undefined]`. This was caused by a non-existent controller function referenced in the API routes. The fix was to remove the `router.delete('/guilds/:id')` route since the controller function didn't exist.
+
+## 7. Optional: Add OpenAI API Key
 
 If you need OpenAI capabilities, add the `OPENAI_API_KEY` environment variable in your Render.com settings.
 

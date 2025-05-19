@@ -39,7 +39,6 @@ router.get('/guilds/:id', guildController.getGuildById);
 router.put('/guilds/:id', authenticateToken, guildController.updateGuild);
 router.post('/guilds/:id/join', authenticateToken, guildController.joinGuild);
 router.post('/guilds/:id/leave', authenticateToken, guildController.leaveGuild);
-router.delete('/guilds/:id', authenticateToken, isAdmin, guildController.deleteGuild);
 
 // Admin routes (protected by isAdmin middleware)
 router.get('/admin/users', authenticateToken, isAdmin, adminController.getAllUsers);
