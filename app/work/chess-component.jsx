@@ -41,6 +41,10 @@ const SOCKET_SERVER_URL = useExistingBackend
      : '/api/chess-socket') // Local API route for development
   : 'http://localhost:3001';
 
+// Password protection constants
+const PASSWORD_KEY_PREFIX = 'chess_game_password_';
+const SESSION_KEY_PREFIX = 'chess_session_';
+
 // Player scoring algorithm
 const calculatePlayerScore = (game, timeRemaining, moveHistory) => {
   // Initialize base score
@@ -198,6 +202,16 @@ export default function ChessComponent() {
   const [isInCheck, setIsInCheck] = useState(false);
   const [customPieceStyle, setCustomPieceStyle] = useState('default'); // 'default', 'neo', '8bit'
   
+  // Password protection state
+  const [gamePassword, setGamePassword] = useState("");
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordProtected, setPasswordProtected] = useState(false);
+  const [passwordInput, setPasswordInput] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [isResuming, setIsResuming] = useState(false);
+  const [showSavedGamesModal, setShowSavedGamesModal] = useState(false);
+  const [savedSessions, setSavedSessions] = useState([]);
+  
   // Add player score state
   const [playerScore, setPlayerScore] = useState(0);
   const [opponentScore, setOpponentScore] = useState(0);
@@ -302,6 +316,57 @@ export default function ChessComponent() {
         setOpponentConnected(true);
         setWaitingForOpponent(false);
         setOpponentName(opponentName || 'Anonymous');
+      });
+      
+      socketRef.current.on('passwordRequired', () => {
+        setShowPasswordModal(true);
+      });
+      
+      socketRef.current.on('passwordRejected', () => {
+        setPasswordError("Incorrect password. Please try again.");
+      });
+      
+      socketRef.current.on('gameResumed', ({ gameState, moveHistory, chatHistory, playerColor, opponentName, timeControl }) => {
+        // Restore game state
+        const newGame = new Chess(gameState);
+        setGame(newGame);
+        setFen(newGame.fen());
+        
+        // Restore move history
+        if (moveHistory && moveHistory.length > 0) {
+          setMoveHistory(moveHistory);
+          setCurrentPosition(moveHistory.length - 1);
+        }
+        
+        // Restore chat history
+        if (chatHistory && chatHistory.length > 0) {
+          setChatMessages(chatHistory);
+        }
+        
+        // Restore player info
+        if (playerColor) {
+          setPlayerColor(playerColor);
+          setIsYourTurn(newGame.turn() === (playerColor === 'white' ? 'w' : 'b'));
+        }
+        
+        if (opponentName) {
+          setOpponentName(opponentName);
+          setOpponentConnected(true);
+          setWaitingForOpponent(false);
+        }
+        
+        // Restore time control
+        if (timeControl) {
+          setTimeControl(timeControl);
+        }
+        
+        // Add system message
+        setChatMessages(prev => [...prev, {
+          sender: 'System',
+          message: 'Game resumed successfully',
+          timestamp: new Date().toISOString(),
+          system: true
+        }]);
       });
       
       socketRef.current.on('opponentMove', ({ move, gameState, remainingTime }) => {
@@ -422,12 +487,42 @@ export default function ChessComponent() {
         setRoomId(roomIdParam);
         setGameMode("online");
         
-        // Join the room if socket is connected
-        if (socketRef.current) {
-          socketRef.current.emit('joinRoom', { 
-            roomId: roomIdParam,
-            username: playerName || 'Player'
-          });
+        // Check if this room has a saved password
+        const savedPassword = getGamePassword(roomIdParam);
+        if (savedPassword) {
+          // We have a saved password, check if we're the original player
+          const sessions = getSavedSessions();
+          const matchingSession = sessions.find(session => session.roomId === roomIdParam);
+          
+          if (matchingSession) {
+            // We're resuming a previous session
+            setIsResuming(true);
+            setPlayerName(matchingSession.playerName || 'Player');
+            setPlayerColor(matchingSession.playerColor || 'white');
+            setPasswordProtected(true);
+            setGamePassword(savedPassword);
+            
+            // Join the room with the saved password
+            if (socketRef.current) {
+              socketRef.current.emit('joinRoom', { 
+                roomId: roomIdParam,
+                username: matchingSession.playerName || 'Player',
+                isResuming: true,
+                password: savedPassword
+              });
+            }
+          } else {
+            // We need to enter the password
+            setShowPasswordModal(true);
+          }
+        } else {
+          // No password, join normally
+          if (socketRef.current) {
+            socketRef.current.emit('joinRoom', { 
+              roomId: roomIdParam,
+              username: playerName || 'Player'
+            });
+          }
         }
       }
     }
@@ -616,6 +711,13 @@ export default function ChessComponent() {
     setWaitingForOpponent(true);
     setIsYourTurn(true); // Creator goes first
     
+    // Generate a password if password protection is enabled
+    if (passwordProtected) {
+      const newPassword = generateGamePassword();
+      setGamePassword(newPassword);
+      saveGamePassword(newRoomId, newPassword);
+    }
+    
     // Update URL with room ID
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
@@ -627,7 +729,8 @@ export default function ChessComponent() {
     if (socketRef.current) {
       socketRef.current.emit('joinRoom', { 
         roomId: newRoomId,
-        username: playerName || 'Player'
+        username: playerName || 'Player',
+        hasPassword: passwordProtected
       });
     }
     
@@ -734,6 +837,178 @@ export default function ChessComponent() {
     
     resetGame();
   };
+  
+  // Password protection functions
+  const generateGamePassword = () => {
+    // Generate a random 6-character alphanumeric password
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let password = '';
+    for (let i = 0; i < 6; i++) {
+      password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return password;
+  };
+  
+  const saveGamePassword = (roomId, password) => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      // Save password in localStorage
+      window.localStorage.setItem(`${PASSWORD_KEY_PREFIX}${roomId}`, password);
+      
+      // Save session info
+      const sessionInfo = {
+        roomId,
+        playerName,
+        playerColor,
+        timestamp: new Date().toISOString()
+      };
+      
+      // Get existing sessions or initialize empty array
+      const existingSessions = JSON.parse(window.localStorage.getItem(SESSION_KEY_PREFIX) || '[]');
+      
+      // Add new session, removing any duplicate for same roomId
+      const updatedSessions = [
+        ...existingSessions.filter(session => session.roomId !== roomId),
+        sessionInfo
+      ];
+      
+      // Save updated sessions
+      window.localStorage.setItem(SESSION_KEY_PREFIX, JSON.stringify(updatedSessions));
+    }
+  };
+  
+  const getGamePassword = (roomId) => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      return window.localStorage.getItem(`${PASSWORD_KEY_PREFIX}${roomId}`);
+    }
+    return null;
+  };
+  
+  const getSavedSessions = () => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const sessions = JSON.parse(window.localStorage.getItem(SESSION_KEY_PREFIX) || '[]');
+      // Sort by most recent first
+      return sessions.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    }
+    return [];
+  };
+  
+  const handlePasswordProtection = (e) => {
+    e.preventDefault();
+    
+    if (!passwordProtected) {
+      // Generate a password if enabling protection
+      const newPassword = generateGamePassword();
+      setGamePassword(newPassword);
+      setPasswordProtected(true);
+      
+      // Save password
+      if (roomId) {
+        saveGamePassword(roomId, newPassword);
+        
+        // Notify server about password protection
+        if (socketRef.current) {
+          socketRef.current.emit('setRoomPassword', {
+            roomId,
+            hasPassword: true
+          });
+        }
+      }
+    } else {
+      // Disabling password protection
+      setGamePassword("");
+      setPasswordProtected(false);
+      
+      // Remove password from storage
+      if (typeof window !== 'undefined' && window.localStorage && roomId) {
+        window.localStorage.removeItem(`${PASSWORD_KEY_PREFIX}${roomId}`);
+        
+        // Notify server about password removal
+        if (socketRef.current) {
+          socketRef.current.emit('setRoomPassword', {
+            roomId,
+            hasPassword: false
+          });
+        }
+      }
+    }
+  };
+  
+  const verifyPassword = (e) => {
+    e.preventDefault();
+    
+    // Get stored password for this room
+    const storedPassword = getGamePassword(roomId);
+    
+    if (passwordInput === storedPassword) {
+      // Password matches
+      setPasswordError("");
+      setShowPasswordModal(false);
+      
+      // Join the room
+      if (socketRef.current) {
+        socketRef.current.emit('joinRoom', { 
+          roomId,
+          username: playerName || 'Player',
+          isResuming: true
+        });
+      }
+      
+      // Reset password input
+      setPasswordInput("");
+    } else {
+      // Password doesn't match
+      setPasswordError("Incorrect password. Please try again.");
+    }
+  };
+  
+  // Resume a saved game
+  const resumeGame = (session) => {
+    if (!session || !session.roomId) return;
+    
+    // Get the password for this room
+    const savedPassword = getGamePassword(session.roomId);
+    if (!savedPassword) {
+      alert('Password not found for this game session');
+      return;
+    }
+    
+    // Set up session info
+    setRoomId(session.roomId);
+    setGameMode("online");
+    setPlayerName(session.playerName || 'Player');
+    setPlayerColor(session.playerColor || 'white');
+    setIsResuming(true);
+    setPasswordProtected(true);
+    setGamePassword(savedPassword);
+    
+    // Update URL with room ID
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('room', session.roomId);
+      window.history.pushState({}, '', url);
+    }
+    
+    // Connect and join room
+    if (socketRef.current) {
+      socketRef.current.emit('joinRoom', { 
+        roomId: session.roomId,
+        username: session.playerName || 'Player',
+        isResuming: true,
+        password: savedPassword
+      });
+    }
+    
+    // Close the modal
+    setShowSavedGamesModal(false);
+  };
+  
+  // Load saved sessions on component mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const sessions = getSavedSessions();
+      setSavedSessions(sessions);
+    }
+  }, []);
 
   return (
     <div className={`flex flex-col items-center min-h-screen p-4 bg-gray-50 text-gray-900 ${darkMode ? 'dark-mode dark:bg-gray-900 dark:text-gray-100' : ''}`}>
@@ -817,10 +1092,17 @@ export default function ChessComponent() {
               </button>
               <button 
                 onClick={() => setShowMatchmaking(true)}
-                className="py-2 px-4 rounded-r-md bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-blue-600 hover:text-white flex items-center gap-2"
+                className="py-2 px-4 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-blue-600 hover:text-white flex items-center gap-2"
               >
                 <Users size={18} />
                 Find Match
+              </button>
+              <button 
+                onClick={() => setShowSavedGamesModal(true)}
+                className="py-2 px-4 rounded-r-md bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-blue-600 hover:text-white flex items-center gap-2"
+              >
+                <History size={18} />
+                Saved Games
               </button>
             </div>
           )}
@@ -917,6 +1199,31 @@ export default function ChessComponent() {
                 {linkCopied ? "Copied!" : "Copy Link"}
               </button>
             </div>
+            
+            {/* Password protection toggle */}
+            {waitingForOpponent && (
+              <div className="flex items-center justify-between border-t border-gray-200 dark:border-gray-700 pt-2 mt-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="password-protection"
+                    checked={passwordProtected}
+                    onChange={handlePasswordProtection}
+                    className="h-4 w-4"
+                  />
+                  <label htmlFor="password-protection" className="text-sm">
+                    Password protect this game
+                  </label>
+                </div>
+                
+                {passwordProtected && gamePassword && (
+                  <div className="text-sm">
+                    <span className="text-gray-500 mr-1">Password:</span>
+                    <span className="font-mono font-medium">{gamePassword}</span>
+                  </div>
+                )}
+              </div>
+            )}
             
             <div className="flex justify-between items-center">
               <div className="player-info">
@@ -1242,6 +1549,105 @@ export default function ChessComponent() {
           </div>
         </div>
       </div>
+      
+      {/* Password modal */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="game-room-container p-6 shadow-lg max-w-md w-full">
+            <h2 className="text-xl font-bold mb-4">Password Required</h2>
+            <p className="mb-4">This game is password protected. Please enter the password to join.</p>
+            
+            <form onSubmit={verifyPassword}>
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Game Password:</label>
+                <input
+                  className="w-full rounded-md border border-gray-300 dark:border-gray-600 p-2 bg-white dark:bg-gray-700"
+                  type="password"
+                  placeholder="Enter password"
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  required
+                />
+                {passwordError && (
+                  <p className="text-red-500 text-sm mt-1">{passwordError}</p>
+                )}
+              </div>
+              
+              <div className="flex justify-end gap-2 mt-6">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPasswordModal(false);
+                    exitOnlineGame();
+                  }}
+                  className="chess-button chess-button-secondary"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="chess-button chess-button-primary"
+                >
+                  Submit
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      
+      {/* Saved games modal */}
+      {showSavedGamesModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="game-room-container p-6 shadow-lg max-w-md w-full">
+            <h2 className="text-xl font-bold mb-4">Saved Games</h2>
+            
+            {savedSessions.length === 0 ? (
+              <p className="text-center py-4 text-gray-500">No saved games found</p>
+            ) : (
+              <div className="max-h-96 overflow-y-auto">
+                {savedSessions.map((session, index) => (
+                  <div 
+                    key={index} 
+                    className="border border-gray-200 dark:border-gray-700 rounded-md p-3 mb-2 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  >
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <div className="font-medium">{session.playerName || 'Anonymous'}</div>
+                        <div className="text-sm text-gray-500">
+                          Room: <span className="font-mono">{session.roomId}</span>
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {new Date(session.timestamp).toLocaleString()}
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <div className="text-sm font-medium">{session.playerColor}</div>
+                        <button 
+                          onClick={() => resumeGame(session)}
+                          className="chess-button chess-button-primary !py-1 !px-2 text-sm"
+                        >
+                          Resume
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                type="button"
+                onClick={() => setShowSavedGamesModal(false)}
+                className="chess-button chess-button-secondary"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 
