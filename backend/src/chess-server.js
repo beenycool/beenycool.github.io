@@ -904,10 +904,33 @@ app.get('/', (req, res) => {
 });
 
 // Start the server
-const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
-  console.log(`Chess server running on port ${PORT}`);
-});
+const PORT = process.env.CHESS_PORT || 10000;
+let currentPort = PORT;
+let retries = 0;
+const MAX_RETRIES = 5;
+
+function startServer(port) {
+  server.listen(port, () => {
+    console.log(`Chess server running on port ${port}`);
+  }).on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      retries += 1;
+      if (retries <= MAX_RETRIES) {
+        currentPort = port + retries;
+        console.log(`Port ${port} is in use, trying ${currentPort} instead...`);
+        startServer(currentPort);
+      } else {
+        console.error(`Could not find an available port after ${MAX_RETRIES} retries.`);
+        // Inform main server about the failure
+        process.send && process.send({ type: 'chess-server-failed' });
+      }
+    } else {
+      console.error('Error starting chess server:', err);
+    }
+  });
+}
+
+startServer(currentPort);
 
 // Cleanup on server shutdown
 process.on('SIGINT', () => {

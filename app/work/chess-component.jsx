@@ -64,9 +64,11 @@ const boardThemes = [
 // Use the existing backend API URL if available, or fallback to local Socket.io
 const useExistingBackend = true;
 const SOCKET_SERVER_URL = useExistingBackend 
-  ? (typeof window !== 'undefined' && window.location.hostname === 'beenycool.github.io'
-     ? 'https://beenycool-github-io.onrender.com' // External backend for GitHub Pages (removed /api/chess-socket)
-     : '/api/chess-socket') // Local API route for development
+  ? (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_SOCKET_URL
+      ? process.env.NEXT_PUBLIC_SOCKET_URL // Use environment variable if available
+      : window.location.hostname === 'beenycool.github.io'
+        ? 'https://beenycool-github-io.onrender.com' // External backend for GitHub Pages
+        : '/api/chess-socket') // Local API route for development
   : 'http://localhost:3001';
 
 // Password protection constants

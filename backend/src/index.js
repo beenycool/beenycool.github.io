@@ -39,6 +39,13 @@ const chessServer = require('./chess-server');
 const app = express();
 const server = http.createServer(app);
 
+// Setup event handling for chess server failures if using child process
+process.on('message', (message) => {
+  if (message.type === 'chess-server-failed') {
+    console.warn('Chess server failed to start. Chess functionality may be limited.');
+  }
+});
+
 // MongoDB connection
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/beenycool';
 
