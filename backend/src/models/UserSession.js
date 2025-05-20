@@ -1,5 +1,6 @@
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../db/config');
+const User = require('./User'); // Import User model
 
 const UserSession = sequelize.define('UserSession', {
   userId: {
@@ -44,6 +45,12 @@ const UserSession = sequelize.define('UserSession', {
       fields: ['expiresAt']
     }
   ]
+});
+
+// Define Association
+UserSession.belongsTo(User, {
+  foreignKey: 'userId',
+  as: 'user' // This alias must match the one used in controller includes
 });
 
 module.exports = UserSession; 

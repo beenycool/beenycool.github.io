@@ -1,6 +1,7 @@
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../db/config');
 const bcrypt = require('bcryptjs');
+const UserSession = require('./UserSession'); // Import UserSession model
 
 const User = sequelize.define('User', {
   username: {
@@ -74,5 +75,11 @@ const User = sequelize.define('User', {
 User.prototype.comparePassword = async function(candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
+
+// Define Association
+User.hasMany(UserSession, {
+  foreignKey: 'userId',
+  as: 'sessions' // This alias can be used if you query User and want to include their sessions
+});
 
 module.exports = User; 

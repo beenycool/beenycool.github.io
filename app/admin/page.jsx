@@ -162,7 +162,7 @@ const AdminDashboard = () => {
         }
       });
       
-      setSelectedSession(response.data.session);
+      setSelectedSession(response.data);
       setLoading(false);
     } catch (err) {
       console.error('Error fetching session details:', err);
