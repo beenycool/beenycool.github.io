@@ -1440,6 +1440,7 @@ const AIMarker = () => {
   const submitButtonRef = useRef(null); 
   const hasManuallySetSubject = useRef(false);
   const backendStatusRef = useRef('checking');
+  const currentModelForRequestRef = useRef(null);
   const [backendUpdated, setBackendUpdated] = useState(false);
   const [autoMaxTokens, setAutoMaxTokens] = useState(true);
   const [maxTokens, setMaxTokens] = useState(2048);
@@ -1484,6 +1485,11 @@ const AIMarker = () => {
     const savedModel = localStorage.getItem(LOCALSTORAGE_KEYS.MODEL);
     if (savedModel && AI_MODELS.find(m => m.value === savedModel)) {
       setSelectedModel(savedModel);
+      // Initialize the currentModelForRequestRef with the saved model
+      currentModelForRequestRef.current = savedModel;
+    } else {
+      // Initialize with the default model
+      currentModelForRequestRef.current = "gemini-2.5-flash-preview-04-17";
     }
     const savedTier = localStorage.getItem(LOCALSTORAGE_KEYS.TIER);
     if (savedTier === "higher" || savedTier === "foundation") {
@@ -1512,6 +1518,8 @@ const AIMarker = () => {
     localStorage.setItem(LOCALSTORAGE_KEYS.MODEL, selectedModel);
     // Update thinking budget when model changes
     setThinkingBudget(DEFAULT_THINKING_BUDGETS[selectedModel] || 1024);
+    // Keep the reference updated with the current model
+    currentModelForRequestRef.current = selectedModel;
   }, [selectedModel]);
 
   useEffect(() => {
