@@ -90,7 +90,8 @@ const AI_MODELS = [
   { value: "xai/grok-3", label: "Grok-3", description: "X AI Model (Grok)" },
   { value: "gemini-2.5-flash-preview-04-17", label: "Gemini 2.5 Flash Preview", description: "Best quality with faster response times" },
   { value: "microsoft/mai-ds-r1:free", label: "R1 (thinking model)", description: "Most thorough reasoning process (may take 1-2 minutes)" }, // Unlimited (OpenRouter, no usage limits)
-  { value: "deepseek/deepseek-chat-v3-0324:free", label: "V3 (balanced model)", description: "Balanced speed and quality" }
+  { value: "deepseek/deepseek-chat-v3-0324:free", label: "V3 (balanced model)", description: "Balanced speed and quality" },
+  { value: "google/gemini-2.0-flash-exp:free", label: "Gemini 2.0 Flash (OpenRouter)", description: "Experimental fast model from Google via OpenRouter" }
 ];
 
 // Add fallback models for when primary models are rate limited
@@ -127,7 +128,8 @@ const MODEL_RATE_LIMITS = {
 
 // Define specific models for specific tasks
 const TASK_SPECIFIC_MODELS = {
-  "image_processing": "gemini-2.5-flash-preview-04-17" // Updated to use Gemini 2.5 Flash for image processing
+  "image_processing": "gemini-2.5-flash-preview-04-17", // Updated to use Gemini 2.5 Flash for image processing
+  "subject_assessment": "google/gemini-2.0-flash-exp:free" // Use Gemini 2.0 Flash for subject assessments
 };
 
 // Define default thinking budgets for models that support it
@@ -1619,6 +1621,74 @@ const AIMarker = () => {
   };
 
   // Submit handler
+// Define the prompt building functions
+  const buildSystemPrompt = () => {
+    // System prompt logic based on component state
+    console.log("AIMarker state for system prompt:", { subject, examBoard, questionType, userType, markScheme, totalMarks, textExtract, relevantMaterial, tier, allSubjects });
+    let prompt = `You are an AI assistant specialized in educational assessment.`;
+    if (userType) prompt += ` You are acting as a ${userType}.`;
+    if (subject) prompt += ` Your current task is to assess a piece of work for the subject: ${subject}.`;
+    if (allSubjects && allSubjects.find(s => s.value === subject)?.hasTiers && tier) {
+      prompt += ` The work is for the ${tier} tier.`;
+    }
+    if (examBoard) prompt += ` The examination board is ${examBoard}.`;
+    if (questionType && questionType !== "general") {
+      const selectedQuestionType = QUESTION_TYPES[subject]?.[examBoard]?.find(qt => qt.value === questionType);
+      if (selectedQuestionType) {
+        prompt += ` Specifically, this is for ${selectedQuestionType.label}.`;
+      }
+    }
+    if (totalMarks) prompt += ` The question is out of ${totalMarks} marks.`;
+    if (markScheme) prompt += `\n\nThe following mark scheme should be used as a guide if available:\n\`\`\`\n${markScheme}\n\`\`\`\n`;
+    if (textExtract) prompt += `\n\nA text extract has been provided and may be relevant:\n\`\`\`\n${textExtract}\n\`\`\`\n`;
+    if (relevantMaterial) prompt += `\n\nOther relevant material to consider:\n\`\`\`\n${relevantMaterial}\n\`\`\`\n`;
+    prompt += "\nYour primary goal is to provide constructive feedback and a grade based on the user's answer to the question. Adhere to the provided mark scheme if available."
+    return prompt;
+  };
+
+  const buildUserPrompt = () => {
+    // User prompt logic based on component state
+    console.log("AIMarker state for user prompt:", { question, answer, totalMarks, subject, examBoard, questionType, textExtract, relevantMaterial, relevantMaterialImageBase64 });
+    let prompt = "Please assess the following student's answer.\n\n";
+
+    if (question) {
+      prompt += `**Question:**\n${question}\n\n`;
+    } else {
+      prompt += "**Question:** [Not explicitly provided, infer from context if possible or provide general feedback on the answer below.]\n\n";
+    }
+
+    if (answer) {
+      prompt += `**Student's Answer:**\n${answer}\n\n`;
+    } else {
+      // This case should ideally be caught by validation, but as a fallback:
+      prompt += "**Student's Answer:** [No answer provided. Please indicate that an answer is needed for assessment.]\n\n";
+      return prompt; // Early exit if no answer
+    }
+
+    if (totalMarks) {
+      prompt += `The question is out of **${totalMarks} marks**.\n\n`;
+    }
+
+    if (textExtract) {
+      prompt += `**Provided Text Extract (for context):**\n\`\`\`\n${textExtract}\n\`\`\`\n\n`;
+    }
+
+    if (relevantMaterial) {
+      prompt += `**Other Provided Relevant Material (for context):**\n\`\`\`\n${relevantMaterial}\n\`\`\`\n\n`;
+    }
+    
+    if (relevantMaterialImageBase64) {
+        prompt += `**An image has also been provided with relevant material.** Please consider this in your assessment.\n\n`;
+    }
+
+    prompt += "Based on all the information provided (including the system prompt context like subject, exam board, and mark scheme if available), please provide:\n";
+    prompt += "1.  **Overall Feedback:** Constructive comments on the student's performance, highlighting strengths and areas for improvement.\n";
+    prompt += "2.  **Mark Allocation (if applicable):** If a total mark is specified, suggest a mark out of the total. Briefly justify your mark allocation against the mark scheme or assessment criteria.\n";
+    prompt += "3.  **Specific Pointers:** Bullet points on specific aspects of the answer, referencing parts of the mark scheme or good practice where appropriate.\n";
+    prompt += "4.  **Actionable Advice:** Suggestions for how the student can improve in the future.\n\n";
+    prompt += "Present the feedback clearly and concisely. If a mark scheme was provided in the system prompt, ensure your feedback aligns with it.";
+    return prompt;
+  };
   const handleSubmitForMarking = useCallback(async () => {
     // Clear previous feedback and errors
     setFeedback(""); // Clear feedback before streaming
@@ -1627,7 +1697,10 @@ const AIMarker = () => {
     setSuccess(null);
     setModelThinking("");
     setAchievedMarks(null);
-    setCurrentModelForRequest(selectedModel); // Keep track of the model used for this specific request
+    // Determine the model to use for this request
+    const modelForSubjectAssessment = TASK_SPECIFIC_MODELS.subject_assessment;
+    const effectiveModel = subject && modelForSubjectAssessment ? modelForSubjectAssessment : selectedModel;
+    setCurrentModelForRequest(effectiveModel);
 
     // Validate inputs
     if (!answer) {

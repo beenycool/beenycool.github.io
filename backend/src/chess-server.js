@@ -4,6 +4,10 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const jwt = require('jsonwebtoken');
+
+// JWT Secret (should match the one in your auth controller/middleware)
+const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key';
 
 // Try to load port manager, but provide fallbacks if it fails
 let freePort, findAvailablePort;
@@ -196,730 +200,625 @@ function saveGameForReplay(roomId, endInfo = null) {
 
 // Find a match for player
 function findMatch(socket, playerOptions) {
-  // Check if any player is waiting with compatible options
-  const matchIndex = waitingPlayers.findIndex(player => {
-    // For demo, just match any player
-    // In production, match by rating, time control preferences, etc.
-    return true;
-  });
-  
-  if (matchIndex !== -1) {
-    const opponent = waitingPlayers[matchIndex];
-    waitingPlayers.splice(matchIndex, 1); // Remove matched player
-    
-    // Create a new game room
-    const roomId = `match_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    
-    // Determine colors randomly (50/50 chance)
-    const isWhite = Math.random() >= 0.5;
-    
-    const whiteId = isWhite ? socket.id : opponent.id;
-    const blackId = isWhite ? opponent.id : socket.id;
-    const whiteName = isWhite ? playerOptions.username : opponent.options.username;
-    const blackName = isWhite ? opponent.options.username : playerOptions.username;
-    
-    // Use requested time control or default
-    const timeControl = playerOptions.timeControl || {
-      initial: 600, // 10 minutes
-      increment: 5   // 5 seconds
-    };
-    
-    // Create game room
-    gameRooms.set(roomId, {
-      white: whiteId,
-      black: blackId,
-      whiteName,
-      blackName,
-      spectators: [],
-      gameState: null,
-      moves: [],
-      chat: [],
-      createdAt: new Date().toISOString(),
-      timeControl: {
-        initial: timeControl.initial,
-        increment: timeControl.increment,
-        whiteTime: timeControl.initial,
-        blackTime: timeControl.initial
-      },
-      currentTurn: 'white'
+  try {
+    // Check if any player is waiting with compatible options
+    const matchIndex = waitingPlayers.findIndex(player => {
+      // For demo, just match any player
+      // In production, match by rating, time control preferences, etc.
+      return true; // Basic matching for now
     });
-    
-    // Join both players to the room
-    socket.join(roomId);
-    io.sockets.sockets.get(opponent.id)?.join(roomId);
-    
-    // Notify both players
-    socket.emit('matchFound', {
-      roomId,
-      color: isWhite ? 'white' : 'black',
-      opponent: isWhite ? blackName : whiteName,
-      timeControl
-    });
-    
-    io.to(opponent.id).emit('matchFound', {
-      roomId,
-      color: isWhite ? 'black' : 'white',
-      opponent: isWhite ? whiteName : blackName,
-      timeControl
-    });
-    
-    // Start the chess clock
-    startChessClock(roomId);
-    
-    return true;
+
+    if (matchIndex !== -1) {
+      const opponent = waitingPlayers[matchIndex];
+      waitingPlayers.splice(matchIndex, 1); // Remove matched player
+
+      const roomId = `match_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      const isWhite = Math.random() >= 0.5;
+
+      const whiteId = isWhite ? socket.id : opponent.id;
+      const blackId = isWhite ? opponent.id : socket.id;
+      const whiteName = isWhite ? (playerOptions.username || 'Player1') : (opponent.options.username || 'Player2');
+      const blackName = isWhite ? (opponent.options.username || 'Player2') : (playerOptions.username || 'Player1');
+      
+      const timeControl = playerOptions.timeControl || { initial: 600, increment: 5 };
+
+      gameRooms.set(roomId, {
+        white: whiteId,
+        black: blackId,
+        whiteName,
+        blackName,
+        spectators: [],
+        gameState: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', // Initial FEN
+        moves: [],
+        chat: [],
+        createdAt: new Date().toISOString(),
+        timeControl: { ...timeControl, whiteTime: timeControl.initial, blackTime: timeControl.initial },
+        currentTurn: 'white'
+      });
+
+      const opponentSocket = io.sockets.sockets.get(opponent.id);
+
+      // Join both players to the room
+      socket.join(roomId);
+      if (opponentSocket) {
+        opponentSocket.join(roomId);
+      } else {
+        // This should ideally not happen if opponent was in waitingPlayers
+        console.error(`Opponent socket ${opponent.id} not found for match ${roomId}`);
+        // Potentially add current player back to queue or notify them
+        handleServerError(socket, `Could not find opponent socket for match.`, 'MATCHMAKING_ERROR_OPPONENT_LEFT');
+        // Clean up room if opponent is gone? Or let it be for the current player?
+        // For now, let current player know.
+        return false; // Indicate match setup failed
+      }
+      
+      // Notify both players
+      socket.emit('matchFound', { roomId, color: isWhite ? 'white' : 'black', opponent: isWhite ? blackName : whiteName, timeControl });
+      io.to(opponent.id).emit('matchFound', { roomId, color: isWhite ? 'black' : 'white', opponent: isWhite ? whiteName : blackName, timeControl });
+      
+      startChessClock(roomId);
+      console.log(`Match found: ${roomId} between ${whiteName} (white) and ${blackName} (black)`);
+      return true;
+    }
+
+    // No match found, add to waiting list
+    waitingPlayers.push({ id: socket.id, options: playerOptions });
+    socket.emit('waitingForMatch');
+    return false;
+
+  } catch (error) {
+    handleServerError(socket, error, 'FIND_MATCH_FAILED');
+    return false; // Indicate failure
   }
-  
-  // No match found, add to waiting list
-  waitingPlayers.push({
-    id: socket.id,
-    options: playerOptions
-  });
-  
-  socket.emit('waitingForMatch');
-  return false;
 }
+
+// Helper function to authenticate socket user from token
+async function authenticateSocketUser(token) {
+  if (!token) {
+    throw new Error('Authentication error: No token provided.');
+  }
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const user = await User.findByPk(decoded.id); // User model is already required
+    if (!user) {
+      throw new Error('Authentication error: User not found.');
+    }
+    return {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      chessRating: user.chessRating,
+      // Add other necessary fields from user model if needed
+    };
+  } catch (err) {
+    if (err.name === 'TokenExpiredError') {
+      throw new Error('Authentication error: Token expired.');
+    }
+    if (err.name === 'JsonWebTokenError') {
+      throw new Error('Authentication error: Invalid token.');
+    }
+    console.error('Token verification error:', err.message);
+    throw new Error('Authentication error: Could not verify token.');
+  }
+}
+
+// Standardized error handling function
+function handleServerError(socket, error, errorCode = 'INTERNAL_SERVER_ERROR', additionalInfo = {}) {
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  console.error(`[SocketError] User: ${socket.user?.username || socket.id}, Code: ${errorCode}, Message: ${errorMessage}`, additionalInfo);
+  
+  // Avoid sending sensitive error details to client in production
+  const clientMessage = process.env.NODE_ENV === 'production' && errorCode === 'INTERNAL_SERVER_ERROR'
+    ? 'An unexpected error occurred. Please try again later.'
+    : errorMessage;
+
+  socket.emit('server_error', {
+    code: errorCode,
+    message: clientMessage,
+    ...additionalInfo
+  });
+}
+
+// Socket.io connection middleware for authentication
+io.use(async (socket, next) => {
+  const token = socket.handshake.auth.token;
+  if (token) {
+    try {
+      const user = await authenticateSocketUser(token);
+      socket.user = user; // Attach user to socket object
+      console.log(`User ${user.username} (ID: ${user.id}) authenticated for socket ${socket.id}`);
+      next();
+    } catch (error) {
+      // Use the new error handler for middleware errors, but pass to next() to deny connection
+      const errorCode = error.message.includes('Token expired') ? 'TOKEN_EXPIRED' :
+                        error.message.includes('Invalid token') ? 'INVALID_TOKEN' :
+                        'AUTHENTICATION_FAILED';
+      // Log it server-side
+      console.error(`[AuthMiddlewareError] SocketID: ${socket.id}, Code: ${errorCode}, Message: ${error.message}`);
+      // Deny connection
+      return next(new Error(error.message)); // This will cause client to receive 'connect_error' with the message
+    }
+  } else {
+    // No token provided, proceed as guest
+    socket.user = null; // Explicitly mark as guest or unauthenticated
+    console.log(`Socket ${socket.id} connected as guest.`);
+    next();
+  }
+});
 
 // Socket.io connection handler
 io.on('connection', (socket) => {
-  console.log(`User connected: ${socket.id}`);
-  
+  // socket.user is now available here if authentication was successful
+  if (socket.user) {
+    console.log(`User ${socket.user.username} (Socket ID: ${socket.id}) connected and authenticated.`);
+  } else {
+    console.log(`Guest user (Socket ID: ${socket.id}) connected.`);
+  }
+
   // Join matchmaking queue
   socket.on('findMatch', (playerOptions = {}) => {
-    console.log(`Player ${socket.id} is looking for a match`);
-    findMatch(socket, playerOptions);
+    try {
+      console.log(`Player ${socket.user?.username || socket.id} is looking for a match with options:`, playerOptions);
+      const success = findMatch(socket, playerOptions || {});
+      // If findMatch fails internally, it should call handleServerError.
+      // No need for further error handling here unless findMatch can return false without erroring.
+    } catch (error) {
+      handleServerError(socket, error, 'FIND_MATCH_EVENT_FAILED', { options: playerOptions });
+    }
   });
-  
+
   // Cancel matchmaking
   socket.on('cancelMatchmaking', () => {
-    const index = waitingPlayers.findIndex(p => p.id === socket.id);
-    if (index !== -1) {
-      waitingPlayers.splice(index, 1);
-      socket.emit('matchmakingCancelled');
+    try {
+      const index = waitingPlayers.findIndex(p => p.id === socket.id);
+      if (index !== -1) {
+        waitingPlayers.splice(index, 1);
+        socket.emit('matchmakingCancelled');
+        console.log(`Player ${socket.user?.username || socket.id} cancelled matchmaking.`);
+      } else {
+        console.log(`Player ${socket.user?.username || socket.id} tried to cancel matchmaking but was not in queue.`);
+        socket.emit('notInMatchmakingQueue');
+      }
+    } catch (error) {
+      handleServerError(socket, error, 'CANCEL_MATCHMAKING_FAILED');
     }
   });
 
   // Join a game room
-  socket.on('joinRoom', async ({ roomId, username, isResuming, password, userId }) => {
+  socket.on('joinRoom', async ({ roomId, clientProvidedUsername, isResuming, password }) => {
     try {
-      let user = null;
-      
-      // If userId is provided, find the user in the database
-      if (userId) {
-        user = await User.findByPk(userId);
-        username = user ? user.username : username || 'Anonymous';
+      if (!roomId) {
+        return handleServerError(socket, 'Room ID is required.', 'INVALID_INPUT', { field: 'roomId' });
       }
-      
-      // Check if room exists
+
+      const authenticatedUser = socket.user;
+      let effectiveUsername = (authenticatedUser ? authenticatedUser.username : clientProvidedUsername) || 'Anonymous';
+
       let room = gameRooms.get(roomId);
-      
-      // If room doesn't exist, create it
       if (!room) {
         room = {
-          white: null,
-          black: null,
-          whiteName: null,
-          blackName: null,
+          white: null, black: null, whiteName: null, blackName: null,
           spectators: [],
-          gameState: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', // Initial position
-          moves: [],
-          chat: [],
-          hasPassword: false,
-          password: null,
+          gameState: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+          moves: [], chat: [],
+          hasPassword: false, password: null,
           createdAt: new Date().toISOString(),
-          timeControl: {
-            initial: 600, // 10 minutes default
-            increment: 5, // 5 seconds increment
-            whiteTime: 600,
-            blackTime: 600
-          },
-          currentTurn: 'white',
-          preMoves: [] // Store pre-moves
+          timeControl: { initial: 600, increment: 5, whiteTime: 600, blackTime: 600 },
+          currentTurn: 'white', preMoves: [], isOver: false,
+          creatorUserId: authenticatedUser ? authenticatedUser.id : null // Store creator
         };
-        
         gameRooms.set(roomId, room);
+        console.log(`Room ${roomId} created by ${effectiveUsername}.`);
       }
-      
-      // Password check
-      if (room.hasPassword && !isResuming) {
+
+      if (room.hasPassword && !isResuming && room.white !== socket.id && room.black !== socket.id) { // Don't ask password if already in room
         if (!password || password !== room.password) {
-          socket.emit('passwordRequired');
-          return;
+          return handleServerError(socket, 'Password required or incorrect.', 'PASSWORD_REQUIRED', { roomId });
         }
       }
-      
-      // If resuming a game, restore state
-      if (isResuming) {
-        // We should restore the previous state
-        socket.emit('gameResumed', {
-          gameState: room.gameState,
-          moveHistory: room.moves,
-          chatHistory: room.chat,
-          playerColor: room.white === socket.id ? 'white' : room.black === socket.id ? 'black' : null,
-          opponentName: room.white === socket.id ? room.blackName : room.whiteName,
-          timeControl: {
-            white: room.timeControl.whiteTime,
-            black: room.timeControl.blackTime,
-            increment: room.timeControl.increment
-          }
-        });
+
+      try {
+        socket.join(roomId);
+      } catch (joinError) {
+        return handleServerError(socket, joinError, 'SOCKET_JOIN_FAILED', { roomId });
       }
-      
-      // Join the socket room
-      socket.join(roomId);
-      
-      // Determine if player will be white, black, or spectator
+
       let playerColor = null;
-      
-      if (!room.white) {
-        room.white = socket.id;
-        room.whiteName = username;
+      let opponentName = null;
+
+      if (room.white === socket.id) {
         playerColor = 'white';
-        if (user) {
-          // Create or update the ChessGame record
-          await ChessGame.upsert({
-            gameId: roomId,
-            players: {
-              white: {
-                userId: user.id,
-                username: username,
-                rating: user.chessRating
-              },
-              black: room.players?.black || { userId: null, username: null, rating: 1200, ratingChange: 0 }
-            },
-            startTime: new Date(),
-            isRated: true,
-          });
-        }
-      } else if (!room.black && room.white !== socket.id) {
-        room.black = socket.id;
-        room.blackName = username;
-        playerColor = 'black';
-        if (user) {
-          // Update the ChessGame record
-          let gameInstance = await ChessGame.findOne({ where: { gameId: roomId } });
-          if (gameInstance) {
-            const updatedPlayers = {
-              ...gameInstance.players,
-              black: {
-                userId: user.id,
-                username: username,
-                rating: user.chessRating,
-                ratingChange: 0
-              }
-            };
-            await gameInstance.update({ players: updatedPlayers });
-          } else {
-            await ChessGame.upsert({
-              gameId: roomId,
-              players: {
-                white: room.players?.white || { userId: null, username: null, rating: 1200, ratingChange: 0 },
-                black: {
-                  userId: user.id,
-                  username: username,
-                  rating: user.chessRating
-                }
-              },
-              startTime: new Date(),
-              isRated: true,
-            });
-          }
-        }
-        
-        // Both players are now connected, notify them
-        io.to(roomId).emit('gameReady', {
-          white: room.whiteName,
-          black: room.blackName
-        });
-        
-        // Start the chess clock
-        startChessClock(roomId);
-      } else if (room.white === socket.id) {
-        playerColor = 'white';
+        opponentName = room.blackName;
       } else if (room.black === socket.id) {
         playerColor = 'black';
-      } else {
-        // Add as spectator
-        room.spectators.push({
-          id: socket.id,
-          name: username
-        });
-        
-        // Notify players of new spectator
-        socket.to(roomId).emit('spectatorJoined', {
-          spectatorName: username,
-          spectatorCount: room.spectators.length
-        });
-        
-        // Notify spectator of current game state
-        socket.emit('gameState', {
-          gameState: room.gameState,
-          moveHistory: room.moves,
-          chatHistory: room.chat,
-          white: room.whiteName,
-          black: room.blackName,
-          timeControl: {
-            white: room.timeControl.whiteTime,
-            black: room.timeControl.blackTime
+        opponentName = room.whiteName;
+      } else if (!room.white) {
+        room.white = socket.id;
+        room.whiteName = effectiveUsername;
+        playerColor = 'white';
+        if (authenticatedUser) {
+          room.creatorUserId = authenticatedUser.id; // Ensure creator is set
+          await ChessGame.upsert({
+            gameId: roomId,
+            players: { white: { userId: authenticatedUser.id, username: authenticatedUser.username, rating: authenticatedUser.chessRating || 1200, ratingChange: 0 }, black: { userId: null, username: null, rating: 1200, ratingChange: 0 } },
+            startTime: new Date(), isRated: true, currentFen: room.gameState,
+          }).catch(dbError => { console.error(`DB error assigning white player ${authenticatedUser.username} to ${roomId}: ${dbError.message}`); throw dbError; });
+        }
+      } else if (!room.black) {
+        room.black = socket.id;
+        room.blackName = effectiveUsername;
+        playerColor = 'black';
+        opponentName = room.whiteName;
+        if (authenticatedUser) {
+          const blackPlayerData = { userId: authenticatedUser.id, username: authenticatedUser.username, rating: authenticatedUser.chessRating || 1200, ratingChange: 0 };
+          let gameInstance = await ChessGame.findOne({ where: { gameId: roomId } })
+            .catch(dbError => { console.error(`DB error finding game ${roomId} to assign black player: ${dbError.message}`); throw dbError; });
+          if (gameInstance) {
+            const updatedPlayers = { ...gameInstance.players, black: blackPlayerData };
+            await gameInstance.update({ players: updatedPlayers })
+              .catch(dbError => { console.error(`DB error updating game ${roomId} with black player: ${dbError.message}`); throw dbError; });
+          } else { // Should ideally not happen if white (auth) created it
+            await ChessGame.upsert({
+              gameId: roomId,
+              players: { white: { userId: room.creatorUserId, username: room.whiteName, rating: (await User.findByPk(room.creatorUserId))?.chessRating || 1200, ratingChange: 0 }, black: blackPlayerData },
+              startTime: new Date(), isRated: true, currentFen: room.gameState,
+            }).catch(dbError => { console.error(`DB error upserting game ${roomId} for black player: ${dbError.message}`); throw dbError; });
           }
-        });
+        }
+        io.to(roomId).emit('gameReady', { white: room.whiteName, black: room.blackName, timeControl: room.timeControl });
+        startChessClock(roomId);
+      } else { // Spectator
+        if (!room.spectators.find(spec => spec.id === socket.id)) {
+          room.spectators.push({ id: socket.id, username: effectiveUsername });
+        }
+        socket.to(roomId).emit('spectatorJoined', { username: effectiveUsername, count: room.spectators.length });
+      }
+
+      const commonGameState = {
+        gameState: room.gameState, moveHistory: room.moves, chatHistory: room.chat,
+        whiteName: room.whiteName, blackName: room.blackName,
+        timeControl: { white: room.timeControl.whiteTime, black: room.timeControl.blackTime, increment: room.timeControl.increment },
+        isRated: room.isRated !== undefined ? room.isRated : true, // Default to rated
+        hasPassword: room.hasPassword,
+      };
+
+      if (isResuming && playerColor) {
+        socket.emit('gameResumed', { ...commonGameState, playerColor, opponentName });
+      } else {
+        socket.emit('gameState', { ...commonGameState, playerColor, opponentName });
+      }
+
+      if (playerColor) {
+        socket.emit('joinedAsColor', { color: playerColor, opponentName, timeControl: commonGameState.timeControl });
+        const otherPlayerSocketId = playerColor === 'white' ? room.black : room.white;
+        if (otherPlayerSocketId) {
+            io.to(otherPlayerSocketId).emit('opponentJoined', { opponentName: effectiveUsername });
+        }
       }
       
-      // If this is a player (not a spectator), send color assignment and notify opponent
-      if (playerColor) {
-        socket.emit('joinedAsColor', {
-          color: playerColor,
-          timeControl: {
-            whiteTime: room.timeControl.whiteTime,
-            blackTime: room.timeControl.blackTime,
-            increment: room.timeControl.increment
-          }
-        });
-        
-        // If opponent is connected, notify them
-        if (playerColor === 'white' && room.black) {
-          socket.to(room.black).emit('opponentJoined', { opponentName: username });
-        } else if (playerColor === 'black' && room.white) {
-          socket.to(room.white).emit('opponentJoined', { opponentName: username });
-        }
-        
-        // Log activity
-        if (user) {
-          const ipAddress = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
-          
-          await ActivityLog.create({
-            user: user.id,
-            username: user.username,
-            ipAddress,
-            actionType: 'chess_game_start',
-            actionDetails: {
-              roomId,
-              playerColor,
-              opponent: playerColor === 'white' ? room.blackName : room.whiteName
-            },
-            performedAt: new Date()
-          });
-        }
+      console.log(`Player ${effectiveUsername} (Socket ID: ${socket.id}) joined room ${roomId} as ${playerColor || 'spectator'}`);
+      if (authenticatedUser) {
+        ActivityLog.create({
+          userId: authenticatedUser.id, username: authenticatedUser.username,
+          action: 'join_room', actionDetails: { roomId, role: playerColor || 'spectator' },
+          ipAddress: socket.handshake.address
+        }).catch(dbError => console.error(`Error logging join_room activity: ${dbError.message}`));
       }
     } catch (error) {
-      console.error('Error in joinRoom:', error);
-      socket.emit('errorMessage', { message: 'An error occurred while joining the game' });
+      handleServerError(socket, error, 'JOIN_ROOM_FAILED', { roomId });
     }
   });
 
-  // Handle setting/unsetting room password
   socket.on('setRoomPassword', ({ roomId, hasPassword, password }) => {
     try {
+      if (!roomId) return handleServerError(socket, 'Room ID required.', 'INVALID_INPUT', { field: 'roomId' });
       const room = gameRooms.get(roomId);
-      if (!room) {
-        socket.emit('errorMessage', { message: 'Room not found' });
-        return;
+      if (!room) return handleServerError(socket, `Room ${roomId} not found.`, 'ROOM_NOT_FOUND');
+      
+      // Allow room creator (if stored) or white player (if no creator stored or matches) to set password
+      const isCreator = socket.user && room.creatorUserId === socket.user.id;
+      const isWhitePlayer = room.white === socket.id;
+
+      if (!isCreator && !isWhitePlayer) {
+        return handleServerError(socket, 'Only the room creator can set the password.', 'FORBIDDEN_ACTION');
       }
 
-      // Basic security: Only allow the creator (e.g., white player) to set password
-      // This assumes white player ID is stored when room is created and is the creator
-      if (room.white !== socket.id) {
-        socket.emit('errorMessage', { message: 'Only the room creator can set the password' });
-        return;
-      }
-
-      room.hasPassword = hasPassword;
-      if (hasPassword && password) {
-        room.password = password; // Store the actual password if provided and setting password
-      } else {
-        room.password = null; // Clear password if unsetting or not provided
-      }
-
-      gameRooms.set(roomId, room);
-      socket.emit('roomPasswordSet', { roomId, hasPassword });
-      // Optionally, notify others in the room if needed, though password changes are sensitive
-      // io.to(roomId).emit('roomPasswordStatusChanged', { hasPassword });
-
+      room.hasPassword = !!hasPassword;
+      room.password = room.hasPassword && password ? password : null;
+      socket.emit('roomPasswordSet', { roomId, hasPassword: room.hasPassword });
+      io.to(roomId).emit('roomSettingsUpdated', { hasPassword: room.hasPassword }); // Notify all in room
+      console.log(`Room ${roomId} password set to ${room.hasPassword} by ${socket.user?.username || socket.id}`);
     } catch (error) {
-      console.error('Error in setRoomPassword:', error);
-      socket.emit('errorMessage', { message: 'Error updating room password status.' });
+      handleServerError(socket, error, 'SET_ROOM_PASSWORD_FAILED', { roomId });
     }
   });
 
-  // Handle move
-  socket.on('move', async ({ roomId, move, gameState }) => {
+  socket.on('move', async ({ roomId, move, gameState: clientGameState }) => {
     try {
-      const room = gameRooms.get(roomId);
-      if (!room) return;
-      
-      const playerColor = room.white === socket.id ? 'white' : 'black';
-      const opponentSocketId = playerColor === 'white' ? room.black : room.white;
-      
-      // Validate that it's the player's turn
-      if (playerColor !== room.currentTurn) {
-        socket.emit('errorMessage', { message: 'Not your turn' });
-        return;
+      if (!roomId || !move || !clientGameState) {
+        return handleServerError(socket, 'Room ID, move, and game state are required.', 'INVALID_INPUT_MOVE');
       }
-      
-      // Apply move
-      room.gameState = gameState;
-      room.moves.push(gameState);
-      
-      // Update current turn
+      const room = gameRooms.get(roomId);
+      if (!room || room.isOver) {
+        return handleServerError(socket, room ? 'Game is already over.' : `Room ${roomId} not found.`, room ? 'GAME_OVER' : 'ROOM_NOT_FOUND');
+      }
+
+      // TODO: Add server-side move validation using chess.js
+      // const chess = new Chess(room.gameState);
+      // const madeMove = chess.move(move); // move can be { from, to, promotion }
+      // if (!madeMove) return handleServerError(socket, 'Invalid move.', 'INVALID_MOVE', { move, fen: room.gameState });
+      // room.gameState = chess.fen(); // Official new game state
+
+      // Temporary: Trust client game state for now, but log if different from expected
+      // if (chess.fen() !== clientGameState) {
+      //   console.warn(`Client FEN ${clientGameState} differs from server validated FEN ${chess.fen()} for room ${roomId}. Using server FEN.`);
+      // }
+      // For now, using client's game state as per original logic, but this is a security/integrity risk.
+      room.gameState = clientGameState;
+
+
+      const playerColor = room.white === socket.id ? 'white' : (room.black === socket.id ? 'black' : null);
+      if (!playerColor) return handleServerError(socket, 'Not a player in this game.', 'NOT_A_PLAYER');
+      if (playerColor !== room.currentTurn) return handleServerError(socket, 'Not your turn.', 'NOT_YOUR_TURN');
+
+      room.moves.push({ ...move, fen: room.gameState, player: playerColor, timestamp: new Date().toISOString() });
       room.currentTurn = playerColor === 'white' ? 'black' : 'white';
-      
-      // Apply clock increment for the player who just moved
+
       const timeKey = playerColor === 'white' ? 'whiteTime' : 'blackTime';
-      room.timeControl[timeKey] += room.timeControl.increment;
-      
-      // Clear pre-moves for the player who just moved
-      room.preMoves = room.preMoves.filter(pm => pm.color !== playerColor);
-      
-      // Notify opponent and spectators
-      if (opponentSocketId) {
-        io.to(opponentSocketId).emit('opponentMove', {
-          move,
-          gameState,
-          remainingTime: room.timeControl
-        });
+      if (room.timeControl && typeof room.timeControl[timeKey] === 'number') {
+        room.timeControl[timeKey] += room.timeControl.increment || 0;
       }
-      
-      // Notify spectators
-      room.spectators.forEach(spectator => {
-        io.to(spectator.id).emit('gameUpdate', {
-          moveFrom: move.from,
-          moveTo: move.to,
-          gameState,
-          playerColor,
-          remainingTime: room.timeControl
-        });
-      });
-      
-      // Get user IDs to update records
-      let whiteUserId = null;
-      let blackUserId = null;
-      
-      // Find the ChessGame record and update it
-      const game = await ChessGame.findOne({ gameId: roomId });
-      if (game) {
-        if (game.players.white.user) {
-          whiteUserId = game.players.white.user;
+
+      room.preMoves = room.preMoves ? room.preMoves.filter(pm => pm.color !== playerColor) : [];
+
+      const moveDataForEmit = { move, gameState: room.gameState, currentTurn: room.currentTurn, remainingTime: room.timeControl };
+      io.to(roomId).emit('gameStateUpdate', moveDataForEmit); // Consolidated update
+
+      let gameDb = await ChessGame.findOne({ where: { gameId: roomId } }).catch(e => { console.error("DB find error on move:", e.message); throw e; });
+      if (gameDb) {
+        gameDb.currentFen = room.gameState;
+        gameDb.moveHistory = [...(gameDb.moveHistory || []), { ...move, fen: room.gameState, player: playerColor, timestamp: new Date().toISOString() }];
+        await gameDb.save().catch(e => { console.error("DB save error on move:", e.message); throw e; });
+
+        if (socket.user && ( (playerColor === 'white' && gameDb.players.white.userId === socket.user.id) || (playerColor === 'black' && gameDb.players.black.userId === socket.user.id) )) {
+          ActivityLog.create({
+            userId: socket.user.id, username: socket.user.username,
+            action: 'chess_move', actionDetails: { roomId, from: move.from, to: move.to, piece: move.piece, promotion: move.promotion, fen: room.gameState },
+            ipAddress: socket.handshake.address
+          }).catch(dbError => console.error(`Error logging chess_move: ${dbError.message}`));
         }
-        if (game.players.black.user) {
-          blackUserId = game.players.black.user;
-        }
-        
-        // Add the move to the game record
-        game.addMove({
-          from: move.from,
-          to: move.to,
-          piece: move.piece || 'unknown',
-          promotion: move.promotion,
-          wasPreMove: false,
-          fen: gameState,
-          timestamp: new Date()
-        });
       }
       
-      // Log move activity for the player
-      const userId = playerColor === 'white' ? whiteUserId : blackUserId;
-      if (userId) {
-        await ActivityLog.create({
-          user: userId,
-          username: playerColor === 'white' ? room.whiteName : room.blackName,
-          actionType: 'chess_move',
-          actionDetails: {
-            roomId,
-            from: move.from,
-            to: move.to,
-            piece: move.piece
-          },
-          performedAt: new Date()
-        });
-      }
-      
-      // Check if there are pre-moves for the new current turn and execute if valid
-      const opponentPreMoves = room.preMoves.filter(pm => pm.color === room.currentTurn);
-      if (opponentPreMoves.length > 0) {
-        const preMove = opponentPreMoves[0]; // Take the first pre-move
-        
-        // Notify the opponent that their pre-move is being executed
+      // Handle pre-move for opponent if any
+      const opponentPreMove = room.preMoves?.find(pm => pm.color === room.currentTurn);
+      if (opponentPreMove) {
+        const opponentSocketId = room.currentTurn === 'white' ? room.white : room.black;
         if (opponentSocketId) {
-          io.to(opponentSocketId).emit('preMoveExecuted', {
-            from: preMove.from,
-            to: preMove.to,
-            promotion: preMove.promotion
-          });
+            // TODO: Validate and execute pre-move server-side
+            // For now, just notify client to play it.
+            io.to(opponentSocketId).emit('executePreMove', opponentPreMove);
+            console.log(`Notified ${room.currentTurn} to execute pre-move in room ${roomId}`);
         }
-        
-        // Remove this pre-move from the list
-        room.preMoves = room.preMoves.filter(pm => pm !== preMove);
+        room.preMoves = room.preMoves.filter(pm => pm !== opponentPreMove);
+      }
+
+    } catch (error) {
+      handleServerError(socket, error, 'MOVE_PROCESSING_FAILED', { roomId, move });
+    }
+  });
+
+  socket.on('sendMessage', ({ roomId, message }) => {
+    try {
+      if (!roomId || typeof message !== 'string' || message.trim() === '') {
+        return handleServerError(socket, 'Room ID and non-empty message required.', 'INVALID_INPUT_CHAT');
+      }
+      const room = gameRooms.get(roomId);
+      if (!room) return handleServerError(socket, `Room ${roomId} not found.`, 'ROOM_NOT_FOUND');
+
+      let senderName = 'Spectator';
+      let senderRole = 'spectator';
+      let senderUserId = null;
+
+      if (socket.user) {
+        senderName = socket.user.username;
+        senderUserId = socket.user.id;
+        if (room.white === socket.id) senderRole = 'white';
+        else if (room.black === socket.id) senderRole = 'black';
+      } else {
+        if (room.white === socket.id) senderName = room.whiteName || 'White';
+        else if (room.black === socket.id) senderName = room.blackName || 'Black';
+      }
+
+      const chatMsg = { sender: senderName, role: senderRole, message: message.substring(0, 500), timestamp: new Date().toISOString(), userId: senderUserId };
+      if (!room.chat) room.chat = [];
+      room.chat.push(chatMsg);
+      if (room.chat.length > 100) room.chat.shift();
+      io.to(roomId).emit('newMessage', chatMsg);
+
+      if (senderUserId && socket.user) {
+        ActivityLog.create({
+          userId: senderUserId, username: senderName,
+          action: 'chat_message', actionDetails: { roomId, messageLength: message.length, role: senderRole },
+          ipAddress: socket.handshake.address
+        }).catch(dbError => console.error(`Error logging chat_message: ${dbError.message}`));
       }
     } catch (error) {
-      console.error('Error in move:', error);
-      socket.emit('errorMessage', { message: 'An error occurred while making the move' });
+      handleServerError(socket, error, 'SEND_MESSAGE_FAILED', { roomId });
     }
   });
-  
-  // Handle chat message
-  socket.on('sendMessage', ({ roomId, message }) => {
-    const room = gameRooms.get(roomId);
-    if (!room) return;
-    
-    let sender = 'Spectator';
-    let role = 'spectator';
-    
-    if (room.white === socket.id) {
-      sender = room.whiteName || 'White';
-      role = 'white';
-    } else if (room.black === socket.id) {
-      sender = room.blackName || 'Black';
-      role = 'black';
-    }
-    
-    const chatMessage = {
-      sender,
-      role,
-      message,
-      timestamp: new Date().toISOString()
-    };
-    
-    // Add to chat history
-    if (!room.chat) room.chat = [];
-    room.chat.push(chatMessage);
-    
-    // Broadcast to everyone in the room including sender
-    io.to(roomId).emit('newMessage', chatMessage);
-  });
-  
-  // Handle game over
-  socket.on('gameOver', async ({ roomId, result, winner }) => {
+
+  socket.on('gameOver', async ({ roomId, result, winner, reason }) => {
     try {
+      if (!roomId || !result) {
+        return handleServerError(socket, 'Room ID and result are required.', 'INVALID_INPUT_GAMEOVER');
+      }
       const room = gameRooms.get(roomId);
-      if (!room) return;
-      
-      // Find the ChessGame record
-      const game = await ChessGame.findOne({ gameId: roomId });
-      if (!game) {
-        console.error('Game not found:', roomId);
+      if (!room) return handleServerError(socket, `Room ${roomId} not found.`, 'ROOM_NOT_FOUND');
+      if (room.isOver) {
+        console.log(`Game ${roomId} already marked over. Ignoring duplicate.`);
         return;
       }
-      
-      // Determine the game result in standard format
-      let resultCode;
-      let terminationReason;
-      
-      if (result.includes('checkmate')) {
-        terminationReason = 'checkmate';
-        resultCode = winner === 'white' ? '1-0' : '0-1';
-      } else if (result.includes('timeout') || result.includes('time')) {
-        terminationReason = 'timeout';
-        resultCode = winner === 'white' ? '1-0' : '0-1';
-      } else if (result.includes('resignation')) {
-        terminationReason = 'resignation';
-        resultCode = winner === 'white' ? '1-0' : '0-1';
-      } else if (result.includes('draw') || result.includes('stalemate')) {
-        resultCode = '1/2-1/2';
-        
-        if (result.includes('stalemate')) {
-          terminationReason = 'stalemate';
-        } else if (result.includes('repetition')) {
-          terminationReason = 'threefold_repetition';
-        } else if (result.includes('insufficient')) {
-          terminationReason = 'insufficient_material';
-        } else if (result.includes('fifty')) {
-          terminationReason = 'fifty_move_rule';
-        } else {
-          terminationReason = 'agreement';
+      room.isOver = true;
+
+      let gameDb = null;
+      try {
+        gameDb = await ChessGame.findOne({ where: { gameId: roomId } });
+      } catch (e) { console.error(`DB error finding game ${roomId} for game over: ${e.message}`); /* Continue */ }
+
+      let resultCode = 'unknown';
+      let termReason = reason || 'unknown';
+      const resLc = result.toLowerCase();
+
+      if (winner === 'white') resultCode = '1-0';
+      else if (winner === 'black') resultCode = '0-1';
+      else if (resLc.includes('draw') || resLc.includes('stalemate')) resultCode = '1/2-1/2';
+
+      if (resLc.includes('checkmate')) termReason = 'checkmate';
+      else if (resLc.includes('timeout')) termReason = 'timeout';
+      else if (resLc.includes('resignation')) termReason = 'resignation';
+      else if (resLc.includes('stalemate')) termReason = 'stalemate';
+      // Add other termination reasons as needed
+
+      if (gameDb) {
+        gameDb.result = resultCode;
+        gameDb.termination = termReason;
+        gameDb.finalFen = room.gameState;
+        gameDb.endTime = new Date();
+
+        const pWhite = gameDb.players?.white;
+        const pBlack = gameDb.players?.black;
+
+        if (pWhite?.userId && pBlack?.userId && gameDb.isRated) {
+          try {
+            const ratings = calculateNewRatings(pWhite.rating, pBlack.rating, resultCode);
+            gameDb.players.white.ratingChange = ratings.whiteRatingChange;
+            gameDb.players.black.ratingChange = ratings.blackRatingChange;
+            const newWhiteRating = pWhite.rating + ratings.whiteRatingChange;
+            const newBlackRating = pBlack.rating + ratings.blackRatingChange;
+            await User.update({ chessRating: newWhiteRating }, { where: { id: pWhite.userId } });
+            await User.update({ chessRating: newBlackRating }, { where: { id: pBlack.userId } });
+            gameDb.players.white.rating = newWhiteRating;
+            gameDb.players.black.rating = newBlackRating;
+            console.log(`Ratings updated for ${roomId}: W ${newWhiteRating}, B ${newBlackRating}`);
+          } catch (eloError) { console.error(`EloError for ${roomId}: ${eloError.message}`); }
+        }
+        await gameDb.save().catch(e => console.error(`DB save error on game over ${roomId}: ${e.message}`));
+      } else {
+        console.warn(`No DB game found for ${roomId} at game over.`);
+      }
+
+      io.to(roomId).emit('gameOver', { roomId, reason: termReason, winner, resultCode, whiteName: room.whiteName, blackName: room.blackName });
+      saveGameForReplay(roomId, { result: termReason, winner, finalFen: room.gameState, whiteName: room.whiteName, blackName: room.blackName, resultCode });
+
+      if (room.whiteName && room.blackName) { // Use names to imply players were set
+        if (winner === 'white' && room.white) updatePlayerStats(room.white, true); // room.white is socket ID
+        if (winner === 'black' && room.black) updatePlayerStats(room.black, true);
+        if (resultCode === '1/2-1/2') {
+            if(room.white) updatePlayerStats(room.white, null);
+            if(room.black) updatePlayerStats(room.black, null);
         }
       }
       
-      // Update game result
-      game.result = resultCode;
-      game.termination = terminationReason;
-      game.finalPosition = room.gameState;
-      game.endTime = new Date();
-      await game.save();
-      
-      // Update player stats
-      if (game.players.white.user && game.players.black.user) {
-        const whiteUser = await User.findByPk(game.players.white.user);
-        const blackUser = await User.findByPk(game.players.black.user);
-        
-        if (whiteUser && blackUser) {
-          // Update game stats
-          whiteUser.stats.chess.gamesPlayed += 1;
-          blackUser.stats.chess.gamesPlayed += 1;
-          
-          if (resultCode === '1-0') {
-            whiteUser.stats.chess.wins += 1;
-            blackUser.stats.chess.losses += 1;
-          } else if (resultCode === '0-1') {
-            blackUser.stats.chess.wins += 1;
-            whiteUser.stats.chess.losses += 1;
-          } else if (resultCode === '1/2-1/2') {
-            whiteUser.stats.chess.draws += 1;
-            blackUser.stats.chess.draws += 1;
-          }
-          
-          // Calculate Elo rating changes
-          const { newWhiteRating, newBlackRating } = calculateNewRatings(
-            whiteUser.chessRating,
-            blackUser.chessRating,
-            resultCode
-          );
-          
-          // Record rating changes
-          game.players.white.ratingChange = newWhiteRating - whiteUser.chessRating;
-          game.players.black.ratingChange = newBlackRating - blackUser.chessRating;
-          
-          // Update ratings
-          whiteUser.chessRating = newWhiteRating;
-          blackUser.chessRating = newBlackRating;
-          
-          // Save user updates
-          await whiteUser.save();
-          await blackUser.save();
-          await game.save();
-          
-          // Update guild stats if users are in guilds
-          if (whiteUser.guild) {
-            const whiteGuild = await Guild.findById(whiteUser.guild);
-            if (whiteGuild) {
-              whiteGuild.stats.totalGames += 1;
-              if (resultCode === '1-0') {
-                whiteGuild.stats.totalWins += 1;
-              }
-              await whiteGuild.recalculateStats();
-            }
-          }
-          
-          if (blackUser.guild) {
-            const blackGuild = await Guild.findById(blackUser.guild);
-            if (blackGuild) {
-              blackGuild.stats.totalGames += 1;
-              if (resultCode === '0-1') {
-                blackGuild.stats.totalWins += 1;
-              }
-              await blackGuild.recalculateStats();
-            }
-          }
-          
-          // Log activity
-          const gameActivityDetails = {
-            roomId,
-            result: resultCode,
-            termination: terminationReason,
-            opponent: blackUser.username,
-            ratingChange: game.players.white.ratingChange
-          };
-          
-          await ActivityLog.create({
-            user: whiteUser.id,
-            username: whiteUser.username,
-            actionType: 'chess_game_end',
-            actionDetails: gameActivityDetails,
-            performedAt: new Date()
-          });
-          
-          gameActivityDetails.opponent = whiteUser.username;
-          gameActivityDetails.ratingChange = game.players.black.ratingChange;
-          
-          await ActivityLog.create({
-            user: blackUser.id,
-            username: blackUser.username,
-            actionType: 'chess_game_end',
-            actionDetails: gameActivityDetails,
-            performedAt: new Date()
-          });
-        }
+      const activityDetails = {
+          roomId, result: resultCode, termination: termReason, winner: winner || 'draw', finalFen: room.gameState,
+          durationMs: gameDb && gameDb.endTime && gameDb.startTime ? gameDb.endTime.getTime() - gameDb.startTime.getTime() : null,
+          whitePlayer: room.whiteName, blackPlayer: room.blackName,
+          whiteRating: gameDb?.players?.white?.rating, blackRating: gameDb?.players?.black?.rating,
+          whiteRatingChange: gameDb?.players?.white?.ratingChange, blackRatingChange: gameDb?.players?.black?.ratingChange,
+      };
+      if (gameDb?.players?.white?.userId) {
+        ActivityLog.create({ userId: gameDb.players.white.userId, username: room.whiteName, action: 'chess_game_end', actionDetails: activityDetails, ipAddress: 'server' })
+          .catch(dbError => console.error(`Log error (W): ${dbError.message}`));
       }
-      
-      // Stop the chess clock
+      if (gameDb?.players?.black?.userId) {
+        ActivityLog.create({ userId: gameDb.players.black.userId, username: room.blackName, action: 'chess_game_end', actionDetails: activityDetails, ipAddress: 'server' })
+          .catch(dbError => console.error(`Log error (B): ${dbError.message}`));
+      }
+
       if (activeClocks.has(roomId)) {
         clearInterval(activeClocks.get(roomId));
         activeClocks.delete(roomId);
       }
-      
-      // Broadcast result to all players and spectators
-      io.to(roomId).emit('gameOver', { result, winner });
     } catch (error) {
-      console.error('Error in gameOver:', error);
+      handleServerError(socket, error, 'GAME_OVER_MAIN_PROCESSING_FAILED', { roomId });
     }
   });
-  
-  // Request game history
+
   socket.on('getGameHistory', ({ roomId }) => {
-    const room = gameRooms.get(roomId);
-    if (!room) return;
-    
-    socket.emit('gameHistory', {
-      moves: room.moves,
-      chat: room.chat
-    });
+    try {
+      if (!roomId) return handleServerError(socket, 'Room ID required.', 'INVALID_INPUT');
+      const room = gameRooms.get(roomId);
+      if (!room) return handleServerError(socket, `Room ${roomId} not found.`, 'ROOM_NOT_FOUND');
+      socket.emit('gameHistory', { moves: room.moves, chat: room.chat });
+    } catch (error) {
+      handleServerError(socket, error, 'GET_GAME_HISTORY_FAILED', { roomId });
+    }
   });
 
-  // Handle disconnect
   socket.on('disconnect', () => {
-    console.log(`User disconnected: ${socket.id}`);
-    
-    // Remove from matchmaking queue if present
-    const waitingIndex = waitingPlayers.findIndex(p => p.id === socket.id);
-    if (waitingIndex !== -1) {
-      waitingPlayers.splice(waitingIndex, 1);
-    }
+    try {
+      console.log(`User ${socket.user?.username || socket.id} disconnected.`);
+      const waitingIndex = waitingPlayers.findIndex(p => p.id === socket.id);
+      if (waitingIndex !== -1) {
+        waitingPlayers.splice(waitingIndex, 1);
+        console.log(`Removed ${socket.id} from matchmaking queue.`);
+      }
 
-    // Find and clean up any rooms where this user was playing
-    for (const [roomId, room] of gameRooms.entries()) {
-      if (room.white === socket.id || room.black === socket.id) {
-        // Notify other player that opponent disconnected
-        socket.to(roomId).emit('opponentDisconnected', {
-          color: room.white === socket.id ? 'white' : 'black'
-        });
+      for (const [roomId, room] of gameRooms.entries()) {
+        let playerLeftColor = null;
+        if (room.white === socket.id) playerLeftColor = 'white';
+        else if (room.black === socket.id) playerLeftColor = 'black';
 
-        if (room.spectators.length > 0) {
-          // Promote a spectator to player
-          const newPlayer = room.spectators.shift();
-          if (room.white === socket.id) {
-            room.white = newPlayer.id;
-            room.whiteName = newPlayer.name;
-            io.to(newPlayer.id).emit('promotedToPlayer', {
-              color: 'white',
-              gameState: room.gameState,
-              moves: room.moves
-            });
-          } else {
-            room.black = newPlayer.id;
-            room.blackName = newPlayer.name;
-            io.to(newPlayer.id).emit('promotedToPlayer', {
-              color: 'black',
-              gameState: room.gameState,
-              moves: room.moves
+        if (playerLeftColor && !room.isOver) {
+          console.log(`Player ${playerLeftColor} (${socket.id}) disconnected from active game ${roomId}.`);
+          const opponentColor = playerLeftColor === 'white' ? 'black' : 'white';
+          const opponentSocketId = playerLeftColor === 'white' ? room.black : room.white;
+          
+          // Notify opponent
+          if (opponentSocketId) {
+            io.to(opponentSocketId).emit('opponentDisconnected', {
+              message: `${room[playerLeftColor + 'Name'] || playerLeftColor} disconnected. You win by abandonment.`,
+              winner: opponentColor
             });
           }
-        } else {
-          // Save the game state before potentially deleting the room
-          saveGameForReplay(roomId, {
-            result: 'abandoned',
-            winner: room.white === socket.id ? 'black' : 'white'
+          // End the game
+          // Manually trigger gameOver logic for abandonment
+          // This assumes the 'gameOver' event itself will handle DB updates, etc.
+           // Constructing parameters similar to how client might send, or direct call
+          const abandonmentResult = `${opponentColor} wins by abandonment`;
+          this.emit('gameOver', { // Use socket.emit to trigger the local gameOver handler
+             roomId,
+             result: abandonmentResult,
+             winner: opponentColor,
+             reason: 'abandonment'
           });
+
+
+          // Clean up the player slot
+          room[playerLeftColor] = null;
+          room[playerLeftColor + 'Name'] = null;
           
-          // Stop the chess clock
-          if (activeClocks.has(roomId)) {
-            clearInterval(activeClocks.get(roomId));
-            activeClocks.delete(roomId);
-          }
-          
-          // No spectators, clean up room if it becomes empty
-          if (room.white === socket.id && !room.black) {
-            gameRooms.delete(roomId);
-          } else if (room.black === socket.id && !room.white) {
-            gameRooms.delete(roomId);
+          // If room becomes empty of players and no spectators, or some other policy
+          // gameRooms.delete(roomId); // Or let it persist for history if not handled by gameOver
+          break; // Assuming a user can only be in one game as a player
+        } else {
+          const spectatorIndex = room.spectators.findIndex(s => s.id === socket.id);
+          if (spectatorIndex !== -1) {
+            const spectator = room.spectators.splice(spectatorIndex, 1)[0];
+            console.log(`Spectator ${spectator.username} left room ${roomId}.`);
+            io.to(roomId).emit('spectatorLeft', { username: spectator.username, count: room.spectators.length });
           }
         }
-      } else if (room.spectators.some(s => s.id === socket.id)) {
-        // Remove from spectators
-        room.spectators = room.spectators.filter(s => s.id !== socket.id);
-        
-        // Notify players of spectator count change
-        socket.to(roomId).emit('spectatorLeft', {
-          spectatorCount: room.spectators.length
-        });
       }
+      if (socket.user) {
+        ActivityLog.create({
+            userId: socket.user.id, username: socket.user.username,
+            action: 'disconnect', ipAddress: socket.handshake.address
+        }).catch(dbError => console.error(`Error logging disconnect: ${dbError.message}`));
+      }
+    } catch (error) {
+      // Cannot use handleServerError reliably as socket might be gone. Log to console.
+      console.error(`Error during disconnect for ${socket.id}:`, error.message, error.stack);
     }
   });
 });

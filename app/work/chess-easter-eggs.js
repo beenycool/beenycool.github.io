@@ -42,6 +42,11 @@ const SPECIAL_POSITIONS = {
     { piece: 'b', color: 'b', square: 'f8' },
     { piece: 'n', color: 'b', square: 'g8' },
     { piece: 'r', color: 'b', square: 'h8' }
+  ],
+  // Two White Rooks on the 7th rank (simplified)
+  twoRooksOnSeventhWhite: [
+    { piece: 'r', color: 'w', square: 'a7' },
+    { piece: 'r', color: 'w', square: 'b7' }
   ]
 };
 
@@ -49,7 +54,8 @@ const SPECIAL_POSITIONS = {
 const SPECIAL_MOVE_SEQUENCES = {
   scholar: ['e4', 'e5', 'Qh5', 'Nc6', 'Bc4', 'Nf6', 'Qxf7#'], // Scholar's mate
   fool: ['f3', 'e5', 'g4', 'Qh4#'], // Fool's mate
-  immortal: ['e4', 'e5', 'f4', 'exf4', 'Bc4', 'Qh4+', 'Kf1', 'b5', 'Bxb5', 'Nf6', 'Nf3', 'Qh6', 'd3', 'Nh5', 'Nh4', 'Qg5', 'Nf5', 'c6', 'g4', 'Nf6', 'Rg1', 'cxb5', 'h4', 'Qg6', 'h5', 'Qg5', 'Qf3', 'Ng8', 'Bxf4', 'Qf6', 'Nc3', 'Bc5', 'Nd5', 'Qxb2', 'Bd6', 'Bxg1', 'e5', 'Qxa1+', 'Ke2', 'Na6', 'Nxg7+', 'Kd8', 'Qf6+'] // Start of the Immortal Game
+  immortal: ['e4', 'e5', 'f4', 'exf4', 'Bc4', 'Qh4+', 'Kf1', 'b5', 'Bxb5', 'Nf6', 'Nf3', 'Qh6', 'd3', 'Nh5', 'Nh4', 'Qg5', 'Nf5', 'c6', 'g4', 'Nf6', 'Rg1', 'cxb5', 'h4', 'Qg6', 'h5', 'Qg5', 'Qf3', 'Ng8', 'Bxf4', 'Qf6', 'Nc3', 'Bc5', 'Nd5', 'Qxb2', 'Bd6', 'Bxg1', 'e5', 'Qxa1+', 'Ke2', 'Na6', 'Nxg7+', 'Kd8', 'Qf6+'], // Start of the Immortal Game
+  queensGambitAccepted: ['d4', 'd5', 'c4', 'dxc4'] // Queen's Gambit Accepted
 };
 
 // Easter egg effects
@@ -97,6 +103,14 @@ const easterEggEffects = {
         variant: "special",
         animation: "board-rotate"
       };
+    },
+    twoRooksOnSeventhWhite: () => {
+      return {
+        title: "Pigs on the Seventh!",
+        message: "White's rooks dominate the seventh rank!",
+        variant: "special",
+        sound: "/sounds/notify.mp3"
+      };
     }
   },
   
@@ -127,6 +141,13 @@ const easterEggEffects = {
         variant: "epic",
         animation: "immortal-glow",
         sound: "/sounds/epic-reveal.mp3"
+      };
+    },
+    queensGambitAccepted: () => {
+      return {
+        title: "Queen's Gambit Accepted!",
+        message: "A classic opening unfolds. Bold move!",
+        variant: "info"
       };
     }
   },
