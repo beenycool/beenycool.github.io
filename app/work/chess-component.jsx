@@ -544,40 +544,58 @@ export default function ChessComponent({ systemTheme }) {
       });
       
       socketRef.current.on('gameHistory', ({ moves, chat }) => {
-        if (moves) setMoveHistory(moves);
-        if (chat) setChatMessages(chat);
+        setGameHistory(moves);
+        setChatHistory(chat || []);
       });
       
       socketRef.current.on('waitingForMatch', () => {
-        setIsInMatchmaking(true);
+        setMatchmakingStatus('searching');
       });
       
       socketRef.current.on('matchmakingCancelled', () => {
-        setIsInMatchmaking(false);
+        setMatchmakingStatus('none');
       });
       
       socketRef.current.on('matchFound', ({ roomId, color, opponent, timeControl }) => {
+        setMatchmakingStatus('found');
         setRoomId(roomId);
         setPlayerColor(color);
-        setIsYourTurn(color === 'white');
-        setOpponentName(opponent);
-        setOpponentConnected(true);
-        setWaitingForOpponent(false);
-        setIsInMatchmaking(false);
-        setShowMatchmaking(false);
+        setOpponentName(opponent || 'Anonymous');
+        setTimeControl(timeControl);
+        setGameMode('online');
+        setIsReady(true);
+        setGameStarted(true);
         
-        if (timeControl) {
-          setTimeControl({
-            white: timeControl.initial,
-            black: timeControl.initial
-          });
-        }
+        updateURLWithRoomId(roomId);
         
-        // Update URL with room ID
-        if (typeof window !== 'undefined') {
-          const url = new URL(window.location.href);
-          url.searchParams.set('room', roomId);
-          window.history.pushState({}, '', url);
+        addNotification({
+          type: 'success',
+          message: `Match found! You're playing as ${color === 'white' ? 'White' : 'Black'} against ${opponent || 'Anonymous'}.`,
+          duration: 5000
+        });
+        
+        // Add to recent games list
+        addRecentGame(roomId, opponent || 'Anonymous');
+      });
+      
+      // Add handler for cancelPreMove event
+      socketRef.current.on('cancelPreMove', ({ reason, premove }) => {
+        setPreMove(null);
+        
+        // Display notification about canceled pre-move
+        setEasterEggNotification({
+          type: 'warning',
+          message: reason === 'invalid' 
+            ? 'Pre-move canceled: no longer valid after opponent\'s move.' 
+            : 'Pre-move canceled due to an error.',
+          duration: 3000
+        });
+      });
+      
+      socketRef.current.on('executePreMove', (premoveData) => {
+        // Handle the pre-move execution
+        if (premoveData && premoveData.from && premoveData.to) {
+          // The existing logic will handle this in the effect watching for isYourTurn
         }
       });
       

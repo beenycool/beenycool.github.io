@@ -5,6 +5,7 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const jwt = require('jsonwebtoken');
+const { Chess } = require('chess.js');
 
 // JWT Secret (should match the one in your auth controller/middleware)
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key';
@@ -543,19 +544,36 @@ io.on('connection', (socket) => {
         return handleServerError(socket, room ? 'Game is already over.' : `Room ${roomId} not found.`, room ? 'GAME_OVER' : 'ROOM_NOT_FOUND');
       }
 
-      // TODO: Add server-side move validation using chess.js
-      // const chess = new Chess(room.gameState);
-      // const madeMove = chess.move(move); // move can be { from, to, promotion }
-      // if (!madeMove) return handleServerError(socket, 'Invalid move.', 'INVALID_MOVE', { move, fen: room.gameState });
-      // room.gameState = chess.fen(); // Official new game state
-
-      // Temporary: Trust client game state for now, but log if different from expected
-      // if (chess.fen() !== clientGameState) {
-      //   console.warn(`Client FEN ${clientGameState} differs from server validated FEN ${chess.fen()} for room ${roomId}. Using server FEN.`);
-      // }
-      // For now, using client's game state as per original logic, but this is a security/integrity risk.
-      room.gameState = clientGameState;
-
+      // Server-side move validation using chess.js
+      const chess = new Chess(room.gameState);
+      let madeMove;
+      
+      try {
+        // Try to make the move
+        madeMove = chess.move({ 
+          from: move.from, 
+          to: move.to, 
+          promotion: move.promotion 
+        });
+        
+        if (!madeMove) {
+          return handleServerError(socket, 'Invalid move.', 'INVALID_MOVE', { move, fen: room.gameState });
+        }
+        
+        // Use the server's game state after validation
+        const serverFen = chess.fen();
+        
+        // Log if client state differs from server validated state
+        if (serverFen !== clientGameState) {
+          console.warn(`Client FEN ${clientGameState} differs from server validated FEN ${serverFen} for room ${roomId}. Using server FEN.`);
+          room.gameState = serverFen; // Use server FEN instead of client FEN
+        } else {
+          room.gameState = clientGameState;
+        }
+      } catch (error) {
+        console.error(`Chess move validation error: ${error.message}`);
+        return handleServerError(socket, 'Error validating move.', 'MOVE_VALIDATION_ERROR', { move, fen: room.gameState, error: error.message });
+      }
 
       const playerColor = room.white === socket.id ? 'white' : (room.black === socket.id ? 'black' : null);
       if (!playerColor) return handleServerError(socket, 'Not a player in this game.', 'NOT_A_PLAYER');
@@ -594,10 +612,35 @@ io.on('connection', (socket) => {
       if (opponentPreMove) {
         const opponentSocketId = room.currentTurn === 'white' ? room.white : room.black;
         if (opponentSocketId) {
-            // TODO: Validate and execute pre-move server-side
-            // For now, just notify client to play it.
-            io.to(opponentSocketId).emit('executePreMove', opponentPreMove);
-            console.log(`Notified ${room.currentTurn} to execute pre-move in room ${roomId}`);
+          const preMoveChess = new Chess(room.gameState);
+          try {
+            // Validate premove with new board state
+            const validPreMove = preMoveChess.move({
+              from: opponentPreMove.from,
+              to: opponentPreMove.to,
+              promotion: opponentPreMove.promotion
+            });
+            
+            if (validPreMove) {
+              // If valid, tell the client to execute it
+              io.to(opponentSocketId).emit('executePreMove', opponentPreMove);
+              console.log(`Notified ${room.currentTurn} to execute pre-move in room ${roomId}`);
+            } else {
+              // If invalid, notify client to cancel the premove
+              io.to(opponentSocketId).emit('cancelPreMove', {
+                reason: 'invalid',
+                premove: opponentPreMove
+              });
+              console.log(`Canceled invalid pre-move in room ${roomId}`);
+            }
+          } catch (error) {
+            console.error(`Pre-move validation error: ${error.message}`);
+            io.to(opponentSocketId).emit('cancelPreMove', {
+              reason: 'error',
+              premove: opponentPreMove,
+              error: error.message
+            });
+          }
         }
         room.preMoves = room.preMoves.filter(pm => pm !== opponentPreMove);
       }
