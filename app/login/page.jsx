@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import axios from 'axios';
 
-const LoginPage = () => {
+// Create a wrapper component to handle useSearchParams
+const LoginContent = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [formData, setFormData] = useState({
     username: '',
@@ -255,6 +256,27 @@ const LoginPage = () => {
         </form>
       </div>
     </div>
+  );
+};
+
+// Loading fallback for Suspense
+const LoginFallback = () => (
+  <div className="min-h-screen flex items-center justify-center bg-gray-100">
+    <div className="text-center">
+      <div className="animate-spin inline-block w-8 h-8 border-4 border-current border-t-transparent text-blue-600 rounded-full" role="status">
+        <span className="sr-only">Loading...</span>
+      </div>
+      <p className="mt-2 text-gray-600">Loading...</p>
+    </div>
+  </div>
+);
+
+// Main component with Suspense
+const LoginPage = () => {
+  return (
+    <Suspense fallback={<LoginFallback />}>
+      <LoginContent />
+    </Suspense>
   );
 };
 
