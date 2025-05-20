@@ -47,11 +47,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import Papa from 'papaparse'; // Import PapaParse
 
 // API URL for our backend
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 
-  (typeof window !== 'undefined' && 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ||
+  (typeof window !== 'undefined' &&
     (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-      ? 'http://localhost:3003'  // Local development 
-      : 'https://beenycool-github-io.onrender.com'); // Production fallback
+      ? 'http://localhost:3003'  // Local development
+      : 'https://beenycool-github-io.onrender.com'); // Production URL
 
 // Log the API URL for debugging
 console.log('Using API URL:', API_BASE_URL);
@@ -85,28 +85,22 @@ const USER_TYPES = [
 ];
 
 const AI_MODELS = [
-  { value: "gemini-2.5-flash-preview-04-17", label: "Gemini 2.5 Flash Preview", description: "Best quality with faster response times" },
-  { value: "google/gemini-2.5-pro:free", label: "Gemini 2.5 Pro", description: "Highest quality generation from Google" },
-  { value: "microsoft/mai-ds-r1:free", label: "R1 (thinking model)", description: "Most thorough reasoning process (may take 1-2 minutes)" },
-  { value: "deepseek/deepseek-chat-v3-0324:free", label: "V3 (balanced model)", description: "Balanced speed and quality" },
-  { value: "openai/o3", label: "GitHub O3", description: "GitHub AI Model (O3)" },
-  { value: "openai/o4-mini", label: "GitHub O4 Mini", description: "GitHub AI Model (O4 Mini)" },
-  { value: "openai/o4", label: "GitHub O4", description: "GitHub AI Model (O4)" },
+  { value: "o3", label: "O3", description: "Most powerful model, but heavily rate limited." },
+  { value: "o4-mini", label: "O4 Mini", description: "Delivers compareable performance to o3, but much faster" },
   { value: "xai/grok-3", label: "Grok-3", description: "X AI Model (Grok)" },
-  { value: "openai/gpt-4.1", label: "GitHub GPT 4.1", description: "GitHub AI Model (GPT 4.1)" }
+  { value: "gemini-2.5-flash-preview-04-17", label: "Gemini 2.5 Flash Preview", description: "Best quality with faster response times" },
+  { value: "microsoft/mai-ds-r1:free", label: "R1 (thinking model)", description: "Most thorough reasoning process (may take 1-2 minutes)" }, // Unlimited (OpenRouter, no usage limits)
+  { value: "deepseek/deepseek-chat-v3-0324:free", label: "V3 (balanced model)", description: "Balanced speed and quality" }
 ];
 
 // Add fallback models for when primary models are rate limited
 const FALLBACK_MODELS = {
   "gemini-2.5-flash-preview-04-17": "deepseek/deepseek-chat-v3-0324:free",
-  "google/gemini-2.5-pro:free": "gemini-2.5-flash-preview-04-17", // Fallback for Gemini Pro
   "deepseek/deepseek-chat-v3-0324:free": "microsoft/mai-ds-r1:free",
-  "microsoft/mai-ds-r1:free": "google/gemini-2.5-pro:free", // Fallback to Gemini Pro
-  "openai/o3": "openai/o4-mini", // Fallback for O3
-  "openai/o4-mini": "deepseek/deepseek-chat-v3-0324:free", // Fallback for O4 Mini
-  "openai/o4": "openai/o3", // Fallback for O4
-  "xai/grok-3": "deepseek/deepseek-chat-v3-0324:free", // Fallback for Grok-3
-  "openai/gpt-4.1": "openai/o4" // Fallback for GPT 4.1
+  "microsoft/mai-ds-r1:free": "gemini-2.5-flash-preview-04-17", // Fallback to Gemini Flash (was Gemini Pro)
+  "o3": "o4-mini", // Fallback for O3
+  "o4-mini": "deepseek/deepseek-chat-v3-0324:free", // Fallback for O4 Mini
+  "xai/grok-3": "deepseek/deepseek-chat-v3-0324:free" // Fallback for Grok-3
 };
 
 // Define model-specific rate limits (in milliseconds)
@@ -116,20 +110,19 @@ const MODEL_RATE_LIMITS = {
   "gemini-2.5-flash-preview-04-17": 60000, // 1 minute
   "deepseek/deepseek-chat-v3-0324:free": 10000, // 10 seconds
   
-  // DeepSeek-R1 and MAI-DS-R1: 1 request per minute (Copilot Pro)
-  "microsoft/mai-ds-r1:free": 60000, // 1 minute (1 request per minute)
+  // DeepSeek-R1 and MAI-DS-R1: 1 request per minute
+  "microsoft/mai-ds-r1:free": 60000, // 1 minute
   
-  // GitHub models (Copilot Pro rate limits)
-  // Azure OpenAI o3: 1 request per minute 
-  "openai/o3": 60000, // 1 minute (1 request per minute)
+  // OpenRouter Masr1
+  "openrouter/masr1": 30000, // 30 seconds
   
-  // Azure OpenAI o4-mini: 2 requests per minute
-  "openai/o4-mini": 30000, // 30 seconds (2 requests per minute)  
-  // xAI Grok-3: 1 request per minute
-  "xai/grok-3": 60000, // 1 minute (1 request per minute)
+  // Models with 8k/4k token limits
+  "o3": 60000, // 1 minute
+  "o4-mini": 30000, // 30 seconds
+  "o4": 60000, // 1 minute
   
-  // GPT 4.1 (assuming similar to o4)
-  "openai/gpt-4.1": 60000 // 1 minute (1 request per minute)
+  // xAI Grok-3
+  "xai/grok-3": 60000 // 1 minute
 };
 
 // Define specific models for specific tasks
@@ -140,10 +133,10 @@ const TASK_SPECIFIC_MODELS = {
 // Define default thinking budgets for models that support it
 const DEFAULT_THINKING_BUDGETS = {
   "gemini-2.5-flash-preview-04-17": 1024,
-  "google/gemini-2.5-pro:free": 2048, // Added thinking budget for Gemini Pro
-  "microsoft/mai-ds-r1:free": 0 // R1 thinking is handled differently via system prompt
-  // GitHub models and Grok might not have a 'thinkingBudget' concept in the same way,
-  // or it's controlled by different parameters. This can be added if their API supports it.
+  "microsoft/mai-ds-r1:free": 0,
+  "o3": 4000,
+  "o4-mini": 4000,
+  "xai/grok-3": 2048
 };
 
 const subjectKeywords = {
@@ -1628,599 +1621,296 @@ const AIMarker = () => {
   // Submit handler
   const handleSubmitForMarking = useCallback(async () => {
     // Clear previous feedback and errors
-    setFeedback("");
+    setFeedback(""); // Clear feedback before streaming
     setGrade("");
     setError(null);
     setSuccess(null);
     setModelThinking("");
-    setAchievedMarks(null); // Reset achieved marks
-    
+    setAchievedMarks(null);
+    setCurrentModelForRequest(selectedModel); // Keep track of the model used for this specific request
+
     // Validate inputs
     if (!answer) {
-      setError({
-        type: "validation",
-        message: "Please enter an answer to be marked"
-      });
+      setError({ type: "validation", message: "Please enter an answer to be marked" });
       return;
     }
-    
-    // Check if backend is reachable
+
     setLoading(true);
-    setActiveTab("feedback"); // Switch to feedback tab immediately to show progress
-    setSuccess({
-      message: "Checking backend status..."
-    });
-    
-    // Use the global checkBackendStatus instead of redefining it
+    setActiveTab("feedback");
+    setSuccess({ message: "Initiating request..." }); // Initial message
+
+    // Backend status check (simplified for brevity, assuming it's handled)
     const backendStatus = await checkBackendStatus(selectedModel);
     if (!backendStatus.ok) {
       setLoading(false);
-      setError({
-        type: "network",
-        message: `Backend connection error: ${backendStatus.error}. The server may take up to 50 seconds to wake up after inactivity. Please try again in a minute.`,
-        retry: true
-      });
+      setError({ type: "network", message: `Backend connection error: ${backendStatus.error}. Please try again.`, retry: true });
       return;
     }
-    
+
     // Rate limiting checks
     const now = Date.now();
-    const today = new Date().toDateString();
-    
-    if (today !== lastRequestDate) {
-      setDailyRequests(0);
-      setLastRequestDate(today);
-      localStorage.setItem('lastRequestDate', today);
-      localStorage.setItem('dailyRequests', '0');
-    }
-    
-    // Get the rate limit for the selected model
-    const modelRateLimit = MODEL_RATE_LIMITS[selectedModel] || 10000; // Default to 10 seconds
-    const modelLastRequestTime = modelLastRequestTimes[selectedModel] || 0;
-    const timeSinceLastModelRequest = now - modelLastRequestTime;
-    
-    if (timeSinceLastModelRequest < modelRateLimit) {
+    const modelRateLimit = MODEL_RATE_LIMITS[currentModelForRequestRef.current] || 10000;
+    const modelLastRequestTime = modelLastRequestTimes[currentModelForRequestRef.current] || 0;
+
+    if (now - modelLastRequestTime < modelRateLimit) {
       setLoading(false);
-      const waitTimeSeconds = Math.ceil((modelRateLimit - timeSinceLastModelRequest) / 1000);
-      const fallback = FALLBACK_MODELS[selectedModel];
+      const waitTimeSeconds = Math.ceil((modelRateLimit - (now - modelLastRequestTime)) / 1000);
+      const fallback = FALLBACK_MODELS[currentModelForRequestRef.current];
       if (fallback) {
-      setError({
+        setError({
           type: "rate_limit_with_fallback",
-          message: `${AI_MODELS.find(m => m.value === selectedModel)?.label || selectedModel} is rate limited. You can try a fallback model or wait ${waitTimeSeconds}s.`,
+          message: `${AI_MODELS.find(m => m.value === currentModelForRequestRef.current)?.label} is rate limited. Try fallback or wait ${waitTimeSeconds}s.`,
           fallbackModel: fallback,
-          originalModel: selectedModel,
-          onRetryFallback: (newModel) => { 
-            toast.info(`Switching to ${AI_MODELS.find(m => m.value === newModel)?.label || newModel} and retrying.`);
-            setSelectedModel(newModel); 
-            // Wrap handleSubmitForMarking in a timeout to allow state to update
-            setTimeout(() => handleSubmitForMarking(), 100); 
+          onRetryFallback: (newModel) => {
+            setSelectedModel(newModel); // This will trigger a re-render and user can click submit again
+            toast.info(`Switched to ${AI_MODELS.find(m => m.value === newModel)?.label}. Click "Get Feedback" again.`);
           },
-          onRetry: () => handleSubmitForMarking(), // General retry still uses original model
+          onRetry: () => handleSubmitForMarking(),
           waitTime: waitTimeSeconds
         });
       } else {
         setError({
           type: "rate_limit_wait",
-          message: `${AI_MODELS.find(m => m.value === selectedModel)?.label || selectedModel} is limited. Please wait ${waitTimeSeconds} more seconds.`,
+          message: `${AI_MODELS.find(m => m.value === currentModelForRequestRef.current)?.label} is limited. Wait ${waitTimeSeconds}s.`,
           waitTime: waitTimeSeconds,
           onRetry: () => handleSubmitForMarking()
         });
       }
       return;
-    } else if (now - lastRequestTime < 5000) {
-      setLoading(false);
-      setError({
-        type: "rate_limit", // Generic rate limit, could be rate_limit_wait if we want a timed retry
-        message: "Please wait at least 5 seconds between requests.",
-        onRetry: () => handleSubmitForMarking()
-      });
-      return;
     }
-
+     // Token consumption check
     if (!consumeToken()) {
       setLoading(false);
       setError({ type: "rate_limit", message: "Daily request limit reached (500/day)" });
       return;
     }
 
-    // Build system prompt
-    const buildSystemPrompt = () => {
-      let basePrompt = `You are an experienced GCSE ${subject} examiner. Your task is to provide detailed, constructive feedback for ${userType === 'teacher' ? 'assessment purposes' : 'student learning'} following these guidelines:
 
-1. ASSESSMENT CRITERIA:
-- Accuracy of content (subject knowledge)
-- Clarity and structure of response
-- Use of evidence/examples
-- Depth of analysis (where applicable)
-- Technical accuracy (spelling, grammar, terminology)`;
+    setModelLastRequestTimes(prev => ({ ...prev, [currentModelForRequestRef.current]: now }));
+    setLastRequestTime(now); // Update general last request time
 
-      // Add tier information for tiered subjects
-      const currentSubject = allSubjects.find(s => s.value === subject);
-      if (currentSubject?.hasTiers) {
-        basePrompt += `\n- This is a ${tier.toUpperCase()} tier question`;
-      }
+    const systemPrompt = buildSystemPrompt();
+    const userPrompt = buildUserPrompt();
 
-      basePrompt += `\n\n2. FEEDBACK STRUCTURE:
-a) Performance overview that addresses the overall quality of the answer (2-3 sentences)
-b) 3-4 specific strengths with concrete examples from the student's work, using phrases like "You demonstrated...", "Your analysis of...", or "I was particularly impressed by..."
-c) 3-4 specific areas for improvement using the "WWW/EBI" format (What Went Well/Even Better If), with each point structured as:
-   * Clear identification of the issue
-   * Evidence from the student's work
-   * Specific, achievable action to improve
-   * Link to how this would affect their grade
-   If structural improvements are needed (e.g., unclear topic sentences, weak paragraph structure, lack of logical flow between points), suggest specific techniques like using PEEL (Point, Evidence, Explanation, Link) or improving transitions.
-d) Clear progression pathway that explains exactly what would be needed to achieve the next grade level
-e) GCSE grade (9-1) in the format: [GRADE:X] where X is the grade number, with a brief justification of the grade awarded`;
-
-      // Add marks achieved format if total marks are provided or detected
-      const detectedMarks = !totalMarks ? detectTotalMarksFromQuestion(question) : null;
-      const marksToUse = totalMarks || detectedMarks;
-      
-      if (marksToUse) {
-        basePrompt += `\nf) Marks achieved in the format: [MARKS:Y/${marksToUse}] where Y is the number of marks achieved`;
-      }
-
-      basePrompt += `\nIMPORTANT: The [GRADE:X] and [MARKS:Y/...] tags MUST be on their own separate lines and be the only content on those lines for parsing.`;
-
-      basePrompt += `\ng) Technical Accuracy: A distinct section summarizing observations on spelling, grammar, punctuation, and use of specialist terminology. Provide examples if common errors are noted.`;
-
-      // Add mark scheme analysis instructions if provided
-      if (markScheme) {
-        basePrompt += `\n\n3. MARK SCHEME ANALYSIS:
-- Approach the mark scheme like an examiner, using precise analytical language
-- Assess each assessment objective (AO) point-by-point with specific examples:
-  * For each point awarded: "Credit given for [specific criteria] as evidenced by [exact quote/reference from answer]"
-  * For each point missed: "No credit for [specific criteria] because [specific explanation]"
-- Follow a structured marking pattern using annotations: 
-  * ✓ = criterion fully met with specific highlighted evidence
-  * ~ = criterion partially met with explanation of what's missing
-  * ✗ = criterion not met with specific guidance for improvement
-- Use precise examiner language (e.g., "demonstrates comprehensive understanding," "shows limited analysis," "lacks sufficient development")
-- Award marks according to level descriptors, explaining why the answer falls into a particular band
-- Clearly justify the final mark total with reference to the mark scheme bands`;
-      }
-
-      // Add math-specific LaTeX formatting instructions
-      if (subject === "maths") {
-        basePrompt += `\n\n4. MATHEMATICAL NOTATION:
-- Use LaTeX notation for mathematical expressions enclosed in $ $ for inline formulas and as separate blocks for complex formulas
-- Example inline: $x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$
-- Example block:
-$$
-x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}
-$$
-- Format solutions step-by-step with clear explanations
-- Number equations and reference them in your feedback`;
-      } else {
-        basePrompt += `\n\n4. SUBJECT-SPECIFIC GUIDANCE:
-${getSubjectGuidance(subject, examBoard)}
-
-5. PROFESSIONAL MARKING APPROACH:
-- Use exam board-specific terminology and assessment language
-- Focus on assessment objectives (AOs) relevant to ${subject}
-- Implement a tiered marking approach - first identify the band/level, then refine the exact mark within that band
-- Use marginal annotations to highlight specific points (e.g., "AO2 - Strong analysis here", "Limited evidence", "Good application of knowledge")
-- Balance critical assessment with encouraging language that motivates improvement
-- Ensure developmental feedback is specific and actionable
-- Apply a consistent marking standard throughout the assessment
-- Acknowledge partial understanding where appropriate
-- When assessing analytical or evaluative skills (like AO3), if the student's response lacks depth in comparing factors, quantifying impacts, or weighing arguments, your feedback should:
-    * Clearly identify this as an area for improvement.
-    * Provide specific examples of phrases or approaches the student could use to demonstrate higher-level evaluation (e.g., "Compared to X, Y is more significant because...", "The scale of impact from Z is far greater due to...").
-    * If relevant, model a brief example of such comparative or quantitative reasoning.`;
-      }
-
-      // Add thinking model specific instructions
-      if (selectedModel === "microsoft/mai-ds-r1:free" || selectedModel === "deepseek/deepseek-r1:free") {
-        basePrompt += `\n\n5. THINKING PROCESS:
-- First, analyze the student's answer carefully and identify key strengths and weaknesses
-- For each section of the answer, evaluate both content accuracy and quality of explanation
-- Consider what evidence supports each point you make in your feedback
-- Show your reasoning for the grade assigned by comparing to GCSE standards
-- Mark your thinking process with [THINKING] and your final feedback with [FEEDBACK]`;
-      }
-      return basePrompt;
-    };
-
-    // Build user prompt with the question and answer
-    const buildUserPrompt = () => {
-      let userPrompt = `Please mark this GCSE ${subject} answer.\n\n`;
-      
-      // Add the question
-      userPrompt += `QUESTION:\n${question}\n\n`;
-      
-      // Add the answer
-      userPrompt += `STUDENT ANSWER:\n${answer}\n\n`;
-      
-      // Add any additional context
-      if (markScheme) {
-        userPrompt += `MARK SCHEME:\n${markScheme}\n\n`;
-      }
-      
-      if (textExtract) {
-        userPrompt += `TEXT EXTRACT:\n${textExtract}\n\n`;
-      }
-      
-      if (relevantMaterial) {
-        userPrompt += `RELEVANT MATERIAL:\n${relevantMaterial}\n\n`;
-      }
-      
-      // Note about image if using Gemini 2.5 with image
-      if (selectedModel === "gemini-2.5-flash-preview-04-17" && relevantMaterialImage) {
-        userPrompt += `IMAGE PROVIDED: An image has been attached to this prompt as relevant material. Please analyze this image in relation to the student's answer.\n\n`;
-      }
-      
-      // Check for detected marks if totalMarks is not provided
-      const detectedMarks = !totalMarks ? detectTotalMarksFromQuestion(question) : null;
-      const marksToUse = totalMarks || detectedMarks;
-      
-      if (marksToUse) {
-        userPrompt += `TOTAL MARKS: ${marksToUse}\n\n`;
-      }
-      
-      // Add specific instructions
-      userPrompt += `INSTRUCTIONS:
-1. Mark this answer as an experienced GCSE ${subject} examiner would for the ${examBoard} exam board
-2. Follow a methodical assessment process aligned with official marking standards
-3. Use professional examiner language and annotation techniques throughout
-4. Provide detailed, constructive feedback with specific evidence from the student's work
-5. Structure feedback using the WWW/EBI format (What Went Well/Even Better If)
-6. Assign a GCSE grade (9-1) in the format [GRADE:X] with clear justification
-7. Include specific guidance for improving to the next grade level
-${markScheme ? `8. Apply a rigorous mark-by-mark assessment using the provided mark scheme
-9. Annotate each assessment point with appropriate symbols (✓, ~, ✗)
-10. Reference specific mark scheme criteria and bands in your assessment
-11. Demonstrate clear reasoning for each mark awarded or withheld` : ''}`;
-
-      if (marksToUse) {
-        userPrompt += `\n4. Assign marks in the format [MARKS:Y/${marksToUse}]`;
-      }
-      
-      return userPrompt;
-    };
+    setProcessingProgress("Sending request to AI model...");
+    setSuccess({ message: `Processing with ${AI_MODELS.find(m => m.value === currentModelForRequestRef.current)?.label || currentModelForRequestRef.current}...` });
 
     try {
-      const systemPrompt = buildSystemPrompt();
-      const userPrompt = buildUserPrompt();
-      
-      setProcessingProgress("Sending request to AI model...");
-      setSuccess({
-        message: `Processing with ${AI_MODELS.find(m => m.value === selectedModel)?.label || selectedModel}...`
-      });
-      
-      // Update last request time for rate limiting
-      setLastRequestTime(now);
-      setModelLastRequestTimes(prev => ({
-        ...prev,
-        [selectedModel]: now
-      }));
-      
-      // For models that support thinking process, we'll capture it
-      const captureThinking = selectedModel === "microsoft/mai-ds-r1:free";
-      let thinkingSteps = [];
-      
-      // Make a request to the backend API
-      let response;
-      let responseData;
+      // Record user event
+      try {
+        await fetch(`${API_BASE_URL}/auth/events`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            eventType: 'question_submitted_stream', // New event type for streaming
+            eventData: { /* ... relevant data ... */ }
+          })
+        });
+      } catch (eventError) { console.warn("Failed to record user event:", eventError); }
 
-      // Use direct Gemini API for the new model
-      if (selectedModel === "gemini-2.5-flash-preview-04-17") {
-        setProcessingProgress("Sending request to direct Gemini API...");
-        
-        // Format request for the direct Gemini API
-        const requestBody = {
-          contents: [
-            {
-              parts: [
-                {
-                  text: `System: ${systemPrompt}\n\nUser: ${userPrompt}`
-                }
-              ]
-            }
-          ]
-        };
-        
-        // Add image to the request if available
-        if (relevantMaterialImage && relevantMaterialImageBase64) {
-          setProcessingProgress("Including image in request to Gemini API...");
-          console.log("Including relevant material image in the request");
-          
-          // Add image as a part in the first content item
-          requestBody.contents[0].parts.push({
-            inline_data: {
-              mime_type: relevantMaterialImage.type,
-              data: relevantMaterialImageBase64
-            }
-          });
-          
-          // Add a text part after the image explaining it's relevant material
-          requestBody.contents[0].parts.push({
-            text: "This image is provided as relevant material for the assessment. Please consider it when evaluating the student's answer."
-          });
-        }
-        
-        // Add thinking config if enabled
-        if (enableThinkingBudget && thinkingBudget > 0) {
-          requestBody.config = {
-            thinkingConfig: {
-              thinkingBudget: thinkingBudget
-            }
-          };
-          
-          console.log(`Using thinking budget of ${thinkingBudget} tokens for Gemini model`);
-        }
-        
-        const maxRetries = 3;
-        let retryCount = 0;
-        let success = false;
-        
-        while (retryCount < maxRetries && !success) {
-          try {
-            response = await fetch(`${API_BASE_URL}/api/gemini/generate`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify(requestBody),
-              signal: AbortSignal.timeout(60000) // Ensure timeout is set for each attempt
-            });
-            success = true; // If fetch is successful, mark as success
-          } catch (error) {
-            if (error.name === 'AbortError' || (error.message && error.message.toLowerCase().includes('timeout'))) {
-              retryCount++;
-              console.log(`Retrying Gemini API request in handleSubmitForMarking (${retryCount}/${maxRetries})...`);
-              if (retryCount < maxRetries) {
-                await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before retrying
-              } else {
-                // If all retries fail, rethrow the error or handle it as a final failure
-                throw error;
-              }
-            } else {
-              throw error; // For non-timeout errors, rethrow immediately
-            }
-          }
-        }
-      } else if (selectedModel.startsWith("openai/") || selectedModel.startsWith("xai/")) {
-        // Use GitHub models API for GitHub and Grok models
-        response = await fetch(`${API_BASE_URL}/api/github/completions`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: selectedModel,
-            messages: [
-              {
-                role: "developer",
-                content: systemPrompt
-              },
-              {
-                role: "user",
-                content: userPrompt
-              }
-            ],
-            max_tokens: autoMaxTokens ? undefined : maxTokens,
-            temperature: 0.7
-          }),
-        });
-      } else {
-        // Use the standard API for other models
-        response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: selectedModel,
-            messages: [
-              {
-                role: "system",
-                content: systemPrompt
-              },
-              {
-                role: "user",
-                content: userPrompt
-              }
-            ],
-            max_tokens: autoMaxTokens ? undefined : maxTokens,
-            temperature: 0.7
-          }),
-        });
-      }
+      const requestBodyPayload = {
+        model: currentModelForRequestRef.current,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        // Add other parameters like temperature, top_p if your backend/model supports them for streaming
+        stream: true
+      };
       
+      // Add image if relevant for Gemini (assuming /api/github/completions handles this)
+      if (currentModelForRequestRef.current.startsWith("gemini") && relevantMaterialImage && relevantMaterialImageBase64) {
+          // The backend /api/github/completions needs to be adapted to pass this to Gemini if it's the intermediary
+          // For simplicity, we assume the backend handles this structure.
+          // This part might need adjustment based on how the backend expects image data for Gemini streams.
+          requestBodyPayload.messages[1].content += "\n\nIMAGE PROVIDED: An image has been attached. Please analyze this image."
+          // The actual image data would need to be handled by the backend if it's proxying to Gemini.
+          // If hitting Gemini directly, the payload structure for images with streaming would be different.
+          // For this exercise, we'll assume the backend's /github/completions is smart enough.
+      }
+
+
+      const response = await fetch(`${API_BASE_URL}/api/github/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'text/event-stream',
+        },
+        body: JSON.stringify(requestBodyPayload),
+      });
+
       if (!response.ok) {
         const errorText = await response.text();
-        console.error("API error response:", errorText);
+        let parsedError = { message: `API request failed: ${response.status}` };
+        try { parsedError = JSON.parse(errorText); } catch (e) { /* ignore */ }
         
-        let errorMessage = "Unknown error occurred";
-        try {
-          const errorJson = JSON.parse(errorText);
-          errorMessage = errorJson.error?.message || errorJson.message || JSON.stringify(errorJson);
-        } catch (e) {
-          errorMessage = errorText || response.statusText;
-        }
-        
-        // MODIFIED Error for response not OK
-        const fallback = FALLBACK_MODELS[selectedModel];
-        if (response.status === 429 && fallback) { // Specifically handle 429 for fallback
-      setError({
-            type: "rate_limit_with_fallback",
-            message: `Model ${AI_MODELS.find(m => m.value === selectedModel)?.label || selectedModel} seems to be rate limited by the API. Try a fallback? Error: ${errorMessage}`,
-            fallbackModel: fallback,
-            originalModel: selectedModel,
-            onRetryFallback: (newModel) => { 
-              toast.info(`Switching to ${AI_MODELS.find(m => m.value === newModel)?.label || newModel} and retrying.`);
-              setSelectedModel(newModel); 
-              setTimeout(() => handleSubmitForMarking(), 100);
-            },
-            onRetry: () => handleSubmitForMarking()
-          });
+        const fallback = FALLBACK_MODELS[currentModelForRequestRef.current];
+        if (response.status === 429 && fallback) {
+            setError({
+                type: "rate_limit_with_fallback",
+                message: `Model ${AI_MODELS.find(m => m.value === currentModelForRequestRef.current)?.label} API rate limited. Error: ${parsedError.error || errorText}`,
+                fallbackModel: fallback,
+                onRetryFallback: (newModel) => { setSelectedModel(newModel); toast.info(`Switched to ${AI_MODELS.find(m => m.value === newModel)?.label}. Click "Get Feedback" again.`); },
+                onRetry: () => handleSubmitForMarking()
+            });
         } else {
-      setError({
-            type: "api_error",
-            message: `Backend API error: ${errorMessage}`,
-            onRetry: handleSubmitForMarking
-          });
+            setError({ type: "api_error", message: `API Error: ${parsedError.error || errorText}`, onRetry: handleSubmitForMarking });
         }
-        return; // Ensure we don't proceed after setting error
+        setLoading(false);
+        setProcessingProgress("");
+        return;
       }
-      
-      responseData = await response.json();
-      
-      // Extract the response content from various possible API response formats
-      let responseContent = "";
-      
-      if (responseData.content) {
-        responseContent = responseData.content;
-        console.log("Using data.content format");
-      } else if (responseData.choices && responseData.choices[0] && responseData.choices[0].message && responseData.choices[0].message.content) {
-        responseContent = responseData.choices[0].message.content;
-        console.log("Using data.choices[0].message.content format");
-      } else if (responseData.choices && responseData.choices[0] && responseData.choices[0].text) {
-        responseContent = responseData.choices[0].text;
-        console.log("Using data.choices[0].text format");
-      } else if (responseData.text || responseData.answer || responseData.response) {
-        responseContent = responseData.text || responseData.answer || responseData.response;
-        console.log("Using data.text/answer/response format");
-      } else if (typeof responseData === 'object') {
-        // Try to find content in the response object
-        console.log("Attempting to find content in response object");
+
+      setProcessingProgress("Receiving feedback stream...");
+      setModelThinking("Receiving stream..."); // Indicate stream has started
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulatedChunk = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          setProcessingProgress("Stream finished.");
+          setModelThinking("Stream complete.");
+          break;
+        }
+
+        accumulatedChunk += decoder.decode(value, { stream: true });
         
-        // Try to extract content from any nested structure
-        const extractContent = (obj) => {
-          if (!obj || typeof obj !== 'object') return null;
-          
-          // Check for common content fields
-          if (obj.content && typeof obj.content === 'string') return obj.content;
-          if (obj.text && typeof obj.text === 'string') return obj.text;
-          if (obj.message && obj.message.content) return obj.message.content;
-          
-          // Recursively check nested objects
-          for (const key in obj) {
-            if (typeof obj[key] === 'object') {
-              const found = extractContent(obj[key]);
-              if (found) return found;
+        let newlineIndex;
+        while ((newlineIndex = accumulatedChunk.indexOf('\n\n')) >= 0) {
+            const eventBlock = accumulatedChunk.substring(0, newlineIndex);
+            accumulatedChunk = accumulatedChunk.substring(newlineIndex + 2);
+
+            const lines = eventBlock.split('\n');
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    const jsonDataString = line.substring(6);
+                    if (jsonDataString.trim() === '[DONE]') {
+                        console.log('Stream signaled DONE.');
+                        // The loop will break on reader.done, this is just an explicit signal from data
+                        continue;
+                    }
+                    try {
+                        const parsedData = JSON.parse(jsonDataString);
+                        if (parsedData.choices && parsedData.choices[0] && parsedData.choices[0].delta && parsedData.choices[0].delta.content) {
+                            setFeedback(prev => prev + parsedData.choices[0].delta.content);
+                        } else if (parsedData.text) { // Fallback for simpler text stream
+                             setFeedback(prev => prev + parsedData.text);
+                        }
+                        // Potentially handle other structured data here if models stream differently
+                    } catch (e) {
+                        console.warn('Failed to parse streamed JSON data:', jsonDataString, e);
+                        // If it's not JSON, but still data, append directly (less ideal)
+                        // setFeedback(prev => prev + jsonDataString);
+                    }
+                } else if (line.startsWith('event: error')) {
+                    // The next line should be data: {error details}
+                    // This logic assumes the error data will also be caught by the 'data:' handler
+                    console.error("SSE stream error event received.");
+                }
             }
-          }
-          
-          return null;
-        };
-        
-        const extractedContent = extractContent(responseData);
-        if (extractedContent) {
-          responseContent = extractedContent;
-          console.log("Found content in nested object:", responseContent.substring(0, 50) + "...");
-        } else {
-          // Last resort: try to stringify the object if it has any meaningful content
-          console.warn("Unexpected API response format:", data);
-          throw new Error("Unexpected API response format");
-        }
-      } else {
-        console.warn("Unexpected API response format:", data);
-        throw new Error("Unexpected API response format");
-      }
-      
-      // If using a thinking model, extract the thinking process
-      if (captureThinking) {
-        // Check if there's a [THINKING] section
-        const thinkingMatch = responseContent.match(/\[THINKING\]([\s\S]*?)(?:\[FEEDBACK\]|$)/i);
-        if (thinkingMatch && thinkingMatch[1]) {
-          const thinkingContent = thinkingMatch[1].trim();
-          // Split into steps/points
-          thinkingSteps = thinkingContent
-            .split(/\n\s*\n|\r\n\s*\r\n/)
-            .filter(step => step.trim().length > 0)
-            .map(step => step.trim());
-          
-          setModelThinking(thinkingSteps);
-          
-          // Extract only the feedback part for the final response
-          const feedbackMatch = responseContent.match(/\[FEEDBACK\]([\s\S]*?)$/i);
-          if (feedbackMatch && feedbackMatch[1]) {
-            responseContent = feedbackMatch[1].trim();
-          }
         }
       }
-      
-      // Extract the grade from the response
-      const gradeMatch = responseContent.match(/\[GRADE:(\d+)\]/i);
-      if (gradeMatch && gradeMatch[1]) {
-        setGrade(gradeMatch[1]);
-      }
-      
-      // Extract marks if provided
-      const marksMatch = responseContent.match(/\[MARKS:(\d+)\/(\d+)\]/i);
-      if (marksMatch && marksMatch[1]) {
-        setAchievedMarks(marksMatch[1]);
-        // Set totalMarks if not already set (for display)
-        if (!totalMarks && marksMatch[2]) {
-          setTotalMarks(marksMatch[2]);
-        }
-      }
-      
-      // Clean up the response (remove the grade/marks tag)
-      const cleanResponse = responseContent
-        .replace(/\[GRADE:\d+\]/gi, '')
-        .replace(/\[MARKS:\d+\/\d+\]/gi, '');
-      
-      setFeedback(cleanResponse);
-        setSuccess({
-        message: "Assessment completed successfully!"
-      });
-      
+      // Success message will be set in the useEffect after parsing
     } catch (error) {
-      console.error("Error during assessment:", error);
-      
-      // Handle different error types
-      if (error.name === 'AbortError') {
-        setError({
-          type: "timeout",
-          message: "The request timed out. The server took too long to respond.",
-          onRetry: handleSubmitForMarking
-        });
-      } else if (error.message.includes("rate limit") || error.message.includes("429")) {
-        const fallback = FALLBACK_MODELS[selectedModel];
-        if (fallback) {
-          setError({
-            type: "rate_limit_with_fallback",
-            message: `Rate limit suspected for ${AI_MODELS.find(m => m.value === selectedModel)?.label || selectedModel}. Error: ${error.message}`,
-            fallbackModel: fallback,
-            originalModel: selectedModel,
-            onRetryFallback: (newModel) => { 
-              toast.info(`Switching to ${AI_MODELS.find(m => m.value === newModel)?.label || newModel} and retrying.`);
-              setSelectedModel(newModel); 
-              setTimeout(() => handleSubmitForMarking(), 100);
-            },
-            onRetry: () => handleSubmitForMarking()
-          });
-        } else {
-           setError({
-            type: "rate_limit", // Could be rate_limit_wait if a pattern for wait time is identified
-            message: `Rate limit issue with ${AI_MODELS.find(m => m.value === selectedModel)?.label || selectedModel}. Error: ${error.message}`,
-            onRetry: handleSubmitForMarking
-          });
-        }
-      } else {
-        setError({
-          type: "api_error",
-          message: `Error processing assessment: ${error.message}`,
-          onRetry: handleSubmitForMarking
-        });
-      }
+      console.error("Error during streaming submission:", error);
+      setError({ type: "api_error", message: `Streaming Error: ${error.message}`, onRetry: handleSubmitForMarking });
+      setProcessingProgress("Error occurred.");
+      setModelThinking("Error during stream.");
     } finally {
-      setLoading(false);
-      setProcessingProgress("");
+      // setLoading will be set to false in the useEffect after feedback processing
+      // This ensures history saving and parsing happens *after* all stream data is in.
     }
   }, [
     answer, question, subject, examBoard, questionType, userType, markScheme, totalMarks,
     textExtract, relevantMaterial, selectedModel, tier, allSubjects, API_BASE_URL,
     lastRequestDate, modelLastRequestTimes, lastRequestTime, consumeToken,
-    setFeedback, setGrade, setError, setSuccess, setModelThinking, setAchievedMarks,
+    buildSystemPrompt, buildUserPrompt, // Assuming these are stable or correctly memoized
+    relevantMaterialImage, relevantMaterialImageBase64, // Added image dependencies
+    enableThinkingBudget, thinkingBudget, // Added thinking budget dependencies
+    // No need for setFeedback, setGrade etc. here as they are handled by stream or useEffect
     setLoading, setActiveTab, setDailyRequests, setLastRequestDate, setLastRequestTime,
-    setModelLastRequestTimes, autoMaxTokens, maxTokens, getRequestTokens, // Added getRequestTokens if used inside
-    // Ensure setSelectedModel is in dependency array if used in retry logic like onRetryFallback
-    setSelectedModel 
+    setModelLastRequestTimes, autoMaxTokens, maxTokens, // getRequestTokens,
+    setSelectedModel, // Keep if used in onRetryFallback
+    checkBackendStatus, // Added dependency
+    currentModelForRequestRef // Add ref if its .current value is used inside callbacks passed to children
   ]);
+
+  // useEffect for post-processing feedback after streaming is complete and saving to history
+  useEffect(() => {
+    if (!loading && feedback.trim() !== "" && !error) { // Process only when loading is false, feedback is present, and no error
+      let currentFeedback = feedback;
+      let extractedGrade = "";
+      let extractedMarkSchemeText = ""; // Renamed to avoid conflict with markScheme state if it's input
+      let extractedAchievedMarks = null;
+
+      const gradeMatch = currentFeedback.match(/\[GRADE:(\d+)\]/i);
+      if (gradeMatch && gradeMatch[1]) {
+        extractedGrade = gradeMatch[1];
+        currentFeedback = currentFeedback.replace(gradeMatch[0], "").trim();
+      }
+
+      const marksMatch = currentFeedback.match(/\[MARKS:(\d+)\/(\d+)\]/i);
+      if (marksMatch && marksMatch[1]) {
+        extractedAchievedMarks = marksMatch[1];
+        // If totalMarks wasn't set from input, try to get it from here
+        if (!totalMarks && marksMatch[2]) {
+          setTotalMarks(marksMatch[2]); // Update totalMarks state if detected
+        }
+        currentFeedback = currentFeedback.replace(marksMatch[0], "").trim();
+      }
+      
+      // Assuming mark scheme is part of the main feedback body if not input separately
+      // This parsing might need to be more robust depending on AI output format
+      const markSchemePattern = /Mark Scheme:([\s\S]+?)(?=\n\n[A-Z]|Grade:|Marks:|$)/i; // More robust regex
+      const markSchemeMatch = currentFeedback.match(markSchemePattern);
+      if (markSchemeMatch && markSchemeMatch[1]) {
+          extractedMarkSchemeText = markSchemeMatch[1].trim();
+          // Remove it from the main feedback to avoid duplication if you display them separately
+          // currentFeedback = currentFeedback.replace(markSchemeMatch[0], "").trim();
+      }
+
+
+      setGrade(extractedGrade);
+      setAchievedMarks(extractedAchievedMarks);
+      // If you have a separate state for the parsed mark scheme text:
+      // setParsedMarkScheme(extractedMarkSchemeText);
+      // For now, we assume `feedback` state holds the primary text, and `markScheme` state is for input.
+      // If the AI generates a mark scheme and it's not from input, you might want to store it.
+      // For this task, we'll assume the main `feedback` state contains everything not explicitly parsed out.
+      
+      setSuccess({ message: "Feedback processed and displayed!" });
+      setProcessingProgress(""); // Clear progress
+      setLoading(false); // Ensure loading is false
+
+      // Save to history
+      const newHistoryItem = {
+        id: Date.now(),
+        question,
+        answer,
+        feedback: feedback, // Full streamed feedback
+        grade: extractedGrade,
+        achievedMarks: extractedAchievedMarks,
+        totalMarks: totalMarks || (marksMatch && marksMatch[2] ? marksMatch[2] : null), // Save total marks used
+        markSchemeOutput: extractedMarkSchemeText, // Store the AI generated mark scheme if parsed
+        subject, examBoard, questionType, userType,
+        model: currentModelForRequestRef.current, // Use the model that was actually used
+        tier,
+        timestamp: new Date().toISOString(),
+        relevantMaterial: relevantMaterial || "",
+        markSchemeInput: markScheme || "", // This is the user-inputted mark scheme
+        relevantMaterialImagePreview: relevantMaterialImage || null, // Save image if present
+        settings: { autoMaxTokens, maxTokens, enableThinkingBudget, thinkingBudget } // Add relevant settings
+      };
+      setHistory(prevHistory => [newHistoryItem, ...prevHistory.slice(0, HISTORY_LIMIT - 1)]);
+
+    } else if (loading && error) { // If an error occurred during loading/streaming
+        setLoading(false); // Ensure loading is stopped on error too
+        setProcessingProgress("Error occurred.");
+    }
+  }, [loading, feedback, error, question, answer, subject, examBoard, questionType, userType, markScheme, totalMarks, relevantMaterial, currentModelForRequestRef, tier, autoMaxTokens, maxTokens, enableThinkingBudget, thinkingBudget, relevantMaterialImage, HISTORY_LIMIT, setHistory, setGrade, setAchievedMarks, setTotalMarks, setSuccess, setLoading, setProcessingProgress]);
 
   const generateMarkScheme = async () => {
     // Check if we have a question

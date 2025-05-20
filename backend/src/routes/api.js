@@ -5,6 +5,7 @@ const authController = require('../controllers/authController');
 const guildController = require('../controllers/guildController');
 const adminController = require('../controllers/adminController');
 const { authenticateToken, isAdmin } = require('../middleware/auth');
+const { globalRateLimiter } = require('../middleware/rateLimit');
 
 // Health check route
 router.get('/health', (req, res) => {
@@ -51,33 +52,96 @@ router.get('/admin/leaderboard/chess', authenticateToken, adminController.getChe
 router.get('/admin/leaderboard/guilds', authenticateToken, adminController.getGuildLeaderboard);
 
 // GitHub model API routes
-router.post('/github/completions', async (req, res) => {
+router.post('/github/completions', globalRateLimiter, async (req, res) => {
   try {
     const { messages } = req.body;
     if (!messages || !Array.isArray(messages)) {
       return res.status(400).json({ error: 'Invalid request format' });
     }
 
-    // Forward request to GitHub API
-    const response = await fetch('https://api.github.com/copilot/v1/chat/completions', {
+    // Set headers for SSE
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders(); // flush the headers to establish SSE connection
+
+    // Forward request to GitHub API with streaming enabled
+    const githubResponse = await fetch('https://api.github.com/copilot/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.GITHUB_API_KEY}`
+        'Authorization': `Bearer ${process.env.GITHUB_API_KEY}`,
+        'Accept': 'text/event-stream' // Request SSE from GitHub
       },
-      body: JSON.stringify({ messages })
+      body: JSON.stringify({ messages, stream: true }) // Enable streaming
     });
 
-    if (!response.ok) {
-      const error = await response.text();
-      return res.status(response.status).json({ error });
+    if (!githubResponse.ok) {
+      const errorText = await githubResponse.text();
+      console.error('GitHub API error:', githubResponse.status, errorText);
+      // Send an error event before closing
+      res.write(`event: error\ndata: ${JSON.stringify({ error: errorText, status: githubResponse.status })}\n\n`);
+      res.end();
+      return;
     }
 
-    const data = await response.json();
-    res.json(data);
+    // Pipe the stream from GitHub to the client
+    const reader = githubResponse.body.getReader();
+    const decoder = new TextDecoder();
+
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      
+      // Process buffer line by line for SSE events
+      let eolIndex;
+      while ((eolIndex = buffer.indexOf('\n\n')) !== -1) {
+        const eventLines = buffer.substring(0, eolIndex);
+        buffer = buffer.substring(eolIndex + 2); // +2 for \n\n
+
+        // Forward each complete SSE event from GitHub
+        // Ensure it's properly formatted as an SSE message to our client
+        const lines = eventLines.split('\n');
+        lines.forEach(line => {
+          if (line.startsWith('data: ')) {
+            // Check if it's the [DONE] signal
+            if (line.substring(6).trim() === '[DONE]') {
+              res.write('event: done\ndata: [DONE]\n\n');
+            } else {
+              res.write(`${line}\n`); // Forward data line
+            }
+          } else if (line.startsWith('event: ')) {
+            res.write(`${line}\n`); // Forward event line
+          } else if (line.trim() !== '') {
+             // Forward other lines if any (e.g. id, retry)
+            res.write(`${line}\n`);
+          }
+        });
+        if (eventLines.trim() !== '') {
+            res.write('\n'); // Add the final newline for the event
+        }
+      }
+    }
+    // Ensure any remaining buffer is processed if it's a [DONE] message
+    if (buffer.includes('data: [DONE]')) {
+        res.write('data: [DONE]\n\n');
+    }
+
+
+    res.end(); // End the SSE stream
   } catch (error) {
-    console.error('GitHub API error:', error);
-    res.status(500).json({ error: error.message });
+    console.error('Streaming API error:', error);
+    // Send an error event if an exception occurs before or during streaming
+    if (!res.headersSent) {
+        res.status(500).json({ error: error.message });
+    } else {
+        res.write(`event: error\ndata: ${JSON.stringify({ error: error.message })}\n\n`);
+        res.end();
+    }
   }
 });
 
