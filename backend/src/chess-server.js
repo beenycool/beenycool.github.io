@@ -4,7 +4,19 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
-const { freePort, findAvailablePort } = require('./utils/port-manager');
+
+// Try to load port manager, but provide fallbacks if it fails
+let freePort, findAvailablePort;
+try {
+  const portManager = require('./utils/port-manager');
+  freePort = portManager.freePort;
+  findAvailablePort = portManager.findAvailablePort;
+} catch (error) {
+  console.warn('Could not load port-manager.js, using fallbacks:', error.message);
+  // Simple fallbacks that just resolve
+  freePort = () => Promise.resolve(true);
+  findAvailablePort = (port) => Promise.resolve(port);
+}
 
 // Import models
 const User = require('./models/User');

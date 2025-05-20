@@ -1,10 +1,24 @@
 // Server startup script that handles startup issues gracefully
 const { spawn } = require('child_process');
-const { freePort } = require('./src/utils/port-manager');
+const path = require('path');
+const fs = require('fs');
 
 // Define the ports we want to use
 const MAIN_PORT = process.env.PORT || 3000;
 const CHESS_PORT = process.env.CHESS_PORT || 10000;
+
+// Try to load port manager, but provide fallbacks if it fails
+let freePort, findAvailablePort;
+try {
+  const portManager = require('./src/utils/port-manager');
+  freePort = portManager.freePort;
+  findAvailablePort = portManager.findAvailablePort;
+} catch (error) {
+  console.warn('Could not load port-manager.js, using fallbacks:', error.message);
+  // Simple fallbacks that just resolve
+  freePort = () => Promise.resolve(true);
+  findAvailablePort = (port) => Promise.resolve(port);
+}
 
 async function startServers() {
   console.log('Starting backend services...');
