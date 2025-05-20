@@ -20,32 +20,40 @@ try {
   findAvailablePort = (port) => Promise.resolve(port);
 }
 
-// Create public directory if it doesn't exist
-const publicDir = path.join(__dirname, 'public');
-if (!fs.existsSync(publicDir)) {
-  console.log(`Creating public directory at ${publicDir}`);
-  try {
-    fs.mkdirSync(publicDir, { recursive: true });
-    // Create a basic index.html file
-    const indexHtml = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Beenycool API Server</title>
-          <style>
-            body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-            h1 { color: #333; }
-          </style>
-        </head>
-        <body>
-          <h1>Beenycool API Server</h1>
-          <p>Server is running. This is a placeholder page.</p>
-        </body>
-      </html>
-    `;
-    fs.writeFileSync(path.join(publicDir, 'index.html'), indexHtml);
-  } catch (err) {
-    console.error('Error creating public directory:', err);
+// Create public directories in multiple locations to ensure one works
+const publicDirs = [
+  path.join(__dirname, 'public'),
+  path.join(__dirname, '../public'),
+  '/opt/render/project/src/public'
+];
+
+for (const publicDir of publicDirs) {
+  if (!fs.existsSync(publicDir)) {
+    console.log(`Creating public directory at ${publicDir}`);
+    try {
+      fs.mkdirSync(publicDir, { recursive: true });
+      // Create a basic index.html file
+      const indexHtml = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Beenycool API Server</title>
+            <style>
+              body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+              h1 { color: #333; }
+            </style>
+          </head>
+          <body>
+            <h1>Beenycool API Server</h1>
+            <p>Server is running. This is a placeholder page.</p>
+          </body>
+        </html>
+      `;
+      fs.writeFileSync(path.join(publicDir, 'index.html'), indexHtml);
+      console.log(`Created index.html in ${publicDir}`);
+    } catch (err) {
+      console.error(`Error creating public directory at ${publicDir}:`, err);
+    }
   }
 }
 
@@ -68,7 +76,9 @@ async function startServers() {
         ...process.env,
         // If we're on Render, make sure we use their assigned PORT
         PORT: process.env.PORT || MAIN_PORT,
-        CHESS_PORT: process.env.PORT || CHESS_PORT
+        CHESS_PORT: process.env.PORT || CHESS_PORT,
+        // Set a flag to indicate we're on Render
+        RENDER: process.env.RENDER || 'true'
       },
       stdio: 'inherit'
     });

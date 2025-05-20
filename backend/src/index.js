@@ -48,13 +48,27 @@ process.on('message', (message) => {
 });
 
 // MongoDB connection
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/beenycool';
+let MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/beenycool';
 
-console.log(`Attempting to connect to MongoDB at ${MONGODB_URI.replace(/mongodb\+srv:\/\/([^:]+):[^@]+@/, 'mongodb+srv://***:***@')}`);
+// If we're on Render and no MONGODB_URI is provided, use a dummy URI that will fail gracefully
+if (process.env.RENDER && (!MONGODB_URI || MONGODB_URI === 'mongodb://localhost:27017/beenycool')) {
+  console.warn('No valid MONGODB_URI provided on Render. Please set this environment variable.');
+  // Set a dummy URI that will fail gracefully
+  MONGODB_URI = 'mongodb://dummy:dummy@dummy.mongodb.net/beenycool?retryWrites=true&w=majority';
+}
+
+// Mask credentials in logs
+function maskUri(uri) {
+  if (!uri) return 'undefined';
+  return uri.replace(/mongodb(\+srv)?:\/\/([^:]+):([^@]+)@/, 'mongodb$1://$2:***@');
+}
+
+console.log(`Attempting to connect to MongoDB at ${maskUri(MONGODB_URI)}`);
 
 mongoose.connect(MONGODB_URI)
 .then(() => {
-  console.log('Connected to MongoDB');
+  console.log('Connected to MongoDB successfully');
+  console.log('Database name:', mongoose.connection.db.databaseName);
 })
 .catch((err) => {
   console.error('MongoDB connection error:', err);
@@ -89,7 +103,27 @@ app.use(attachRequestMetrics);
 app.use('/api', apiRoutes);
 
 // Serve static files from public directory
-const publicDir = path.join(__dirname, '../../public');
+let publicDir = path.join(__dirname, '../../public');
+// Check if we're on Render
+if (process.env.RENDER) {
+  // Try different paths that might work on Render
+  const possiblePaths = [
+    path.join(__dirname, '../../public'),
+    path.join(__dirname, '../public'),
+    path.join(process.cwd(), 'public'),
+    '/opt/render/project/src/public'
+  ];
+  
+  // Use the first path that exists
+  for (const testPath of possiblePaths) {
+    if (fs.existsSync(testPath)) {
+      publicDir = testPath;
+      console.log(`Found public directory at: ${publicDir}`);
+      break;
+    }
+  }
+}
+
 if (!fs.existsSync(publicDir)) {
   console.log(`Public directory not found at ${publicDir}, creating it...`);
   try {
@@ -123,16 +157,22 @@ if (!fs.existsSync(publicDir)) {
             <h3>GET /api/players/:id/stats</h3>
             <p>Get player statistics</p>
           </div>
+          <div class="endpoint">
+            <h3>GET /health</h3>
+            <p>Health check endpoint</p>
+          </div>
           <p>For WebSocket connections, connect to <code>/socket.io</code></p>
         </body>
       </html>
     `;
     fs.writeFileSync(path.join(publicDir, 'index.html'), indexHtml);
-    console.log('Created basic index.html file');
+    console.log('Created basic index.html file at:', path.join(publicDir, 'index.html'));
   } catch (err) {
     console.error('Error creating public directory:', err);
   }
 }
+
+console.log('Using public directory:', publicDir);
 app.use(express.static(publicDir));
 
 // Initialize chess server which sets up Socket.io
@@ -150,7 +190,20 @@ if (typeof chessServer.setup === 'function') {
 
 // Catch-all route to serve main HTML file
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../../public/index.html'));
+  const indexPath = path.join(publicDir, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.send(`
+      <html>
+        <head><title>Beenycool API Server</title></head>
+        <body>
+          <h1>Beenycool API Server</h1>
+          <p>Server is running. API endpoints available under /api/</p>
+        </body>
+      </html>
+    `);
+  }
 });
 
 // Default route
