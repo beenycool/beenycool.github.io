@@ -264,6 +264,7 @@ export default function ChessComponent({ systemTheme }) {
   const [lastMove, setLastMove] = useState(null);
   const [isInCheck, setIsInCheck] = useState(false);
   const [customPieceStyle, setCustomPieceStyle] = useState('default'); // 'default', 'neo', '8bit'
+  const [boardOrientation, setBoardOrientation] = useState('white'); // 'white' or 'black'
   
   // Password protection state
   const [gamePassword, setGamePassword] = useState("");
@@ -925,11 +926,15 @@ export default function ChessComponent({ systemTheme }) {
 
   // Flip board orientation
   const flipBoard = useCallback(() => {
-    // Only allow in local mode
-    if (gameMode === "online") return;
-    
-    setGame(new Chess(game.fen()));
-  }, [game, gameMode]);
+    if (gameMode === "online" && playerColor) {
+      // In online mode, flip to show player's pieces at the bottom
+      setBoardOrientation(playerColor);
+    } else if (gameMode === "local") {
+      // In local mode, toggle orientation
+      setBoardOrientation(prev => prev === 'white' ? 'black' : 'white');
+    }
+    // No need to do setGame(new Chess(game.fen())) as board orientation is a UI concern here
+  }, [gameMode, playerColor]);
   
   // Create a new game room
   const createGameRoom = () => {
@@ -1138,7 +1143,8 @@ export default function ChessComponent({ systemTheme }) {
         if (socketRef.current) {
           socketRef.current.emit('setRoomPassword', {
             roomId,
-            hasPassword: true
+            hasPassword: true,
+            password: newPassword // Send the new password to the server
           });
         }
       }
@@ -1155,7 +1161,8 @@ export default function ChessComponent({ systemTheme }) {
         if (socketRef.current) {
           socketRef.current.emit('setRoomPassword', {
             roomId,
-            hasPassword: false
+            hasPassword: false,
+            password: null // Explicitly send null when removing password
           });
         }
       }
@@ -1761,29 +1768,38 @@ export default function ChessComponent({ systemTheme }) {
           <div className={`game-room-container p-4 shadow-md ${isInCheck ? 'border-red-500 border-2' : ''}`}>
             <div className={`chess-board ${darkMode ? 'chess-board-dark' : ''}`}>
               <Chessboard 
-                id="BasicBoard"
-                boardWidth={boardWidth}
+                id="Chessboard"
                 position={fen}
                 onPieceDrop={onDrop}
                 onSquareClick={onSquareClick}
-                boardOrientation={gameMode === "online" ? playerColor : "white"}
+                boardWidth={boardWidth}
                 customBoardStyle={{
                   borderRadius: '4px',
-                  boxShadow: '0 5px 15px rgba(0, 0, 0, 0.1)'
+                  boxShadow: '0 2px 10px rgba(0, 0, 0, 0.5)',
                 }}
                 customSquareStyles={{
-                  ...(lastMove && {
-                    [lastMove.from]: { backgroundColor: darkMode ? 'rgba(255, 255, 0, 0.2)' : 'rgba(255, 255, 0, 0.4)' },
-                    [lastMove.to]: { backgroundColor: darkMode ? 'rgba(255, 255, 0, 0.2)' : 'rgba(255, 255, 0, 0.4)' }
+                  ...highlightedSquares,
+                  ...(lastMove && { 
+                    [lastMove.from]: { backgroundColor: 'rgba(255, 255, 0, 0.4)' },
+                    [lastMove.to]: { backgroundColor: 'rgba(255, 255, 0, 0.4)' }
                   }),
                   ...(preMove && {
-                    [preMove.from]: { backgroundColor: darkMode ? 'rgba(0, 255, 0, 0.15)' : 'rgba(0, 255, 0, 0.25)' },
-                    [preMove.to]: { backgroundColor: darkMode ? 'rgba(0, 255, 0, 0.2)' : 'rgba(0, 255, 0, 0.35)' }
+                    [preMove.from]: { backgroundColor: 'rgba(0, 0, 255, 0.3)' }, // Blueish for pre-move source
+                    [preMove.to]: { backgroundColor: 'rgba(0, 0, 255, 0.3)' }    // Blueish for pre-move target
                   }),
-                  ...highlightedSquares,
+                  ...(isCheck && game.kingAttackers('w').length > 0 && game.get(game.kingSquare('w'))?.color === 'w' && {
+                    [game.kingSquare('w')]: { backgroundColor: 'rgba(255, 0, 0, 0.5)' } // Red for white king in check
+                  }),
+                  ...(isCheck && game.kingAttackers('b').length > 0 && game.get(game.kingSquare('b'))?.color === 'b' && {
+                    [game.kingSquare('b')]: { backgroundColor: 'rgba(255, 0, 0, 0.5)' } // Red for black king in check
+                  })
                 }}
                 customDarkSquareStyle={{ backgroundColor: currentStyles.dark }}
                 customLightSquareStyle={{ backgroundColor: currentStyles.light }}
+                customPieces={customPieceStyle !== 'default' ? pieceComponents[customPieceStyle] : undefined}
+                boardOrientation={boardOrientation} // Added boardOrientation prop
+                arePremovesAllowed={true}
+                animationDuration={activeAnimation ? 300 : 200} 
               />
             </div>
 

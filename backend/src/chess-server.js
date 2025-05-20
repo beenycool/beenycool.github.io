@@ -308,7 +308,7 @@ io.on('connection', (socket) => {
       
       // If userId is provided, find the user in the database
       if (userId) {
-        user = await User.findById(userId);
+        user = await User.findByPk(userId);
         username = user ? user.username : username || 'Anonymous';
       }
       
@@ -379,15 +379,19 @@ io.on('connection', (socket) => {
         playerColor = 'white';
         if (user) {
           // Create or update the ChessGame record
-          await ChessGame.findOneAndUpdate(
-            { gameId: roomId },
-            { 
-              'players.white.user': user._id,
-              'players.white.username': username,
-              'players.white.rating': user.chessRating
+          await ChessGame.upsert({
+            gameId: roomId,
+            players: {
+              white: {
+                userId: user.id,
+                username: username,
+                rating: user.chessRating
+              },
+              black: room.players?.black || { userId: null, username: null, rating: 1200, ratingChange: 0 }
             },
-            { upsert: true, new: true }
-          );
+            startTime: new Date(),
+            isRated: true,
+          });
         }
       } else if (!room.black && room.white !== socket.id) {
         room.black = socket.id;
@@ -395,15 +399,33 @@ io.on('connection', (socket) => {
         playerColor = 'black';
         if (user) {
           // Update the ChessGame record
-          await ChessGame.findOneAndUpdate(
-            { gameId: roomId },
-            { 
-              'players.black.user': user._id,
-              'players.black.username': username,
-              'players.black.rating': user.chessRating
-            },
-            { upsert: true, new: true }
-          );
+          let gameInstance = await ChessGame.findOne({ where: { gameId: roomId } });
+          if (gameInstance) {
+            const updatedPlayers = {
+              ...gameInstance.players,
+              black: {
+                userId: user.id,
+                username: username,
+                rating: user.chessRating,
+                ratingChange: 0
+              }
+            };
+            await gameInstance.update({ players: updatedPlayers });
+          } else {
+            await ChessGame.upsert({
+              gameId: roomId,
+              players: {
+                white: room.players?.white || { userId: null, username: null, rating: 1200, ratingChange: 0 },
+                black: {
+                  userId: user.id,
+                  username: username,
+                  rating: user.chessRating
+                }
+              },
+              startTime: new Date(),
+              isRated: true,
+            });
+          }
         }
         
         // Both players are now connected, notify them
@@ -468,7 +490,7 @@ io.on('connection', (socket) => {
           const ipAddress = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
           
           await ActivityLog.create({
-            user: user._id,
+            user: user.id,
             username: user.username,
             ipAddress,
             actionType: 'chess_game_start',
@@ -484,6 +506,40 @@ io.on('connection', (socket) => {
     } catch (error) {
       console.error('Error in joinRoom:', error);
       socket.emit('errorMessage', { message: 'An error occurred while joining the game' });
+    }
+  });
+
+  // Handle setting/unsetting room password
+  socket.on('setRoomPassword', ({ roomId, hasPassword, password }) => {
+    try {
+      const room = gameRooms.get(roomId);
+      if (!room) {
+        socket.emit('errorMessage', { message: 'Room not found' });
+        return;
+      }
+
+      // Basic security: Only allow the creator (e.g., white player) to set password
+      // This assumes white player ID is stored when room is created and is the creator
+      if (room.white !== socket.id) {
+        socket.emit('errorMessage', { message: 'Only the room creator can set the password' });
+        return;
+      }
+
+      room.hasPassword = hasPassword;
+      if (hasPassword && password) {
+        room.password = password; // Store the actual password if provided and setting password
+      } else {
+        room.password = null; // Clear password if unsetting or not provided
+      }
+
+      gameRooms.set(roomId, room);
+      socket.emit('roomPasswordSet', { roomId, hasPassword });
+      // Optionally, notify others in the room if needed, though password changes are sensitive
+      // io.to(roomId).emit('roomPasswordStatusChanged', { hasPassword });
+
+    } catch (error) {
+      console.error('Error in setRoomPassword:', error);
+      socket.emit('errorMessage', { message: 'Error updating room password status.' });
     }
   });
 
@@ -684,8 +740,8 @@ io.on('connection', (socket) => {
       
       // Update player stats
       if (game.players.white.user && game.players.black.user) {
-        const whiteUser = await User.findById(game.players.white.user);
-        const blackUser = await User.findById(game.players.black.user);
+        const whiteUser = await User.findByPk(game.players.white.user);
+        const blackUser = await User.findByPk(game.players.black.user);
         
         if (whiteUser && blackUser) {
           // Update game stats
@@ -756,7 +812,7 @@ io.on('connection', (socket) => {
           };
           
           await ActivityLog.create({
-            user: whiteUser._id,
+            user: whiteUser.id,
             username: whiteUser.username,
             actionType: 'chess_game_end',
             actionDetails: gameActivityDetails,
@@ -767,7 +823,7 @@ io.on('connection', (socket) => {
           gameActivityDetails.ratingChange = game.players.black.ratingChange;
           
           await ActivityLog.create({
-            user: blackUser._id,
+            user: blackUser.id,
             username: blackUser.username,
             actionType: 'chess_game_end',
             actionDetails: gameActivityDetails,
