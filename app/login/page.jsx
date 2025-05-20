@@ -22,7 +22,7 @@ const LoginContent = () => {
   const redirect = searchParams.get('redirect') || '/';
   
   // API base URL
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://beenycool-github-io.onrender.com/api';
   
   // Check if already logged in
   useEffect(() => {
