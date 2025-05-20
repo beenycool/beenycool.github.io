@@ -86,36 +86,55 @@ const USER_TYPES = [
 
 const AI_MODELS = [
   { value: "gemini-2.5-flash-preview-04-17", label: "Gemini 2.5 Flash Preview", description: "Best quality with faster response times" },
+  { value: "google/gemini-2.5-pro:free", label: "Gemini 2.5 Pro", description: "Highest quality generation from Google" },
   { value: "microsoft/mai-ds-r1:free", label: "R1 (thinking model)", description: "Most thorough reasoning process (may take 1-2 minutes)" },
   { value: "deepseek/deepseek-chat-v3-0324:free", label: "V3 (balanced model)", description: "Balanced speed and quality" },
-  { value: "google/gemini-2.0-flash-exp:free", label: "Fast Response (lower quality)", description: "Quick responses, suitable for shorter answers" },
+  { value: "openai/o3", label: "GitHub O3", description: "GitHub AI Model (O3)" },
+  { value: "openai/o4-mini", label: "GitHub O4 Mini", description: "GitHub AI Model (O4 Mini)" },
+  { value: "openai/o4", label: "GitHub O4", description: "GitHub AI Model (O4)" },
+  { value: "xai/grok", label: "Grok", description: "X AI Model (Grok)" },
+  { value: "openai/gpt-4.1", label: "GitHub GPT 4.1", description: "GitHub AI Model (GPT 4.1)" }
 ];
 
 // Add fallback models for when primary models are rate limited
 const FALLBACK_MODELS = {
   "gemini-2.5-flash-preview-04-17": "deepseek/deepseek-chat-v3-0324:free",
-  "google/gemini-2.0-flash-exp:free": "deepseek/deepseek-chat-v3-0324:free",
+  "google/gemini-2.5-pro:free": "gemini-2.5-flash-preview-04-17", // Fallback for Gemini Pro
   "deepseek/deepseek-chat-v3-0324:free": "microsoft/mai-ds-r1:free",
-  "microsoft/mai-ds-r1:free": "google/gemini-2.0-flash-exp:free"
+  "microsoft/mai-ds-r1:free": "google/gemini-2.5-pro:free", // Fallback to Gemini Pro
+  "openai/o3": "openai/o4-mini", // Fallback for O3
+  "openai/o4-mini": "deepseek/deepseek-chat-v3-0324:free", // Fallback for O4 Mini
+  "openai/o4": "openai/o3", // Fallback for O4
+  "xai/grok": "deepseek/deepseek-chat-v3-0324:free", // Fallback for Grok
+  "openai/gpt-4.1": "openai/o4" // Fallback for GPT 4.1
 };
 
 // Define model-specific rate limits (in milliseconds)
+// Default rate limit for new models: 15 requests per minute (4000 ms per request)
 const MODEL_RATE_LIMITS = {
   "gemini-2.5-flash-preview-04-17": 60000, // 1 minute
-  "google/gemini-2.0-flash-exp:free": 10000, // 10 seconds
+  "google/gemini-2.5-pro:free": 60000, // 1 minute (assuming similar to flash preview for now)
   "deepseek/deepseek-chat-v3-0324:free": 10000, // 10 seconds
-  "microsoft/mai-ds-r1:free": 10000 // 15 seconds
+  "microsoft/mai-ds-r1:free": 10000, // 15 seconds
+  "openai/o3": 4000, 
+  "openai/o4-mini": 4000,
+  "openai/o4": 4000,
+  "xai/grok": 4000,
+  "openai/gpt-4.1": 4000
 };
 
 // Define specific models for specific tasks
 const TASK_SPECIFIC_MODELS = {
-  "image_processing": "google/gemini-2.0-flash-exp:free"
+  "image_processing": "gemini-2.5-flash-preview-04-17" // Updated to use Gemini 2.5 Flash for image processing
 };
 
 // Define default thinking budgets for models that support it
 const DEFAULT_THINKING_BUDGETS = {
   "gemini-2.5-flash-preview-04-17": 1024,
+  "google/gemini-2.5-pro:free": 2048, // Added thinking budget for Gemini Pro
   "microsoft/mai-ds-r1:free": 0 // R1 thinking is handled differently via system prompt
+  // GitHub models and Grok might not have a 'thinkingBudget' concept in the same way,
+  // or it's controlled by different parameters. This can be added if their API supports it.
 };
 
 const subjectKeywords = {
