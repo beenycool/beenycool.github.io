@@ -1991,7 +1991,7 @@ const AIMarker = () => {
         setLoading(false); // Ensure loading is stopped on error too
         setProcessingProgress("Error occurred.");
     }
-  }, [loading, feedback, error, question, answer, subject, examBoard, questionType, userType, markScheme, totalMarks, relevantMaterial, currentModelForRequestRef, tier, autoMaxTokens, maxTokens, enableThinkingBudget, thinkingBudget, relevantMaterialImage, HISTORY_LIMIT, setHistory, setGrade, setAchievedMarks, setTotalMarks, setSuccess, setLoading, setProcessingProgress]);
+  }, [loading, feedback, error, question, answer, subject, examBoard, questionType, userType, markScheme, totalMarks, relevantMaterial, selectedModel, tier, autoMaxTokens, maxTokens, enableThinkingBudget, thinkingBudget, relevantMaterialImage, HISTORY_LIMIT, setHistory, setGrade, setAchievedMarks, setTotalMarks, setSuccess, setLoading, setProcessingProgress]);
 
   const generateMarkScheme = async () => {
     // Check if we have a question
