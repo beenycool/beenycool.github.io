@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server';
 
 // Middleware function that handles incoming requests
 export default function middleware(request) {
+  // Skip middleware in production builds when using static export
+  if (process.env.NODE_ENV === 'production' && process.env.NEXT_OUTPUT === 'export') {
+    return NextResponse.next();
+  }
+
   // For WebSocket requests to the chess socket endpoint
   if (request.nextUrl.pathname.startsWith('/api/chess-socket') && 
       request.headers.get('upgrade') === 'websocket') {

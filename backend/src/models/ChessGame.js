@@ -163,7 +163,6 @@ const ChessGameSchema = new mongoose.Schema({
 });
 
 // Indexes for efficient querying
-// Removing duplicate gameId index since it's already defined as unique in the schema
 ChessGameSchema.index({ 'players.white.user': 1, startTime: -1 });
 ChessGameSchema.index({ 'players.black.user': 1, startTime: -1 });
 ChessGameSchema.index({ result: 1, startTime: -1 });

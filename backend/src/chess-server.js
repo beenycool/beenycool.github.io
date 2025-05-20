@@ -4,6 +4,7 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const { freePort, findAvailablePort } = require('./utils/port-manager');
 
 // Import models
 const User = require('./models/User');
@@ -907,29 +908,42 @@ app.get('/', (req, res) => {
 const PORT = process.env.CHESS_PORT || 10000;
 let currentPort = PORT;
 let retries = 0;
-const MAX_RETRIES = 5;
+const MAX_RETRIES = 10;
 
-function startServer(port) {
-  server.listen(port)
-    .on('listening', () => {
+async function startServer(port) {
+  try {
+    // First try to free the desired port
+    await freePort(port);
+    
+    // If that didn't work, find an available port
+    if (retries > 0) {
+      const availablePort = await findAvailablePort(PORT + 1000, 1000);
+      if (availablePort) {
+        port = availablePort;
+      }
+    }
+    
+    server.listen(port, () => {
       console.log(`Chess server running on port ${port}`);
-      // Store the successful port in environment variable to help with reconnection
-      process.env.ACTIVE_CHESS_PORT = port;
-    })
-    .on('error', (err) => {
+      // Store the successful port in process.env so other parts of the app can use it
+      process.env.ACTUAL_CHESS_PORT = port;
+      
+      // If we're in child process mode, inform the parent
+      if (typeof process.send === 'function') {
+        process.send({ type: 'chess-server-started', port });
+      }
+    }).on('error', (err) => {
       if (err.code === 'EADDRINUSE') {
         retries += 1;
         if (retries <= MAX_RETRIES) {
-          // Try a port with significant offset to avoid other processes' sequential ports
-          currentPort = port + 1000 + Math.floor(Math.random() * 1000);
+          // Try a more random port instead of incrementing sequentially
+          currentPort = PORT + Math.floor(Math.random() * 1000) + retries;
           console.log(`Port ${port} is in use, trying ${currentPort} instead...`);
-          setTimeout(() => {
-            startServer(currentPort);
-          }, 1000); // Add delay before retry to let system release resources
+          startServer(currentPort);
         } else {
           console.error(`Could not find an available port after ${MAX_RETRIES} retries.`);
           // Inform main server about the failure
-          if (process.send) {
+          if (typeof process.send === 'function') {
             process.send({ type: 'chess-server-failed' });
           }
         }
@@ -937,16 +951,20 @@ function startServer(port) {
         console.error('Error starting chess server:', err);
       }
     });
+  } catch (error) {
+    console.error('Error in startServer:', error);
+    // Try with a different port if there was an error
+    if (retries <= MAX_RETRIES) {
+      retries += 1;
+      currentPort = PORT + Math.floor(Math.random() * 1000) + retries;
+      console.log(`Error with port ${port}, trying ${currentPort} instead...`);
+      startServer(currentPort);
+    }
+  }
 }
 
-// Add check to see if we have a stored port from a previous run
-const storedPort = process.env.ACTIVE_CHESS_PORT;
-if (storedPort && parseInt(storedPort) !== PORT) {
-  console.log(`Using previously successful port: ${storedPort}`);
-  startServer(parseInt(storedPort));
-} else {
-  startServer(currentPort);
-}
+// Start the server asynchronously
+startServer(currentPort);
 
 // Cleanup on server shutdown
 process.on('SIGINT', () => {

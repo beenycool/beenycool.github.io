@@ -9,7 +9,9 @@
     "lint": "next lint",
     "static-build": "next build",
     "serve": "npx serve@latest out",
-    "build-and-serve": "npm run static-build && npm run serve"
+    "build-and-serve": "npm run static-build && npm run serve",
+    "backend": "cd backend && node server-start.js",
+    "backend-dev": "cd backend && nodemon server-start.js"
   },
   "dependencies": {
     "@radix-ui/react-collapsible": "^1.1.10",

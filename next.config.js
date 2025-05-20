@@ -2,7 +2,9 @@
 const nextConfig = {
   reactStrictMode: true,
   // Enable static export for GitHub Pages
-  output: 'export',
+  // Note: When using middleware with static export, you need to handle middleware differently
+  // For local development, comment out 'output: export' to test middleware functionality
+  output: process.env.NODE_ENV === 'production' ? 'export' : undefined,
   images: {
     unoptimized: true
   },
