@@ -7,6 +7,10 @@ const express = require('express');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
+const cors = require('cors');
+const morgan = require('morgan');
+const helmet = require('helmet');
+const socketIo = require('socket.io');
 
 // Create the Express app
 const app = express();
@@ -14,6 +18,13 @@ const server = http.createServer(app);
 
 // Get the port from Render's environment variable
 const PORT = process.env.PORT || 3000;
+
+// Set up middleware
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(morgan('dev'));
+app.use(helmet());
 
 // Create a public directory if it doesn't exist
 const publicDir = path.join(__dirname, 'public');
@@ -30,6 +41,7 @@ if (!fs.existsSync(publicDir)) {
           <style>
             body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
             h1 { color: #333; }
+            pre { background: #f5f5f5; padding: 10px; border-radius: 4px; overflow-x: auto; }
           </style>
         </head>
         <body>
@@ -37,6 +49,11 @@ if (!fs.existsSync(publicDir)) {
           <p>Server is running on Render. This is a placeholder page.</p>
           <p>Server started at: ${new Date().toISOString()}</p>
           <p>Environment: ${process.env.NODE_ENV || 'development'}</p>
+          <h2>Available Endpoints:</h2>
+          <ul>
+            <li><a href="/health">/health</a> - Health check endpoint</li>
+            <li><a href="/api">/api</a> - API endpoints</li>
+          </ul>
         </body>
       </html>
     `;
@@ -48,6 +65,51 @@ if (!fs.existsSync(publicDir)) {
 
 // Serve static files
 app.use(express.static(publicDir));
+
+// Set up Socket.io
+const io = socketIo(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST']
+  }
+});
+
+// Basic Socket.io connection
+io.on('connection', (socket) => {
+  console.log('New client connected');
+  
+  socket.on('disconnect', () => {
+    console.log('Client disconnected');
+  });
+  
+  // Basic ping/pong for testing
+  socket.on('ping', (data) => {
+    socket.emit('pong', { 
+      message: 'pong', 
+      timestamp: new Date().toISOString(),
+      received: data
+    });
+  });
+});
+
+// Basic API routes
+app.get('/api', (req, res) => {
+  res.json({
+    message: 'API is running',
+    endpoints: [
+      '/health',
+      '/api/status'
+    ]
+  });
+});
+
+app.get('/api/status', (req, res) => {
+  res.json({
+    status: 'ok',
+    version: require('./package.json').version,
+    uptime: process.uptime()
+  });
+});
 
 // Basic routes
 app.get('/', (req, res) => {
@@ -61,7 +123,8 @@ app.get('/health', (req, res) => {
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
     port: PORT,
-    env: process.env.NODE_ENV || 'development'
+    env: process.env.NODE_ENV || 'development',
+    socketio: 'enabled'
   });
 });
 

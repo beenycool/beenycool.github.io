@@ -72,7 +72,7 @@ Set the following environment variables in the Render dashboard:
 
 - **Root Directory:** `/backend` (important: this should be the backend directory)
 - **Build Command:** `npm install`
-- **Start Command:** `node server-start.js`
+- **Start Command:** `npm run render-start` (recommended) or `node render-start.js`
 
 ### Important Render-Specific Notes
 
@@ -87,6 +87,8 @@ Set the following environment variables in the Render dashboard:
 5. **Port Binding**: Make sure the app binds to `0.0.0.0` (all interfaces) and the port specified by Render's `PORT` environment variable.
 
 6. **Fallback Database**: If PostgreSQL is not available, the app will use an in-memory SQLite database to allow the service to start.
+
+7. **Simplified Deployment**: For the most reliable deployment on Render, use the `render-start.js` script which provides a simplified server that's guaranteed to bind to the correct port.
 
 ## Troubleshooting
 
@@ -116,4 +118,5 @@ If you see "Port scan timeout reached, no open ports detected" on Render:
 1. Make sure the app is binding to `0.0.0.0` (all interfaces)
 2. Ensure the app is using the port from `process.env.PORT`
 3. Check the logs for any errors during startup
-4. Verify the Root Directory is set correctly in the Render dashboard 
+4. Verify the Root Directory is set correctly in the Render dashboard
+5. Try using the simplified `render-start.js` script instead of the full server 

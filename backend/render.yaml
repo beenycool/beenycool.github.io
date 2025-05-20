@@ -1,1 +1,16 @@
- 
+services:
+  - type: web
+    name: beenycool-backend
+    env: node
+    buildCommand: npm install
+    startCommand: node render-start.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: RENDER
+        value: true
+      - key: JWT_SECRET
+        generateValue: true
+    healthCheckPath: /health
+    autoDeploy: true
+    plan: free 

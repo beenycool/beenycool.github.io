@@ -49,7 +49,10 @@ async function testConnection() {
     if (process.env.RENDER && !process.env.DATABASE_URL) {
       console.log('Creating in-memory SQLite database for temporary use');
       try {
-        sequelize = new Sequelize('sqlite::memory:', {
+        // Fix for the deprecated URL format
+        sequelize = new Sequelize({
+          dialect: 'sqlite',
+          storage: ':memory:',
           logging: false
         });
         await sequelize.authenticate();

@@ -9,7 +9,8 @@ dotenv.config();
 
 // Define the ports we want to use
 const MAIN_PORT = process.env.PORT || 3000;
-// On Render, we need to use the assigned PORT for everything
+// On Render, we MUST use the assigned PORT for everything
+// Don't try to use a separate chess port on Render
 const CHESS_PORT = process.env.RENDER ? process.env.PORT : (process.env.CHESS_PORT || 10000);
 
 // Try to load port manager, but provide fallbacks if it fails
@@ -131,9 +132,12 @@ async function startServers() {
         ...process.env,
         // If we're on Render, make sure we use their assigned PORT
         PORT: process.env.PORT || MAIN_PORT,
-        CHESS_PORT: process.env.RENDER ? process.env.PORT : CHESS_PORT,
+        // On Render, use the same port for both services
+        CHESS_PORT: process.env.PORT || CHESS_PORT,
         // Set a flag to indicate we're on Render
-        RENDER: process.env.RENDER || ''
+        RENDER: process.env.RENDER || '',
+        // Disable separate chess server on Render
+        DISABLE_CHESS_SERVER: process.env.RENDER ? 'true' : process.env.DISABLE_CHESS_SERVER
       },
       stdio: 'inherit'
     });
