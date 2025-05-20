@@ -2,6 +2,15 @@
 
 Backend server for the beenycool.github.io project, providing chess gameplay, user accounts, and AI features.
 
+## Database
+
+This project uses PostgreSQL for data storage. The following models are defined:
+
+- **User**: User accounts and authentication
+- **ChessGame**: Chess game data and history
+- **ActivityLog**: User activity tracking
+- **Guild**: User groups/teams
+
 ## Local Development
 
 1. Install dependencies:
@@ -9,15 +18,30 @@ Backend server for the beenycool.github.io project, providing chess gameplay, us
 npm install
 ```
 
-2. Create a `.env` file with the following variables:
+2. Set up a PostgreSQL database:
+   - Install PostgreSQL if you don't have it already
+   - Create a database for the project: `createdb beenycool`
+
+3. Create a `.env` file with the following variables:
 ```
 PORT=3000
 CHESS_PORT=10000
-MONGODB_URI=mongodb://localhost:27017/beenycool
+DATABASE_URL=postgresql://username:password@localhost:5432/beenycool
+# Or use individual connection parameters:
+# DB_HOST=localhost
+# DB_PORT=5432
+# DB_NAME=beenycool
+# DB_USER=postgres
+# DB_PASSWORD=postgres
 JWT_SECRET=your-secret-key-here
 ```
 
-3. Start the server:
+4. Run database migrations:
+```bash
+npm run migrate
+```
+
+5. Start the server:
 ```bash
 npm start
 ```
@@ -34,9 +58,15 @@ npm run dev
 Set the following environment variables in the Render dashboard:
 
 - `NODE_ENV=production`
-- `MONGODB_URI=your-mongodb-uri` (required - get this from MongoDB Atlas)
+- `DATABASE_URL` - Render will automatically provide this if you create a PostgreSQL database in your Render account
 - `JWT_SECRET=your-jwt-secret` (required - generate a secure random string)
 - Any other secrets (e.g., OpenAI keys)
+
+### Database Setup
+
+1. Create a PostgreSQL database in your Render account
+2. Render will automatically set the `DATABASE_URL` environment variable
+3. Connect your web service to the database
 
 ### Build Settings
 
@@ -48,21 +78,21 @@ Set the following environment variables in the Render dashboard:
 
 1. **PORT Environment Variable**: Render automatically assigns a port via the `PORT` environment variable. Our code is configured to use this.
 
-2. **MongoDB Connection**: You must provide a valid MongoDB connection string in the `MONGODB_URI` environment variable. The app is now configured to continue running even if MongoDB connection fails, but functionality will be limited.
+2. **PostgreSQL Connection**: The app will automatically use the `DATABASE_URL` environment variable provided by Render.
 
 3. **Health Check**: A health check endpoint is available at `/health` to verify the service is running.
 
-4. **Testing MongoDB Connection**: You can run `node src/utils/mongodb-test.js` to test your MongoDB connection.
+4. **Database Migration**: The database schema will be automatically created on first startup.
 
 ## Troubleshooting
 
-### MongoDB Connection Issues
+### Database Connection Issues
 
-If you're having trouble connecting to MongoDB:
+If you're having trouble connecting to the PostgreSQL database:
 
-1. Ensure your MongoDB URI is correct
-2. Make sure your IP whitelist in MongoDB Atlas includes Render's IPs or is set to allow access from anywhere (0.0.0.0/0)
-3. Check that your MongoDB user has the correct permissions
+1. Ensure your DATABASE_URL is correct
+2. Check that your database service is running
+3. Verify that your IP is allowed to connect to the database
 
 ### Port Conflicts
 

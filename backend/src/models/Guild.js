@@ -1,79 +1,97 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../db/config');
 
-const GuildSchema = new mongoose.Schema({
+const Guild = sequelize.define('Guild', {
   name: {
-    type: String,
-    required: true,
+    type: DataTypes.STRING,
+    allowNull: false,
     unique: true,
-    trim: true,
-    minlength: 3,
-    maxlength: 50
+    validate: {
+      len: [3, 30]
+    }
   },
   description: {
-    type: String,
-    trim: true,
-    maxlength: 500
+    type: DataTypes.TEXT
+  },
+  logo: {
+    type: DataTypes.STRING
   },
   founder: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
+    type: DataTypes.INTEGER,
+    allowNull: false
   },
-  members: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  }],
-  officers: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  }],
-  icon: {
-    type: String,
-    default: 'default_guild.png'
+  admins: {
+    type: DataTypes.ARRAY(DataTypes.INTEGER),
+    defaultValue: []
+  },
+  members: {
+    type: DataTypes.ARRAY(DataTypes.INTEGER),
+    defaultValue: []
   },
   stats: {
-    totalWins: { type: Number, default: 0 },
-    totalGames: { type: Number, default: 0 },
-    averageRating: { type: Number, default: 1200 }
+    type: DataTypes.JSONB,
+    defaultValue: {
+      totalGames: 0,
+      totalWins: 0,
+      totalLosses: 0,
+      totalDraws: 0,
+      averageRating: 1200
+    }
   },
-  createdAt: {
-    type: Date,
-    default: Date.now
+  isActive: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
   }
 }, {
-  timestamps: true
+  timestamps: true,
+  indexes: [
+    {
+      fields: ['name']
+    },
+    {
+      fields: ['founder']
+    }
+  ]
 });
 
-// Pre-save hook to set the founder as the first member and officer
-GuildSchema.pre('save', function(next) {
-  if (this.isNew) {
-    // Add founder as member if not already added
-    if (!this.members.includes(this.founder)) {
-      this.members.push(this.founder);
+// Instance method to recalculate stats
+Guild.prototype.recalculateStats = async function() {
+  const User = sequelize.models.User;
+  
+  try {
+    // Get all guild members
+    const memberIds = this.members;
+    
+    if (!memberIds || memberIds.length === 0) {
+      return this.save();
     }
     
-    // Add founder as officer if not already added
-    if (!this.officers.includes(this.founder)) {
-      this.officers.push(this.founder);
-    }
+    // Get user data for all members
+    const members = await User.findAll({
+      where: {
+        id: memberIds
+      }
+    });
+    
+    // Calculate average rating
+    let totalRating = 0;
+    members.forEach(member => {
+      totalRating += member.chessRating || 1200;
+    });
+    
+    const averageRating = members.length > 0 ? Math.round(totalRating / members.length) : 1200;
+    
+    // Update stats
+    const stats = this.stats || {};
+    stats.averageRating = averageRating;
+    stats.memberCount = members.length;
+    
+    this.stats = stats;
+    return this.save();
+  } catch (error) {
+    console.error('Error recalculating guild stats:', error);
+    return this;
   }
-  next();
-});
-
-// Method to recalculate average rating
-GuildSchema.methods.recalculateStats = async function() {
-  const User = mongoose.model('User');
-  
-  // Find all members and their ratings
-  const members = await User.find({ _id: { $in: this.members } });
-  
-  // Calculate average rating
-  if (members.length > 0) {
-    const totalRating = members.reduce((sum, member) => sum + member.chessRating, 0);
-    this.stats.averageRating = Math.round(totalRating / members.length);
-  }
-  
-  return this.save();
 };
 
-module.exports = mongoose.model('Guild', GuildSchema); 
+module.exports = Guild; 

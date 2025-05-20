@@ -3,12 +3,14 @@ const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
 const path = require('path');
-const mongoose = require('mongoose');
+const fs = require('fs');
 const dotenv = require('dotenv');
 const morgan = require('morgan');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const fs = require('fs');
+
+// Load database connection
+const { sequelize, testConnection } = require('./db/config');
 
 // Try to load OpenAI, but continue if not available
 let OpenAI;
@@ -47,34 +49,27 @@ process.on('message', (message) => {
   }
 });
 
-// MongoDB connection
-let MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/beenycool';
-
-// If we're on Render and no MONGODB_URI is provided, use a dummy URI that will fail gracefully
-if (process.env.RENDER && (!MONGODB_URI || MONGODB_URI === 'mongodb://localhost:27017/beenycool')) {
-  console.warn('No valid MONGODB_URI provided on Render. Please set this environment variable.');
-  // Set a dummy URI that will fail gracefully
-  MONGODB_URI = 'mongodb://dummy:dummy@dummy.mongodb.net/beenycool?retryWrites=true&w=majority';
-}
-
-// Mask credentials in logs
-function maskUri(uri) {
-  if (!uri) return 'undefined';
-  return uri.replace(/mongodb(\+srv)?:\/\/([^:]+):([^@]+)@/, 'mongodb$1://$2:***@');
-}
-
-console.log(`Attempting to connect to MongoDB at ${maskUri(MONGODB_URI)}`);
-
-mongoose.connect(MONGODB_URI)
-.then(() => {
-  console.log('Connected to MongoDB successfully');
-  console.log('Database name:', mongoose.connection.db.databaseName);
-})
-.catch((err) => {
-  console.error('MongoDB connection error:', err);
-  console.log('Starting server without MongoDB connection. Some features may be limited.');
-  // Continue without exiting - this allows the server to start even without MongoDB
-});
+// Database connection
+console.log('Attempting to connect to PostgreSQL database...');
+testConnection()
+  .then(success => {
+    if (success) {
+      console.log('PostgreSQL connection successful');
+      // Sync models with database (don't force in production)
+      const shouldForce = process.env.NODE_ENV !== 'production' && process.env.DB_FORCE_SYNC === 'true';
+      return sequelize.sync({ force: shouldForce });
+    } else {
+      console.warn('PostgreSQL connection failed. Starting with limited functionality.');
+      return Promise.resolve();
+    }
+  })
+  .then(() => {
+    console.log('Database sync complete');
+  })
+  .catch(err => {
+    console.error('Database initialization error:', err);
+    console.log('Starting server without database connection. Some features may be limited.');
+  });
 
 // Apply middleware
 app.use(cors());
@@ -188,6 +183,22 @@ if (typeof chessServer.setup === 'function') {
   chessServer.setup(io);
 }
 
+// Default route
+app.get('/', (req, res) => {
+  res.send('Chess Server is running');
+});
+
+// Health check endpoint for Render
+app.get('/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'ok',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+    port: process.env.PORT || 3000,
+    database: sequelize.authenticate().then(() => 'connected').catch(() => 'disconnected')
+  });
+});
+
 // Catch-all route to serve main HTML file
 app.get('*', (req, res) => {
   const indexPath = path.join(publicDir, 'index.html');
@@ -204,21 +215,6 @@ app.get('*', (req, res) => {
       </html>
     `);
   }
-});
-
-// Default route
-app.get('/', (req, res) => {
-  res.send('Chess Server is running');
-});
-
-// Health check endpoint for Render
-app.get('/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'ok',
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
-    port: process.env.PORT || 3000
-  });
 });
 
 // Error handling middleware
@@ -242,8 +238,8 @@ process.on('SIGTERM', () => {
   console.log('SIGTERM received, shutting down...');
   server.close(() => {
     console.log('Server closed');
-    mongoose.connection.close(false, () => {
-      console.log('MongoDB connection closed');
+    sequelize.close().then(() => {
+      console.log('Database connection closed');
       process.exit(0);
     });
   });

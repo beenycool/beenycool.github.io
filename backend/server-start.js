@@ -2,6 +2,10 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const dotenv = require('dotenv');
+
+// Load environment variables
+dotenv.config();
 
 // Define the ports we want to use
 const MAIN_PORT = process.env.PORT || 3000;
@@ -57,6 +61,42 @@ for (const publicDir of publicDirs) {
   }
 }
 
+// Initialize database schema
+async function initializeDatabase() {
+  console.log('Initializing database schema...');
+  
+  try {
+    // Run the database migration script
+    const migrate = spawn('node', ['src/db/migrate.js'], {
+      env: { ...process.env },
+      stdio: 'inherit'
+    });
+    
+    return new Promise((resolve, reject) => {
+      migrate.on('close', (code) => {
+        if (code === 0) {
+          console.log('Database initialization successful');
+          resolve();
+        } else {
+          console.warn(`Database initialization exited with code ${code}`);
+          // Continue anyway - the app will handle missing tables
+          resolve();
+        }
+      });
+      
+      migrate.on('error', (err) => {
+        console.error('Error running database migration:', err);
+        // Continue anyway
+        resolve();
+      });
+    });
+  } catch (error) {
+    console.error('Error initializing database:', error);
+    // Continue anyway
+    return Promise.resolve();
+  }
+}
+
 async function startServers() {
   console.log('Starting backend services...');
   
@@ -68,6 +108,9 @@ async function startServers() {
     // Try to free the main port if it's in use
     console.log(`Attempting to free main port ${MAIN_PORT}...`);
     await freePort(MAIN_PORT);
+    
+    // Initialize database
+    await initializeDatabase();
     
     // Start the main server
     console.log('Starting main server...');

@@ -1,64 +1,48 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../db/config');
 
-const ActivityLogSchema = new mongoose.Schema({
-  user: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
+const ActivityLog = sequelize.define('ActivityLog', {
+  userId: {
+    type: DataTypes.INTEGER,
+    allowNull: true
   },
   username: {
-    type: String,
-    required: true
+    type: DataTypes.STRING,
+    allowNull: true
   },
   ipAddress: {
-    type: String
+    type: DataTypes.STRING,
+    allowNull: true
   },
   userAgent: {
-    type: String
+    type: DataTypes.STRING,
+    allowNull: true
   },
   actionType: {
-    type: String,
-    enum: [
-      'login', 
-      'logout', 
-      'register', 
-      'chess_game_start', 
-      'chess_game_end', 
-      'chess_move',
-      'todo_create', 
-      'todo_complete', 
-      'todo_delete',
-      'gcse_submission',
-      'guild_create',
-      'guild_join',
-      'guild_leave',
-      'password_change',
-      'admin_action',
-      'other'
-    ],
-    required: true
+    type: DataTypes.STRING,
+    allowNull: false
   },
   actionDetails: {
-    type: mongoose.Schema.Types.Mixed,
-    default: {}
-  },
-  pageUrl: {
-    type: String
-  },
-  referrerUrl: {
-    type: String
+    type: DataTypes.JSONB,
+    defaultValue: {}
   },
   performedAt: {
-    type: Date,
-    default: Date.now
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
   }
 }, {
-  timestamps: true
+  timestamps: true,
+  indexes: [
+    {
+      fields: ['userId']
+    },
+    {
+      fields: ['actionType']
+    },
+    {
+      fields: ['performedAt']
+    }
+  ]
 });
 
-// Index for efficient querying by date and user
-ActivityLogSchema.index({ performedAt: -1 });
-ActivityLogSchema.index({ user: 1, performedAt: -1 });
-ActivityLogSchema.index({ actionType: 1, performedAt: -1 });
-
-module.exports = mongoose.model('ActivityLog', ActivityLogSchema); 
+module.exports = ActivityLog; 

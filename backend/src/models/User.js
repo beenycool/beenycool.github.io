@@ -1,81 +1,78 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../db/config');
 const bcrypt = require('bcryptjs');
 
-const UserSchema = new mongoose.Schema({
+const User = sequelize.define('User', {
   username: {
-    type: String,
-    required: true,
+    type: DataTypes.STRING,
+    allowNull: false,
     unique: true,
-    trim: true,
-    minlength: 3,
-    maxlength: 30
-  },
-  password: {
-    type: String,
-    required: true,
-    minlength: 6
-  },
-  email: {
-    type: String,
-    trim: true,
-    lowercase: true,
-    match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please provide a valid email address'],
-    sparse: true // Allow empty values while still enforcing uniqueness
-  },
-  role: {
-    type: String,
-    enum: ['user', 'admin'],
-    default: 'user'
-  },
-  guild: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Guild',
-    default: null
-  },
-  chessRating: {
-    type: Number,
-    default: 1200
-  },
-  stats: {
-    chess: {
-      wins: { type: Number, default: 0 },
-      losses: { type: Number, default: 0 },
-      draws: { type: Number, default: 0 },
-      gamesPlayed: { type: Number, default: 0 }
-    },
-    todo: {
-      created: { type: Number, default: 0 },
-      completed: { type: Number, default: 0 },
-      deleted: { type: Number, default: 0 }
+    validate: {
+      len: [3, 30]
     }
   },
+  email: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true,
+    validate: {
+      isEmail: true
+    }
+  },
+  password: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  role: {
+    type: DataTypes.ENUM('user', 'admin'),
+    defaultValue: 'user'
+  },
+  chessRating: {
+    type: DataTypes.INTEGER,
+    defaultValue: 1200
+  },
   lastLogin: {
-    type: Date,
-    default: Date.now
+    type: DataTypes.DATE
   },
-  createdAt: {
-    type: Date,
-    default: Date.now
+  isActive: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
   },
-  updatedAt: {
-    type: Date,
-    default: Date.now
+  profilePicture: {
+    type: DataTypes.STRING
+  },
+  stats: {
+    type: DataTypes.JSONB,
+    defaultValue: {
+      chess: {
+        gamesPlayed: 0,
+        wins: 0,
+        losses: 0,
+        draws: 0
+      }
+    }
   }
 }, {
-  timestamps: true
-});
-
-// Hash password before saving
-UserSchema.pre('save', async function(next) {
-  if (this.isModified('password')) {
-    this.password = await bcrypt.hash(this.password, 10);
+  timestamps: true,
+  hooks: {
+    beforeCreate: async (user) => {
+      if (user.password) {
+        const salt = await bcrypt.genSalt(10);
+        user.password = await bcrypt.hash(user.password, salt);
+      }
+    },
+    beforeUpdate: async (user) => {
+      if (user.changed('password')) {
+        const salt = await bcrypt.genSalt(10);
+        user.password = await bcrypt.hash(user.password, salt);
+      }
+    }
   }
-  next();
 });
 
-// Compare password method
-UserSchema.methods.comparePassword = async function(candidatePassword) {
+// Instance method to check password
+User.prototype.comparePassword = async function(candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
-module.exports = mongoose.model('User', UserSchema); 
+module.exports = User; 

@@ -1,122 +1,60 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../db/config');
+const { v4: uuidv4 } = require('uuid');
 
-const MoveSchema = new mongoose.Schema({
-  from: {
-    type: String,
-    required: true
-  },
-  to: {
-    type: String,
-    required: true
-  },
-  piece: {
-    type: String,
-    required: true
-  },
-  promotion: {
-    type: String,
-    default: null
-  },
-  wasPreMove: {
-    type: Boolean,
-    default: false
-  },
-  capturedPiece: {
-    type: String,
-    default: null
-  },
-  san: { // Standard Algebraic Notation
-    type: String
-  },
-  isCheck: {
-    type: Boolean,
-    default: false
-  },
-  isCheckmate: {
-    type: Boolean,
-    default: false
-  },
-  timeSpent: { // Time spent thinking about the move in seconds
-    type: Number,
-    default: 0
-  },
-  timestamp: {
-    type: Date,
-    default: Date.now
-  },
-  fen: { // Position after move
-    type: String
-  }
-});
-
-const ChessGameSchema = new mongoose.Schema({
+const ChessGame = sequelize.define('ChessGame', {
   gameId: {
-    type: String,
-    required: true,
-    unique: true
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true,
+    defaultValue: () => uuidv4()
   },
   players: {
-    white: {
-      user: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
+    type: DataTypes.JSONB,
+    defaultValue: {
+      white: {
+        userId: null,
+        username: null,
+        rating: 1200,
+        ratingChange: 0
       },
-      username: String,
-      rating: { type: Number, default: 1200 },
-      ratingChange: { type: Number, default: 0 }
-    },
-    black: {
-      user: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User' 
-      },
-      username: String,
-      rating: { type: Number, default: 1200 },
-      ratingChange: { type: Number, default: 0 }
+      black: {
+        userId: null,
+        username: null,
+        rating: 1200,
+        ratingChange: 0
+      }
     }
   },
-  spectators: [{
-    user: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
-    },
-    username: String,
-    joinedAt: Date,
-    leftAt: Date
-  }],
+  spectators: {
+    type: DataTypes.JSONB,
+    defaultValue: []
+  },
   timeControl: {
-    initial: { type: Number, default: 600 }, // seconds
-    increment: { type: Number, default: 5 }, // seconds
-    timeLeft: {
-      white: { type: Number, default: 600 },
-      black: { type: Number, default: 600 }
+    type: DataTypes.JSONB,
+    defaultValue: {
+      initial: 600, // seconds
+      increment: 5, // seconds
+      timeLeft: {
+        white: 600,
+        black: 600
+      }
     }
   },
-  moves: [MoveSchema],
-  chat: [{
-    user: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
-    },
-    username: String,
-    message: String,
-    timestamp: {
-      type: Date,
-      default: Date.now
-    },
-    isSystem: {
-      type: Boolean,
-      default: false
-    }
-  }],
+  moves: {
+    type: DataTypes.JSONB,
+    defaultValue: []
+  },
+  chat: {
+    type: DataTypes.JSONB,
+    defaultValue: []
+  },
   result: {
-    type: String,
-    enum: ['1-0', '0-1', '1/2-1/2', '*'], // white win, black win, draw, ongoing
-    default: '*'
+    type: DataTypes.ENUM('1-0', '0-1', '1/2-1/2', '*'),
+    defaultValue: '*' // white win, black win, draw, ongoing
   },
   termination: {
-    type: String,
-    enum: [
+    type: DataTypes.ENUM(
       'checkmate', 
       'resignation', 
       'timeout', 
@@ -127,85 +65,87 @@ const ChessGameSchema = new mongoose.Schema({
       'agreement',
       'abandoned',
       'unterminated'
-    ],
-    default: 'unterminated'
+    ),
+    defaultValue: 'unterminated'
   },
   startPosition: {
-    type: String,
-    default: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1' // Standard start position
+    type: DataTypes.STRING,
+    defaultValue: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1' // Standard start position
   },
   finalPosition: {
-    type: String
+    type: DataTypes.STRING
   },
   startTime: {
-    type: Date,
-    default: Date.now
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
   },
   endTime: {
-    type: Date
+    type: DataTypes.DATE
   },
   isRated: {
-    type: Boolean,
-    default: true
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
   },
-  preMoves: [{
-    user: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
-    },
-    from: String,
-    to: String,
-    promotion: String,
-    timestamp: Date
-  }]
+  preMoves: {
+    type: DataTypes.JSONB,
+    defaultValue: []
+  }
 }, {
-  timestamps: true
+  timestamps: true,
+  indexes: [
+    {
+      fields: ['gameId']
+    },
+    {
+      fields: ['result', 'startTime']
+    },
+    {
+      fields: ['isRated', 'startTime']
+    }
+  ]
 });
 
-// Indexes for efficient querying
-ChessGameSchema.index({ 'players.white.user': 1, startTime: -1 });
-ChessGameSchema.index({ 'players.black.user': 1, startTime: -1 });
-ChessGameSchema.index({ result: 1, startTime: -1 });
-ChessGameSchema.index({ isRated: 1, startTime: -1 });
-
-// Method to add a move
-ChessGameSchema.methods.addMove = function(moveData) {
-  this.moves.push(moveData);
+// Instance methods
+ChessGame.prototype.addMove = function(moveData) {
+  const moves = this.moves || [];
+  moves.push(moveData);
+  this.moves = moves;
   return this.save();
 };
 
-// Method to add a pre-move
-ChessGameSchema.methods.addPreMove = function(userId, from, to, promotion = null) {
-  this.preMoves.push({
-    user: userId,
+ChessGame.prototype.addPreMove = function(userId, from, to, promotion = null) {
+  const preMoves = this.preMoves || [];
+  preMoves.push({
+    userId,
     from,
     to,
     promotion,
     timestamp: new Date()
   });
+  this.preMoves = preMoves;
   return this.save();
 };
 
-// Method to clear pre-moves for a user
-ChessGameSchema.methods.clearPreMoves = function(userId) {
-  this.preMoves = this.preMoves.filter(move => move.user.toString() !== userId.toString());
+ChessGame.prototype.clearPreMoves = function(userId) {
+  if (!this.preMoves) return this.save();
+  this.preMoves = this.preMoves.filter(move => move.userId !== userId);
   return this.save();
 };
 
-// Method to add chat message
-ChessGameSchema.methods.addChatMessage = function(user, username, message, isSystem = false) {
-  this.chat.push({
-    user,
+ChessGame.prototype.addChatMessage = function(user, username, message, isSystem = false) {
+  const chat = this.chat || [];
+  chat.push({
+    userId: user,
     username,
     message,
     timestamp: new Date(),
     isSystem
   });
+  this.chat = chat;
   return this.save();
 };
 
-// Method to end the game
-ChessGameSchema.methods.endGame = function(result, termination, finalPosition) {
+ChessGame.prototype.endGame = function(result, termination, finalPosition) {
   this.result = result;
   this.termination = termination;
   this.finalPosition = finalPosition;
@@ -213,4 +153,4 @@ ChessGameSchema.methods.endGame = function(result, termination, finalPosition) {
   return this.save();
 };
 
-module.exports = mongoose.model('ChessGame', ChessGameSchema); 
+module.exports = ChessGame; 
