@@ -43,6 +43,23 @@ async function testConnection() {
     return true;
   } catch (error) {
     console.error('Unable to connect to the PostgreSQL database:', error);
+    
+    // If we're on Render and there's no database, we'll create a memory-only SQLite instance
+    // This allows the app to start even without a database
+    if (process.env.RENDER && !process.env.DATABASE_URL) {
+      console.log('Creating in-memory SQLite database for temporary use');
+      try {
+        sequelize = new Sequelize('sqlite::memory:', {
+          logging: false
+        });
+        await sequelize.authenticate();
+        console.log('SQLite memory database created successfully');
+        return true;
+      } catch (sqliteError) {
+        console.error('Failed to create SQLite memory database:', sqliteError);
+      }
+    }
+    
     return false;
   }
 }

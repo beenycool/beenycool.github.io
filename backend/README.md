@@ -70,7 +70,7 @@ Set the following environment variables in the Render dashboard:
 
 ### Build Settings
 
-- **Root Directory:** `/` (important: this should be the backend directory)
+- **Root Directory:** `/backend` (important: this should be the backend directory)
 - **Build Command:** `npm install`
 - **Start Command:** `node server-start.js`
 
@@ -83,6 +83,10 @@ Set the following environment variables in the Render dashboard:
 3. **Health Check**: A health check endpoint is available at `/health` to verify the service is running.
 
 4. **Database Migration**: The database schema will be automatically created on first startup.
+
+5. **Port Binding**: Make sure the app binds to `0.0.0.0` (all interfaces) and the port specified by Render's `PORT` environment variable.
+
+6. **Fallback Database**: If PostgreSQL is not available, the app will use an in-memory SQLite database to allow the service to start.
 
 ## Troubleshooting
 
@@ -105,3 +109,11 @@ The app now creates necessary directories and files if they don't exist, so you 
 ### Socket.io Connection Issues
 
 If clients can't connect to the Socket.io server, check that CORS is properly configured and the client is using the correct connection URL. 
+
+### Render Deployment Errors
+
+If you see "Port scan timeout reached, no open ports detected" on Render:
+1. Make sure the app is binding to `0.0.0.0` (all interfaces)
+2. Ensure the app is using the port from `process.env.PORT`
+3. Check the logs for any errors during startup
+4. Verify the Root Directory is set correctly in the Render dashboard 

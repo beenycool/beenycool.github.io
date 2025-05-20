@@ -229,8 +229,30 @@ app.use((err, req, res, next) => {
 
 // Start server
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+
+// Log the port we're trying to use
+console.log(`Attempting to start server on port ${PORT}`);
+
+// Start the server and handle any errors
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running and listening on port ${PORT}`);
+  console.log(`Server is accessible at http://localhost:${PORT}`);
+  
+  // If we're on Render, log additional information
+  if (process.env.RENDER) {
+    console.log(`Running on Render with NODE_ENV: ${process.env.NODE_ENV}`);
+    console.log(`DATABASE_URL present: ${!!process.env.DATABASE_URL}`);
+  }
+});
+
+// Handle server errors
+server.on('error', (error) => {
+  if (error.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use. Please choose a different port.`);
+  } else {
+    console.error(`Server error: ${error.message}`);
+  }
+  process.exit(1);
 });
 
 // Handle graceful shutdown

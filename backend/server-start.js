@@ -9,7 +9,8 @@ dotenv.config();
 
 // Define the ports we want to use
 const MAIN_PORT = process.env.PORT || 3000;
-const CHESS_PORT = process.env.CHESS_PORT || 10000;
+// On Render, we need to use the assigned PORT for everything
+const CHESS_PORT = process.env.RENDER ? process.env.PORT : (process.env.CHESS_PORT || 10000);
 
 // Try to load port manager, but provide fallbacks if it fails
 let freePort, findAvailablePort;
@@ -65,6 +66,12 @@ for (const publicDir of publicDirs) {
 async function initializeDatabase() {
   console.log('Initializing database schema...');
   
+  // On Render, we might not have a PostgreSQL database yet, so skip this step
+  if (process.env.RENDER && !process.env.DATABASE_URL) {
+    console.log('No DATABASE_URL found, skipping database initialization');
+    return Promise.resolve();
+  }
+  
   try {
     // Run the database migration script
     const migrate = spawn('node', ['src/db/migrate.js'], {
@@ -101,13 +108,18 @@ async function startServers() {
   console.log('Starting backend services...');
   
   try {
-    // Try to free the chess port if it's in use
-    console.log(`Attempting to free chess port ${CHESS_PORT}...`);
-    await freePort(CHESS_PORT);
-    
-    // Try to free the main port if it's in use
-    console.log(`Attempting to free main port ${MAIN_PORT}...`);
-    await freePort(MAIN_PORT);
+    // Skip port freeing on Render as it's not needed
+    if (!process.env.RENDER) {
+      // Try to free the chess port if it's in use
+      console.log(`Attempting to free chess port ${CHESS_PORT}...`);
+      await freePort(CHESS_PORT);
+      
+      // Try to free the main port if it's in use
+      console.log(`Attempting to free main port ${MAIN_PORT}...`);
+      await freePort(MAIN_PORT);
+    } else {
+      console.log(`Running on Render with assigned port: ${process.env.PORT}`);
+    }
     
     // Initialize database
     await initializeDatabase();
@@ -119,9 +131,9 @@ async function startServers() {
         ...process.env,
         // If we're on Render, make sure we use their assigned PORT
         PORT: process.env.PORT || MAIN_PORT,
-        CHESS_PORT: process.env.PORT || CHESS_PORT,
+        CHESS_PORT: process.env.RENDER ? process.env.PORT : CHESS_PORT,
         // Set a flag to indicate we're on Render
-        RENDER: process.env.RENDER || 'true'
+        RENDER: process.env.RENDER || ''
       },
       stdio: 'inherit'
     });
