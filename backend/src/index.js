@@ -9,8 +9,9 @@ const morgan = require('morgan');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 
-// Load database connection
-const { sequelize, testConnection } = require('./db/config');
+// Load database connection and models
+const { sequelize } = require('./models');
+const { testConnection } = require('./db/config');
 
 // Try to load OpenAI, but continue if not available
 let OpenAI;

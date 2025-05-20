@@ -18,11 +18,8 @@ try {
   findAvailablePort = (port) => Promise.resolve(port);
 }
 
-// Import models
-const User = require('./models/User');
-const ChessGame = require('./models/ChessGame');
-const ActivityLog = require('./models/ActivityLog');
-const Guild = require('./models/Guild');
+// Import models from index
+const { User, ChessGame, ActivityLog, Guild } = require('./models');
 
 // Create Express app and HTTP server
 const app = express();

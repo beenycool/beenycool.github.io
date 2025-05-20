@@ -9,37 +9,25 @@ const ChessGame = sequelize.define('ChessGame', {
     unique: true,
     defaultValue: () => uuidv4()
   },
-  players: {
-    type: DataTypes.JSONB,
-    defaultValue: {
-      white: {
-        userId: null,
-        username: null,
-        rating: 1200,
-        ratingChange: 0
-      },
-      black: {
-        userId: null,
-        username: null,
-        rating: 1200,
-        ratingChange: 0
-      }
-    }
+  whitePlayerId: {
+    type: DataTypes.INTEGER,
+    allowNull: true
   },
-  spectators: {
-    type: DataTypes.JSONB,
-    defaultValue: []
+  blackPlayerId: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  pgn: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  result: {
+    type: DataTypes.STRING,
+    allowNull: true
   },
   timeControl: {
     type: DataTypes.JSONB,
-    defaultValue: {
-      initial: 600, // seconds
-      increment: 5, // seconds
-      timeLeft: {
-        white: 600,
-        black: 600
-      }
-    }
+    defaultValue: {}
   },
   moves: {
     type: DataTypes.JSONB,
@@ -48,10 +36,6 @@ const ChessGame = sequelize.define('ChessGame', {
   chat: {
     type: DataTypes.JSONB,
     defaultValue: []
-  },
-  result: {
-    type: DataTypes.ENUM('1-0', '0-1', '1/2-1/2', '*'),
-    defaultValue: '*' // white win, black win, draw, ongoing
   },
   termination: {
     type: DataTypes.ENUM(
@@ -104,6 +88,19 @@ const ChessGame = sequelize.define('ChessGame', {
     }
   ]
 });
+
+// Association will be set up in a separate function to avoid circular dependencies
+ChessGame.associate = function(models) {
+  ChessGame.belongsTo(models.User, {
+    foreignKey: 'whitePlayerId',
+    as: 'whitePlayer'
+  });
+  
+  ChessGame.belongsTo(models.User, {
+    foreignKey: 'blackPlayerId',
+    as: 'blackPlayer'
+  });
+};
 
 // Instance methods
 ChessGame.prototype.addMove = function(moveData) {

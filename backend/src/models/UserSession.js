@@ -1,6 +1,5 @@
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../db/config');
-const User = require('./User'); // Import User model
 
 const UserSession = sequelize.define('UserSession', {
   userId: {
@@ -47,10 +46,12 @@ const UserSession = sequelize.define('UserSession', {
   ]
 });
 
-// Define Association
-UserSession.belongsTo(User, {
-  foreignKey: 'userId',
-  as: 'user' // This alias must match the one used in controller includes
-});
+// Association will be set up in a separate function to avoid circular dependencies
+UserSession.associate = function(models) {
+  UserSession.belongsTo(models.User, {
+    foreignKey: 'userId',
+    as: 'user'
+  });
+};
 
 module.exports = UserSession; 

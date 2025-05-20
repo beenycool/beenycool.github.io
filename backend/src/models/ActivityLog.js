@@ -6,9 +6,13 @@ const ActivityLog = sequelize.define('ActivityLog', {
     type: DataTypes.INTEGER,
     allowNull: true
   },
-  username: {
+  actionType: {
     type: DataTypes.STRING,
-    allowNull: true
+    allowNull: false
+  },
+  details: {
+    type: DataTypes.JSONB,
+    defaultValue: {}
   },
   ipAddress: {
     type: DataTypes.STRING,
@@ -17,32 +21,17 @@ const ActivityLog = sequelize.define('ActivityLog', {
   userAgent: {
     type: DataTypes.STRING,
     allowNull: true
-  },
-  actionType: {
-    type: DataTypes.STRING,
-    allowNull: false
-  },
-  actionDetails: {
-    type: DataTypes.JSONB,
-    defaultValue: {}
-  },
-  performedAt: {
-    type: DataTypes.DATE,
-    defaultValue: DataTypes.NOW
   }
 }, {
-  timestamps: true,
-  indexes: [
-    {
-      fields: ['userId']
-    },
-    {
-      fields: ['actionType']
-    },
-    {
-      fields: ['performedAt']
-    }
-  ]
+  timestamps: true
 });
+
+// Association will be set up in a separate function to avoid circular dependencies
+ActivityLog.associate = function(models) {
+  ActivityLog.belongsTo(models.User, {
+    foreignKey: 'userId',
+    as: 'user'
+  });
+};
 
 module.exports = ActivityLog; 

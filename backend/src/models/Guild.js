@@ -11,12 +11,14 @@ const Guild = sequelize.define('Guild', {
     }
   },
   description: {
-    type: DataTypes.TEXT
+    type: DataTypes.TEXT,
+    allowNull: true
   },
   logo: {
-    type: DataTypes.STRING
+    type: DataTypes.STRING,
+    allowNull: true
   },
-  founder: {
+  ownerId: {
     type: DataTypes.INTEGER,
     allowNull: false
   },
@@ -25,7 +27,7 @@ const Guild = sequelize.define('Guild', {
     defaultValue: []
   },
   members: {
-    type: DataTypes.ARRAY(DataTypes.INTEGER),
+    type: DataTypes.JSONB,
     defaultValue: []
   },
   stats: {
@@ -41,6 +43,10 @@ const Guild = sequelize.define('Guild', {
   isActive: {
     type: DataTypes.BOOLEAN,
     defaultValue: true
+  },
+  settings: {
+    type: DataTypes.JSONB,
+    defaultValue: {}
   }
 }, {
   timestamps: true,
@@ -49,10 +55,18 @@ const Guild = sequelize.define('Guild', {
       fields: ['name']
     },
     {
-      fields: ['founder']
+      fields: ['ownerId']
     }
   ]
 });
+
+// Association will be set up in a separate function to avoid circular dependencies
+Guild.associate = function(models) {
+  Guild.belongsTo(models.User, {
+    foreignKey: 'ownerId',
+    as: 'owner'
+  });
+};
 
 // Instance method to recalculate stats
 Guild.prototype.recalculateStats = async function() {
