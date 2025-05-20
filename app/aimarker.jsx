@@ -92,7 +92,7 @@ const AI_MODELS = [
   { value: "openai/o3", label: "GitHub O3", description: "GitHub AI Model (O3)" },
   { value: "openai/o4-mini", label: "GitHub O4 Mini", description: "GitHub AI Model (O4 Mini)" },
   { value: "openai/o4", label: "GitHub O4", description: "GitHub AI Model (O4)" },
-  { value: "xai/grok", label: "Grok", description: "X AI Model (Grok)" },
+  { value: "xai/grok-3", label: "Grok-3", description: "X AI Model (Grok)" },
   { value: "openai/gpt-4.1", label: "GitHub GPT 4.1", description: "GitHub AI Model (GPT 4.1)" }
 ];
 
@@ -105,22 +105,31 @@ const FALLBACK_MODELS = {
   "openai/o3": "openai/o4-mini", // Fallback for O3
   "openai/o4-mini": "deepseek/deepseek-chat-v3-0324:free", // Fallback for O4 Mini
   "openai/o4": "openai/o3", // Fallback for O4
-  "xai/grok": "deepseek/deepseek-chat-v3-0324:free", // Fallback for Grok
+  "xai/grok-3": "deepseek/deepseek-chat-v3-0324:free", // Fallback for Grok-3
   "openai/gpt-4.1": "openai/o4" // Fallback for GPT 4.1
 };
 
 // Define model-specific rate limits (in milliseconds)
-// Default rate limit for new models: 15 requests per minute (4000 ms per request)
+// Based on GitHub Copilot Pro rate limits
 const MODEL_RATE_LIMITS = {
+  // Standard models
   "gemini-2.5-flash-preview-04-17": 60000, // 1 minute
-  "google/gemini-2.5-pro:free": 60000, // 1 minute (assuming similar to flash preview for now)
   "deepseek/deepseek-chat-v3-0324:free": 10000, // 10 seconds
-  "microsoft/mai-ds-r1:free": 10000, // 15 seconds
-  "openai/o3": 4000, 
-  "openai/o4-mini": 4000,
-  "openai/o4": 4000,
-  "xai/grok": 4000,
-  "openai/gpt-4.1": 4000
+  
+  // DeepSeek-R1 and MAI-DS-R1: 1 request per minute (Copilot Pro)
+  "microsoft/mai-ds-r1:free": 60000, // 1 minute (1 request per minute)
+  
+  // GitHub models (Copilot Pro rate limits)
+  // Azure OpenAI o3: 1 request per minute 
+  "openai/o3": 60000, // 1 minute (1 request per minute)
+  
+  // Azure OpenAI o4-mini: 2 requests per minute
+  "openai/o4-mini": 30000, // 30 seconds (2 requests per minute)  
+  // xAI Grok-3: 1 request per minute
+  "xai/grok-3": 60000, // 1 minute (1 request per minute)
+  
+  // GPT 4.1 (assuming similar to o4)
+  "openai/gpt-4.1": 60000 // 1 minute (1 request per minute)
 };
 
 // Define specific models for specific tasks
@@ -1971,6 +1980,29 @@ ${markScheme ? `8. Apply a rigorous mark-by-mark assessment using the provided m
             }
           }
         }
+      } else if (selectedModel.startsWith("openai/") || selectedModel.startsWith("xai/")) {
+        // Use GitHub models API for GitHub and Grok models
+        response = await fetch(`${API_BASE_URL}/api/github/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: selectedModel,
+            messages: [
+              {
+                role: "developer",
+                content: systemPrompt
+              },
+              {
+                role: "user",
+                content: userPrompt
+              }
+            ],
+            max_tokens: autoMaxTokens ? undefined : maxTokens,
+            temperature: 0.7
+          }),
+        });
       } else {
         // Use the standard API for other models
         response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
@@ -2301,20 +2333,35 @@ TOTAL MARKS: ${marksToUse}` : ''}
         } catch (error) {
           throw error; // Re-throw to be handled by the main try/catch
         }
+      } else if (currentModel.startsWith("openai/") || currentModel.startsWith("xai/")) {
+        // GitHub models API for GitHub and Grok models
+        response = await fetch(`${API_BASE_URL}/api/github/completions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: currentModel,
+            messages: [
+              { role: "developer", content: systemPrompt },
+              { role: "user", content: userPrompt }
+            ],
+            temperature: 0.3
+          }),
+          signal: AbortSignal.timeout(60000) // 60 second timeout
+        });
       } else {
         response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: currentModel,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt }
-          ],
-          temperature: 0.3
-        }),
-        signal: AbortSignal.timeout(60000) // 60 second timeout
-      });
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: currentModel,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt }
+            ],
+            temperature: 0.3
+          }),
+          signal: AbortSignal.timeout(60000) // 60 second timeout
+        });
       }
       
       if (!response.ok) {
@@ -2651,16 +2698,33 @@ TOTAL MARKS: ${marksToUse}` : ''}
       const systemPromptContent = buildSystemPromptForItem();
       const userPromptContent = buildUserPromptForItem();
 
-      const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: currentModelForItem,
-          messages: [{ role: "system", content: systemPromptContent }, { role: "user", content: userPromptContent }],
-          max_tokens: autoMaxTokens ? undefined : maxTokens, 
-          temperature: 0.7
-        }),
-      });
+      let response;
+      
+      if (currentModelForItem.startsWith("openai/") || currentModelForItem.startsWith("xai/")) {
+        // GitHub models API for GitHub and Grok models
+        response = await fetch(`${API_BASE_URL}/api/github/completions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: currentModelForItem,
+            messages: [{ role: "developer", content: systemPromptContent }, { role: "user", content: userPromptContent }],
+            max_tokens: autoMaxTokens ? undefined : maxTokens, 
+            temperature: 0.7
+          }),
+        });
+      } else {
+        // Standard API for other models
+        response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: currentModelForItem,
+            messages: [{ role: "system", content: systemPromptContent }, { role: "user", content: userPromptContent }],
+            max_tokens: autoMaxTokens ? undefined : maxTokens, 
+            temperature: 0.7
+          }),
+        });
+      }
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -3096,6 +3160,31 @@ Please respond to their question clearly and constructively. Keep your answer co
             }
           }
         }
+      } else if (selectedModel.startsWith("openai/") || selectedModel.startsWith("xai/")) {
+        // GitHub models API for GitHub and Grok models
+        response = await fetch(`${API_BASE_URL}/api/github/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: selectedModel,
+            messages: [
+              {
+                role: "developer",
+                content: `You are an AI tutor helping a student understand their GCSE feedback. Be clear, concise, and supportive.`
+              },
+              {
+                role: "user",
+                content: promptText
+              }
+            ],
+            max_tokens: autoMaxTokens ? undefined : maxTokens,
+            temperature: 0.7
+          }),
+          // Add a timeout
+          signal: AbortSignal.timeout(60000)
+        });
       } else {
         // Standard API request for other models
         response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
