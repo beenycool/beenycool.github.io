@@ -1430,7 +1430,7 @@ const AIMarker = () => {
   const [lastRequestTime, setLastRequestTime] = useState(0);
   const [dailyRequests, setDailyRequests] = useState(0); // This seems locally managed, let's use getRequestTokens for display
   const [lastRequestDate, setLastRequestDate] = useState(new Date().toDateString());
-  const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash-preview-04-17");
+  // Model options for testing:  // "deepseek/deepseek-chat-v3-0324:free" - Balanced model  // "microsoft/mai-ds-r1:free" - Thinking model  // "xai/grok-3" - X AI model  // "o4-mini" - O4 mini model  // "gemini-2.5-flash-preview-04-17" - Gemini 2.5 Flash  const [selectedModel, setSelectedModel] = useState("deepseek/deepseek-chat-v3-0324:free");
   const [modelLastRequestTimes, setModelLastRequestTimes] = useState({});
   const [imageLoading, setImageLoading] = useState(false);
   const [backendError, setBackendError] = useState(false);
@@ -1447,8 +1447,14 @@ const AIMarker = () => {
   const [autoMaxTokens, setAutoMaxTokens] = useState(true);
   const [maxTokens, setMaxTokens] = useState(2048);
   const [remainingRequestTokens, setRemainingRequestTokens] = useState(0);
-  const [thinkingBudget, setThinkingBudget] = useState(DEFAULT_THINKING_BUDGETS["gemini-2.5-flash-preview-04-17"] || 1024);
+  const [thinkingBudget, setThinkingBudget] = useState(DEFAULT_THINKING_BUDGETS["deepseek/deepseek-chat-v3-0324:free"] || 1024);
   const [enableThinkingBudget, setEnableThinkingBudget] = useState(true);
+
+  // Define the missing setCurrentModelForRequest function
+  const setCurrentModelForRequest = (model) => {
+    currentModelForRequestRef.current = model;
+    console.log(`Current model for request set to: ${model}`);
+  };
 
   // Debounced save function for question and answer
   const debouncedSaveDraft = useCallback(
