@@ -917,23 +917,21 @@ app.get('/', (req, res) => {
 });
 
 // Start the server
-const PORT = process.env.CHESS_PORT || 10000;
+const PORT = process.env.PORT || process.env.CHESS_PORT || 10000;
 let currentPort = PORT;
 let retries = 0;
-const MAX_RETRIES = 10;
+const MAX_RETRIES = 3; // Reduced from 10 to 3
 
 async function startServer(port) {
   try {
+    // On Render, we should use the assigned PORT
+    if (process.env.PORT) {
+      console.log(`Using Render-assigned port: ${process.env.PORT}`);
+      port = parseInt(process.env.PORT, 10);
+    }
+    
     // First try to free the desired port
     await freePort(port);
-    
-    // If that didn't work, find an available port
-    if (retries > 0) {
-      const availablePort = await findAvailablePort(PORT + 1000, 1000);
-      if (availablePort) {
-        port = availablePort;
-      }
-    }
     
     server.listen(port, () => {
       console.log(`Chess server running on port ${port}`);
@@ -949,15 +947,14 @@ async function startServer(port) {
         retries += 1;
         if (retries <= MAX_RETRIES) {
           // Try a more random port instead of incrementing sequentially
-          currentPort = PORT + Math.floor(Math.random() * 1000) + retries;
+          currentPort = PORT + Math.floor(Math.random() * 100) + retries;
           console.log(`Port ${port} is in use, trying ${currentPort} instead...`);
           startServer(currentPort);
         } else {
           console.error(`Could not find an available port after ${MAX_RETRIES} retries.`);
-          // Inform main server about the failure
-          if (typeof process.send === 'function') {
-            process.send({ type: 'chess-server-failed' });
-          }
+          // Just continue with the main server port - we'll handle the chess server differently
+          console.log("Continuing without dedicated chess server port.");
+          // Don't exit - let the app continue
         }
       } else {
         console.error('Error starting chess server:', err);
@@ -965,13 +962,8 @@ async function startServer(port) {
     });
   } catch (error) {
     console.error('Error in startServer:', error);
-    // Try with a different port if there was an error
-    if (retries <= MAX_RETRIES) {
-      retries += 1;
-      currentPort = PORT + Math.floor(Math.random() * 1000) + retries;
-      console.log(`Error with port ${port}, trying ${currentPort} instead...`);
-      startServer(currentPort);
-    }
+    // Don't retry if we hit an error - just continue
+    console.log("Continuing without dedicated chess server port due to error.");
   }
 }
 

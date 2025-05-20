@@ -1,21 +1,29 @@
 /**
- * Utility to manage port conflicts
+ * Utility to manage port conflicts - Render-optimized version
  */
 
-// Simple version that works on all platforms
+// Simple version that works on Render
 function freePort(port) {
   console.log(`Checking port ${port} (simplified for Render)`);
-  // On Render, we don't need to free ports as they're managed by the platform
+  // On Render, we should use their assigned port
+  if (process.env.PORT) {
+    console.log(`Render has assigned port ${process.env.PORT}`);
+  }
+  // Always resolve - we don't need to free ports on Render
   return Promise.resolve(true);
 }
 
-// Find an available port
+// Find an available port - on Render, use their assigned port
 function findAvailablePort(startPort, maxAttempts = 10) {
-  console.log(`Finding available port from ${startPort}`);
   // On Render, we use the provided PORT environment variable
   if (process.env.PORT) {
-    return Promise.resolve(parseInt(process.env.PORT, 10));
+    const renderPort = parseInt(process.env.PORT, 10);
+    console.log(`Using Render-assigned port: ${renderPort}`);
+    return Promise.resolve(renderPort);
   }
+  
+  // For local development, just use the provided port
+  console.log(`Using provided port: ${startPort}`);
   return Promise.resolve(startPort);
 }
 

@@ -20,6 +20,35 @@ try {
   findAvailablePort = (port) => Promise.resolve(port);
 }
 
+// Create public directory if it doesn't exist
+const publicDir = path.join(__dirname, 'public');
+if (!fs.existsSync(publicDir)) {
+  console.log(`Creating public directory at ${publicDir}`);
+  try {
+    fs.mkdirSync(publicDir, { recursive: true });
+    // Create a basic index.html file
+    const indexHtml = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Beenycool API Server</title>
+          <style>
+            body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+            h1 { color: #333; }
+          </style>
+        </head>
+        <body>
+          <h1>Beenycool API Server</h1>
+          <p>Server is running. This is a placeholder page.</p>
+        </body>
+      </html>
+    `;
+    fs.writeFileSync(path.join(publicDir, 'index.html'), indexHtml);
+  } catch (err) {
+    console.error('Error creating public directory:', err);
+  }
+}
+
 async function startServers() {
   console.log('Starting backend services...');
   
@@ -35,7 +64,12 @@ async function startServers() {
     // Start the main server
     console.log('Starting main server...');
     const server = spawn('node', ['src/index.js'], {
-      env: { ...process.env },
+      env: { 
+        ...process.env,
+        // If we're on Render, make sure we use their assigned PORT
+        PORT: process.env.PORT || MAIN_PORT,
+        CHESS_PORT: process.env.PORT || CHESS_PORT
+      },
       stdio: 'inherit'
     });
     
@@ -48,7 +82,11 @@ async function startServers() {
     server.on('exit', (code) => {
       if (code !== 0) {
         console.error(`Server exited with code ${code}`);
-        process.exit(code);
+        // Don't exit immediately, wait a bit and restart
+        setTimeout(() => {
+          console.log('Restarting server...');
+          startServers();
+        }, 5000);
       }
     });
   } catch (error) {

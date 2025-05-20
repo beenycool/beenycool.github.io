@@ -8,6 +8,7 @@ const dotenv = require('dotenv');
 const morgan = require('morgan');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const fs = require('fs');
 
 // Try to load OpenAI, but continue if not available
 let OpenAI;
@@ -49,13 +50,16 @@ process.on('message', (message) => {
 // MongoDB connection
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/beenycool';
 
+console.log(`Attempting to connect to MongoDB at ${MONGODB_URI.replace(/mongodb\+srv:\/\/([^:]+):[^@]+@/, 'mongodb+srv://***:***@')}`);
+
 mongoose.connect(MONGODB_URI)
 .then(() => {
   console.log('Connected to MongoDB');
 })
 .catch((err) => {
   console.error('MongoDB connection error:', err);
-  process.exit(1);
+  console.log('Starting server without MongoDB connection. Some features may be limited.');
+  // Continue without exiting - this allows the server to start even without MongoDB
 });
 
 // Apply middleware
@@ -85,7 +89,51 @@ app.use(attachRequestMetrics);
 app.use('/api', apiRoutes);
 
 // Serve static files from public directory
-app.use(express.static(path.join(__dirname, '../../public')));
+const publicDir = path.join(__dirname, '../../public');
+if (!fs.existsSync(publicDir)) {
+  console.log(`Public directory not found at ${publicDir}, creating it...`);
+  try {
+    fs.mkdirSync(publicDir, { recursive: true });
+    // Create a basic index.html file
+    const indexHtml = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Beenycool API Server</title>
+          <style>
+            body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+            h1 { color: #333; }
+            .endpoint { background: #f4f4f4; padding: 10px; border-radius: 4px; margin-bottom: 10px; }
+            code { background: #eee; padding: 2px 4px; border-radius: 3px; }
+          </style>
+        </head>
+        <body>
+          <h1>Beenycool API Server</h1>
+          <p>This is the backend API server for beenycool.github.io.</p>
+          <h2>Available Endpoints:</h2>
+          <div class="endpoint">
+            <h3>GET /api/games</h3>
+            <p>List all saved chess games</p>
+          </div>
+          <div class="endpoint">
+            <h3>GET /api/games/:id</h3>
+            <p>Get details of a specific chess game</p>
+          </div>
+          <div class="endpoint">
+            <h3>GET /api/players/:id/stats</h3>
+            <p>Get player statistics</p>
+          </div>
+          <p>For WebSocket connections, connect to <code>/socket.io</code></p>
+        </body>
+      </html>
+    `;
+    fs.writeFileSync(path.join(publicDir, 'index.html'), indexHtml);
+    console.log('Created basic index.html file');
+  } catch (err) {
+    console.error('Error creating public directory:', err);
+  }
+}
+app.use(express.static(publicDir));
 
 // Initialize chess server which sets up Socket.io
 const io = socketIo(server, {
@@ -103,6 +151,21 @@ if (typeof chessServer.setup === 'function') {
 // Catch-all route to serve main HTML file
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../../public/index.html'));
+});
+
+// Default route
+app.get('/', (req, res) => {
+  res.send('Chess Server is running');
+});
+
+// Health check endpoint for Render
+app.get('/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'ok',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+    port: process.env.PORT || 3000
+  });
 });
 
 // Error handling middleware
