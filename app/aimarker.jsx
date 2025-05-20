@@ -1424,6 +1424,7 @@ const AIMarker = () => {
   const [detectedSubject, setDetectedSubject] = useState(null);
   const [shortcutFeedback, setShortcutFeedback] = useState(null);
   const [processingProgress, setProcessingProgress] = useState("");
+  const [history, setHistory] = useState([]);
   
   // API and rate limiting
   const [lastRequestTime, setLastRequestTime] = useState(0);
