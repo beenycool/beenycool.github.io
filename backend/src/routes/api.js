@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const fetch = require('node-fetch');
 const authController = require('../controllers/authController');
 const guildController = require('../controllers/guildController');
 const adminController = require('../controllers/adminController');
@@ -49,4 +50,35 @@ router.post('/admin/sessions/end', authenticateToken, isAdmin, adminController.e
 router.get('/admin/leaderboard/chess', authenticateToken, adminController.getChessLeaderboard);
 router.get('/admin/leaderboard/guilds', authenticateToken, adminController.getGuildLeaderboard);
 
-module.exports = router; 
+// GitHub model API routes
+router.post('/github/completions', async (req, res) => {
+  try {
+    const { messages } = req.body;
+    if (!messages || !Array.isArray(messages)) {
+      return res.status(400).json({ error: 'Invalid request format' });
+    }
+
+    // Forward request to GitHub API
+    const response = await fetch('https://api.github.com/copilot/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.GITHUB_API_KEY}`
+      },
+      body: JSON.stringify({ messages })
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      return res.status(response.status).json({ error });
+    }
+
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('GitHub API error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+module.exports = router;
