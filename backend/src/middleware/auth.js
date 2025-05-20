@@ -23,7 +23,7 @@ const authenticateToken = async (req, res, next) => {
       }
       
       // Check if user exists in database
-      const user = await User.findById(decoded.id);
+      const user = await User.findByPk(decoded.id);
       if (!user) {
         return res.status(404).json({ success: false, message: 'User not found' });
       }
@@ -49,7 +49,7 @@ const isAdmin = async (req, res, next) => {
     if (req.user.role !== 'admin') {
       // Log unauthorized access attempt
       await ActivityLog.create({
-        user: req.user.id,
+        userId: req.user.id,
         username: req.user.username,
         actionType: 'admin_action',
         actionDetails: {
@@ -91,7 +91,7 @@ const attachRequestMetrics = (req, res, next) => {
         // Log to database if user is authenticated
         try {
           await ActivityLog.create({
-            user: req.user.id,
+            userId: req.user.id,
             username: req.user.username,
             actionType: 'other',
             actionDetails: {

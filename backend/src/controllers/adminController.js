@@ -9,21 +9,21 @@ exports.getAllUsers = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
-    const skip = (page - 1) * limit;
+    const offset = (page - 1) * limit; // Sequelize uses offset
     
-    const users = await User.find()
-      .select('-password')
-      .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 });
-    
-    const totalUsers = await User.countDocuments();
+    const { count, rows: users } = await User.findAndCountAll({
+      attributes: { exclude: ['password'] }, // Exclude password
+      offset: offset,
+      limit: limit,
+      order: [['createdAt', 'DESC']],
+      distinct: true, // Necessary for correct count with includes
+    });
     
     res.status(200).json({
       success: true,
-      count: users.length,
-      total: totalUsers,
-      totalPages: Math.ceil(totalUsers / limit),
+      count: users.length, // Number of users in current page
+      total: count, // Total number of users
+      totalPages: Math.ceil(count / limit),
       currentPage: page,
       users
     });
@@ -38,31 +38,41 @@ exports.getUserById = async (req, res) => {
   try {
     const userId = req.params.id;
     
-    const user = await User.findById(userId)
-      .select('-password')
-      .populate('guild');
+    const user = await User.findByPk(userId, {
+      attributes: { exclude: ['password'] },
+      include: [{ model: Guild, as: 'guild' }] // Assuming 'guild' is the alias for User -> Guild association
+    });
     
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
     
     // Get user's recent activity
-    const recentActivity = await ActivityLog.find({ user: userId })
-      .sort({ performedAt: -1 })
-      .limit(20);
+    const recentActivity = await ActivityLog.findAll({ 
+      where: { userId: userId }, // Assuming ActivityLog has a userId foreign key
+      order: [['performedAt', 'DESC']],
+      limit: 20 
+    });
     
     // Get user's active session if any
-    const activeSession = await UserSession.findOne({ user: userId, isActive: true });
+    const activeSession = await UserSession.findOne({ 
+      where: { userId: userId, isActive: true } // Assuming UserSession has a userId
+    });
     
     // Get user's most recent chess games
-    const chessGames = await ChessGame.find({
-      $or: [
-        { 'players.white.user': userId },
-        { 'players.black.user': userId }
-      ]
-    })
-    .sort({ startTime: -1 })
-    .limit(10);
+    // This requires knowing how players are stored in ChessGame and if userId refers to your User model's PK
+    // Assuming ChessGame stores user PKs in players.white.userId and players.black.userId
+    const { Sequelize } = require('sequelize'); // For Op.or
+    const chessGames = await ChessGame.findAll({
+      where: {
+        [Sequelize.Op.or]: [
+          { 'players.white.userId': userId },
+          { 'players.black.userId': userId }
+        ]
+      },
+      order: [['startTime', 'DESC']],
+      limit: 10
+    });
     
     res.status(200).json({
       success: true,
@@ -90,7 +100,7 @@ exports.updateUserRole = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid role. Must be "user" or "admin"' });
     }
     
-    const user = await User.findById(userId);
+    const user = await User.findByPk(userId);
     
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
@@ -101,13 +111,12 @@ exports.updateUserRole = async (req, res) => {
     
     // Log the admin action
     await ActivityLog.create({
-      user: req.user.id,
+      userId: req.user.id, 
       username: req.user.username,
       actionType: 'admin_action',
       actionDetails: {
         action: 'update_user_role',
-        targetUser: userId,
-        oldRole: user.role,
+        targetUserId: userId, // Changed from targetUser for clarity
         newRole: role
       },
       performedAt: new Date()
@@ -117,7 +126,7 @@ exports.updateUserRole = async (req, res) => {
       success: true,
       message: `User role updated to ${role}`,
       user: {
-        id: user._id,
+        id: user.id,
         username: user.username,
         role: user.role
       }
@@ -135,120 +144,138 @@ exports.getSiteActivityDashboard = async (req, res) => {
     const days = parseInt(req.query.days) || 7;
     const endDate = new Date();
     const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
-    
+    startDate.setDate(endDate.getDate() - days);
+
+    const { sequelize, Sequelize } = require('../db/config'); // Assuming db/config exports sequelize instance and Sequelize static
+
     // Get active users count
-    const activeSessions = await UserSession.countDocuments({ isActive: true });
-    
+    const activeSessions = await UserSession.count({ where: { isActive: true } });
+
     // Get new user registrations by day
-    const newUsersByDay = await User.aggregate([
-      {
-        $match: {
-          createdAt: { $gte: startDate, $lte: endDate }
+    const newUsersByDay = await User.findAll({
+      attributes: [
+        [sequelize.fn('DATE', sequelize.col('createdAt')), 'date'], // Truncate to date
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count']
+      ],
+      where: {
+        createdAt: {
+          [Sequelize.Op.gte]: startDate,
+          [Sequelize.Op.lte]: endDate
         }
       },
-      {
-        $group: {
-          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
-          count: { $sum: 1 }
-        }
-      },
-      {
-        $sort: { _id: 1 }
-      }
-    ]);
-    
+      group: [sequelize.fn('DATE', sequelize.col('createdAt'))],
+      order: [[sequelize.fn('DATE', sequelize.col('createdAt')), 'ASC']],
+      raw: true // Get plain JSON objects
+    });
+
     // Get login activity by day
-    const loginsByDay = await ActivityLog.aggregate([
-      {
-        $match: {
-          actionType: 'login',
-          performedAt: { $gte: startDate, $lte: endDate }
+    const loginsByDay = await ActivityLog.findAll({
+      attributes: [
+        [sequelize.fn('DATE', sequelize.col('performedAt')), 'date'],
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count']
+      ],
+      where: {
+        actionType: 'login',
+        performedAt: {
+          [Sequelize.Op.gte]: startDate,
+          [Sequelize.Op.lte]: endDate
         }
       },
-      {
-        $group: {
-          _id: { $dateToString: { format: '%Y-%m-%d', date: '$performedAt' } },
-          count: { $sum: 1 }
-        }
-      },
-      {
-        $sort: { _id: 1 }
-      }
-    ]);
-    
+      group: [sequelize.fn('DATE', sequelize.col('performedAt'))],
+      order: [[sequelize.fn('DATE', sequelize.col('performedAt')), 'ASC']],
+      raw: true
+    });
+
     // Get chess game activity by day
-    const chessGamesByDay = await ActivityLog.aggregate([
-      {
-        $match: {
-          actionType: 'chess_game_start',
-          performedAt: { $gte: startDate, $lte: endDate }
+    const chessGamesByDay = await ActivityLog.findAll({
+      attributes: [
+        [sequelize.fn('DATE', sequelize.col('performedAt')), 'date'],
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count']
+      ],
+      where: {
+        actionType: 'chess_game_start',
+        performedAt: {
+          [Sequelize.Op.gte]: startDate,
+          [Sequelize.Op.lte]: endDate
         }
       },
-      {
-        $group: {
-          _id: { $dateToString: { format: '%Y-%m-%d', date: '$performedAt' } },
-          count: { $sum: 1 }
-        }
-      },
-      {
-        $sort: { _id: 1 }
-      }
-    ]);
+      group: [sequelize.fn('DATE', sequelize.col('performedAt'))],
+      order: [[sequelize.fn('DATE', sequelize.col('performedAt')), 'ASC']],
+      raw: true
+    });
     
     // Get todo activity by day
-    const todoActivityByDay = await ActivityLog.aggregate([
-      {
-        $match: {
-          actionType: { $in: ['todo_create', 'todo_complete', 'todo_delete'] },
-          performedAt: { $gte: startDate, $lte: endDate }
+    // This one is grouped by date and actionType
+    const todoActivityByDay = await ActivityLog.findAll({
+      attributes: [
+        [sequelize.fn('DATE', sequelize.col('performedAt')), 'activity_date'], // Alias to avoid conflict
+        'actionType',
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count']
+      ],
+      where: {
+        actionType: { [Sequelize.Op.in]: ['todo_create', 'todo_complete', 'todo_delete'] },
+        performedAt: {
+          [Sequelize.Op.gte]: startDate,
+          [Sequelize.Op.lte]: endDate
         }
       },
-      {
-        $group: {
-          _id: { 
-            date: { $dateToString: { format: '%Y-%m-%d', date: '$performedAt' } },
-            action: '$actionType'
-          },
-          count: { $sum: 1 }
-        }
-      },
-      {
-        $sort: { '_id.date': 1 }
-      }
-    ]);
-    
+      group: [sequelize.fn('DATE', sequelize.col('performedAt')), 'actionType'],
+      order: [[sequelize.fn('DATE', sequelize.col('performedAt')), 'ASC']],
+      raw: true
+    }).then(results => results.map(r => ({ _id: { date: r.activity_date, action: r.actionType }, count: r.count }))); // Remap to expected structure
+
+
     // Get a list of most active users
-    const mostActiveUsers = await ActivityLog.aggregate([
-      {
-        $match: {
-          performedAt: { $gte: startDate, $lte: endDate }
+    const mostActiveUsers = await ActivityLog.findAll({
+      attributes: [
+        'userId', // Assuming ActivityLog has userId
+        // Need to include username. This requires a join or a subquery/second query.
+        // For simplicity here, let's assume username is on ActivityLog or we fetch it later.
+        // If username is on User model, a join is needed:
+        // [sequelize.literal('`User`.`username`'), 'username'], // Adjust User.username based on actual table/col name
+        [sequelize.fn('COUNT', sequelize.col('ActivityLog.id')), 'count'] // Qualify id if joining
+      ],
+      where: {
+        performedAt: {
+          [Sequelize.Op.gte]: startDate,
+          [Sequelize.Op.lte]: endDate
         }
       },
-      {
-        $group: {
-          _id: '$user',
-          username: { $first: '$username' },
-          count: { $sum: 1 }
-        }
-      },
-      {
-        $sort: { count: -1 }
-      },
-      {
-        $limit: 10
-      }
-    ]);
+      // include: [{ model: User, attributes: ['username'] }], // If joining to get username
+      group: ['userId'], // Add 'User.username' if joining and selecting it
+      order: [[sequelize.fn('COUNT', sequelize.col('ActivityLog.id')), 'DESC']],
+      limit: 10,
+      raw: true // May need to be false if using include and wanting nested objects
+    });
     
+    // If username needs to be fetched separately for mostActiveUsers (if not joining):
+    const userIds = mostActiveUsers.map(u => u.userId);
+    const activeUserDetails = await User.findAll({
+        where: { id: { [Sequelize.Op.in]: userIds } },
+        attributes: ['id', 'username'],
+        raw: true
+    });
+    const usersMap = activeUserDetails.reduce((map, user) => {
+        map[user.id] = user.username;
+        return map;
+    }, {});
+
+    const formattedMostActiveUsers = mostActiveUsers.map(u => ({
+        _id: u.userId,
+        username: usersMap[u.userId] || 'Unknown',
+        count: u.count
+    }));
+
+
     res.status(200).json({
       success: true,
       data: {
         activeSessions,
-        newUsersByDay,
-        loginsByDay,
-        chessGamesByDay,
-        todoActivityByDay,
-        mostActiveUsers
+        newUsersByDay: newUsersByDay.map(r => ({ _id: r.date, count: r.count })), // Map to expected {_id, count}
+        loginsByDay: loginsByDay.map(r => ({ _id: r.date, count: r.count })),
+        chessGamesByDay: chessGamesByDay.map(r => ({ _id: r.date, count: r.count })),
+        todoActivityByDay, // Already mapped
+        mostActiveUsers: formattedMostActiveUsers
       }
     });
   } catch (error) {
@@ -262,21 +289,24 @@ exports.getActiveSessions = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
-    const skip = (page - 1) * limit;
-    
-    const sessions = await UserSession.find({ isActive: true })
-      .populate('user', 'username role')
-      .skip(skip)
-      .limit(limit)
-      .sort({ startTime: -1 });
-    
-    const totalSessions = await UserSession.countDocuments({ isActive: true });
-    
+    const offset = (page - 1) * limit;
+
+    const { sequelize, Sequelize } = require('../db/config');
+
+    const { count, rows: sessions } = await UserSession.findAndCountAll({
+      where: { isActive: true },
+      include: [{ model: User, as: 'user', attributes: ['id', 'username', 'role'] }], // Assuming UserSession belongsTo User as 'user'
+      offset: offset,
+      limit: limit,
+      order: [['startTime', 'DESC']],
+      distinct: true
+    });
+
     res.status(200).json({
       success: true,
       count: sessions.length,
-      total: totalSessions,
-      totalPages: Math.ceil(totalSessions / limit),
+      total: count,
+      totalPages: Math.ceil(count / limit),
       currentPage: page,
       sessions
     });
@@ -286,24 +316,38 @@ exports.getActiveSessions = async (req, res) => {
   }
 };
 
-// Get session details with screen captures
+// Get session details by ID (assuming UserSession primary key is 'id' or 'sessionId' if that's the PK)
 exports.getSessionDetails = async (req, res) => {
   try {
-    const sessionId = req.params.id;
-    
-    const session = await UserSession.findOne({ sessionId })
-      .populate('user', 'username role');
-    
+    const sessionId = req.params.id; // This should be the primary key of UserSession
+    const { sequelize, Sequelize } = require('../db/config');
+
+    // If sessionId in UserSession is not the PK, but a field named 'sessionId'
+    // const session = await UserSession.findOne({ 
+    //   where: { sessionId: sessionId }, 
+    //   include: [{ model: User, as: 'user', attributes: ['id', 'username', 'role'] }]
+    // });
+    // If req.params.id refers to the primary key of UserSession model:
+    const session = await UserSession.findByPk(sessionId, { 
+        include: [{ model: User, as: 'user', attributes: ['id', 'username', 'role'] }]
+    });
+
     if (!session) {
       return res.status(404).json({ success: false, message: 'Session not found' });
     }
-    
+
     // Get recent activity for this user during this session
-    const activities = await ActivityLog.find({
-      user: session.user._id,
-      performedAt: { $gte: session.startTime, $lte: session.endTime || new Date() }
-    }).sort({ performedAt: -1 });
-    
+    const activities = await ActivityLog.findAll({
+      where: {
+        userId: session.userId, // Assuming UserSession has userId or session.user.id if populated
+        performedAt: {
+          [Sequelize.Op.gte]: session.startTime,
+          [Sequelize.Op.lte]: session.endTime || new Date() // Use current time if endTime is null
+        }
+      },
+      order: [['performedAt', 'DESC']]
+    });
+
     res.status(200).json({
       success: true,
       session,
@@ -318,74 +362,77 @@ exports.getSessionDetails = async (req, res) => {
 // Force end a user session
 exports.endUserSession = async (req, res) => {
   try {
-    const { sessionId } = req.body;
-    
-    const session = await UserSession.findOne({ sessionId, isActive: true });
-    
+    const { sessionId } = req.body; // This should be the value of the 'sessionId' field, not necessarily PK
+    const { sequelize, Sequelize } = require('../db/config');
+
+    const session = await UserSession.findOne({ where: { sessionId: sessionId, isActive: true } });
+
     if (!session) {
       return res.status(404).json({ success: false, message: 'Active session not found' });
     }
-    
+
     session.isActive = false;
     session.endTime = new Date();
     await session.save();
-    
+
     // Log the admin action
     await ActivityLog.create({
-      user: req.user.id,
+      userId: req.user.id, // Admin's ID
       username: req.user.username,
       actionType: 'admin_action',
       actionDetails: {
         action: 'end_user_session',
-        targetUser: session.user,
-        targetSession: sessionId
+        targetUserId: session.userId, // Assuming UserSession has userId
+        targetSessionId: session.sessionId // Log the actual session identifier
       },
       performedAt: new Date()
     });
-    
-    res.status(200).json({
-      success: true,
-      message: 'Session ended successfully'
-    });
+
+    res.status(200).json({ success: true, message: 'Session ended successfully' });
   } catch (error) {
     console.error('End user session error:', error);
     res.status(500).json({ success: false, message: 'Server error', error: error.message });
   }
 };
 
-// Get chess leaderboard
+// Get Chess Leaderboard (Example Conversion)
 exports.getChessLeaderboard = async (req, res) => {
   try {
-    const leaderboard = await User.find({ 'stats.chess.gamesPlayed': { $gt: 0 } })
-      .select('username chessRating stats.chess guild')
-      .populate('guild', 'name')
-      .sort({ chessRating: -1 })
-      .limit(100);
-    
-    res.status(200).json({
-      success: true,
-      leaderboard
+    const { sequelize, Sequelize } = require('../db/config');
+    const users = await User.findAll({
+      attributes: ['id', 'username', 'chessRating', 'chessWins', 'chessLosses', 'chessDraws'],
+      order: [['chessRating', 'DESC']],
+      limit: parseInt(req.query.limit) || 20
     });
+    res.status(200).json({ success: true, leaderboard: users });
   } catch (error) {
-    console.error('Get chess leaderboard error:', error);
+    console.error('Get Chess Leaderboard error:', error);
     res.status(500).json({ success: false, message: 'Server error', error: error.message });
   }
 };
 
-// Get guild leaderboard
+// Get Guild Leaderboard (Example Conversion)
 exports.getGuildLeaderboard = async (req, res) => {
   try {
-    const guildLeaderboard = await Guild.find()
-      .select('name description stats members')
-      .sort({ 'stats.averageRating': -1 })
-      .limit(50);
-    
-    res.status(200).json({
-      success: true,
-      guildLeaderboard
+    const { sequelize, Sequelize } = require('../db/config');
+    // This is more complex; requires aggregation or careful query if ratings are per guild member
+    // Simplistic example: list guilds ordered by some criteria (e.g., member count or a summary stat)
+    const guilds = await Guild.findAll({
+      attributes: [
+        'id',
+        'name',
+        'description',
+        'memberCount', // Assuming Guild model has memberCount
+        'totalRating'  // Assuming Guild model has some totalRating
+        // Or use sequelize.fn('COUNT', sequelize.col('Members.id')) if you have a GuildMembers association
+      ],
+      // include: [{ model: User, as: 'members', attributes: [] }], // if counting members via association
+      order: [['totalRating', 'DESC']], // or memberCount
+      limit: parseInt(req.query.limit) || 20
     });
+    res.status(200).json({ success: true, leaderboard: guilds });
   } catch (error) {
-    console.error('Get guild leaderboard error:', error);
+    console.error('Get Guild Leaderboard error:', error);
     res.status(500).json({ success: false, message: 'Server error', error: error.message });
   }
 }; 
