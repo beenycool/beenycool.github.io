@@ -325,7 +325,7 @@ export default function ChessComponent({ systemTheme }) {
     if (token && fetchUserData) {
       fetchUserData(token);
     }
-  }, []);
+  }, [fetchUserData]);
   
   // Connect to socket when component mounts
   useEffect(() => {
@@ -662,7 +662,7 @@ export default function ChessComponent({ systemTheme }) {
         }
       }
     }
-  }, [playerName]);
+  }, [playerName, roomId, socketRef, getGamePassword, getSavedSessions]);
 
   // Theme synchronization
   useEffect(() => {
@@ -771,7 +771,7 @@ export default function ChessComponent({ systemTheme }) {
   // Set up initial position
   useEffect(() => {
     resetGame();
-  }, []);
+  }, [resetGame]);
 
   // Update FEN when game changes
   useEffect(() => {
@@ -832,7 +832,7 @@ export default function ChessComponent({ systemTheme }) {
       setOpponentScore(oScore);
       setShowScores(true);
     }
-  }, [gameResult]);
+  }, [gameResult, game, moveHistory, playerColor, timeControl]);
 
   // Handle a piece drop
   const onDrop = (sourceSquare, targetSquare) => {

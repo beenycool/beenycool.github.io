@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 
 const GuildManager = ({ guilds, onCreateGuild, onUpdateGuild, onDeleteGuild }) => {
   const [selectedGuild, setSelectedGuild] = useState(null);
@@ -115,17 +116,13 @@ const GuildManager = ({ guilds, onCreateGuild, onUpdateGuild, onDeleteGuild }) =
                   onClick={() => handleEditGuild(guild)}
                 >
                   <div className="flex items-center">
-                    {guild.logo ? (
-                      <img 
-                        src={guild.logo} 
-                        alt={guild.name} 
-                        className="h-10 w-10 rounded-full"
-                      />
-                    ) : (
-                      <div className="h-10 w-10 rounded-full bg-purple-200 flex items-center justify-center text-lg font-medium text-purple-700">
-                        {guild.name.charAt(0).toUpperCase()}
-                      </div>
-                    )}
+                    <Image 
+                      src={guild.logo || '/placeholder-guild.png'} 
+                      alt={guild.name || 'Guild'} 
+                      width={48} 
+                      height={48}
+                      className="rounded-full" 
+                    />
                     <div className="ml-3">
                       <div className="text-sm font-medium text-gray-900">{guild.name}</div>
                       <div className="text-xs text-gray-500">

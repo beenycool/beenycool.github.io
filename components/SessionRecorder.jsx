@@ -47,7 +47,7 @@ const SessionRecorder = () => {
       window.removeEventListener('click', handleClick);
       window.removeEventListener('input', handleInput);
     };
-  }, []);
+  }, [captureScreen, handleClick, handleInput, logEvent]);
   
   // Handle clicks
   const handleClick = (e) => {

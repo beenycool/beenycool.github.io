@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 
 const Leaderboards = ({ leaderboardData }) => {
   const [activeTab, setActiveTab] = useState('chess');
@@ -75,9 +76,13 @@ const Leaderboards = ({ leaderboardData }) => {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           <div className="flex items-center">
-                            <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium text-gray-700">
-                              {player.username.charAt(0).toUpperCase()}
-                            </div>
+                            <Image 
+                              src={player.avatar || '/default-avatar.png'} 
+                              alt={player.username || 'Player'} 
+                              width={40} 
+                              height={40}
+                              className="h-10 w-10 rounded-full" 
+                            />
                             <div className="ml-3">
                               <div className="text-sm font-medium text-gray-900">{player.username}</div>
                             </div>
@@ -141,13 +146,15 @@ const Leaderboards = ({ leaderboardData }) => {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           <div className="flex items-center">
                             {guild.logo ? (
-                              <img 
+                              <Image 
                                 src={guild.logo} 
                                 alt={guild.name} 
-                                className="h-8 w-8 rounded-full"
+                                width={40} 
+                                height={40}
+                                className="h-10 w-10 rounded-full"
                               />
                             ) : (
-                              <div className="h-8 w-8 rounded-full bg-purple-200 flex items-center justify-center text-sm font-medium text-purple-700">
+                              <div className="h-10 w-10 rounded-full bg-purple-200 flex items-center justify-center text-sm font-medium text-purple-700">
                                 {guild.name.charAt(0).toUpperCase()}
                               </div>
                             )}
@@ -218,9 +225,13 @@ const Leaderboards = ({ leaderboardData }) => {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           <div className="flex items-center">
-                            <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium text-gray-700">
-                              {user.username.charAt(0).toUpperCase()}
-                            </div>
+                            <Image 
+                              src={user.avatar || '/default-avatar.png'} 
+                              alt={user.username || 'User'} 
+                              width={40} 
+                              height={40}
+                              className="h-10 w-10 rounded-full" 
+                            />
                             <div className="ml-3">
                               <div className="text-sm font-medium text-gray-900">{user.username}</div>
                               <div className="text-xs text-gray-500">{user.email}</div>

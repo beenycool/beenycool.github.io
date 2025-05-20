@@ -66,7 +66,7 @@ const AdminDashboard = () => {
     };
     
     checkAuth();
-  }, [router]);
+  }, [router, API_URL]);
   
   // Load dashboard data
   const fetchDashboardData = async () => {
@@ -148,7 +148,30 @@ const AdminDashboard = () => {
       default:
         break;
     }
-  }, [activeTab, user, timeRange]);
+  }, [activeTab, user, timeRange, fetchDashboardData, fetchActiveSessions, fetchUsers]);
+  
+  // Authentication check for logged in user
+  useEffect(() => {
+    if (!user) {
+      router.push('/login');
+    }
+  }, [user, router, API_URL]);
+  
+  // Initialize data and setup refresh intervals
+  useEffect(() => {
+    fetchDashboardData();
+    fetchUsers();
+    fetchActiveSessions();
+    
+    // Set up interval to refresh data
+    const intervalId = setInterval(() => {
+      fetchDashboardData();
+      fetchUsers();
+      fetchActiveSessions();
+    }, 60000); // Refresh every minute
+    
+    return () => clearInterval(intervalId);
+  }, [fetchDashboardData, fetchUsers, fetchActiveSessions]);
   
   // View session details
   const viewSessionDetails = async (sessionId) => {
