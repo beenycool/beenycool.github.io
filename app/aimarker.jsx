@@ -62,15 +62,16 @@ if (typeof window !== 'undefined') {
 }
 
 // Constants moved to a separate section for easier management
-const SUBJECTS = [
-  { value: "english", label: "English" },
-  { value: "maths", label: "Maths", hasTiers: true },
-  { value: "science", label: "Science", hasTiers: true },
-  { value: "history", label: "History" },
-  { value: "geography", label: "Geography" },
-  { value: "computerScience", label: "Computer Science" },
-  { value: "businessStudies", label: "Business Studies" }
-];
+const HISTORY_LIMIT = 10; // Define the maximum number of history items to keep
+
+const SUBJECTS = [ 
+  { value: "english", label: "English" }, 
+  { value: "maths", label: "Maths", hasTiers: true }, 
+  { value: "science", label: "Science", hasTiers: true }, 
+  { value: "history", label: "History" }, 
+  { value: "geography", label: "Geography" }, 
+  { value: "computerScience", label: "Computer Science" }, 
+  { value: "businessStudies", label: "Business Studies" }];
 
 const EXAM_BOARDS = [
   { value: "aqa", label: "AQA" },
