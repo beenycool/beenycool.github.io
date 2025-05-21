@@ -2,6 +2,13 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { NavigationHeader } from "@/components/navigation-header";
+import dynamic from 'next/dynamic';
+
+// Import APIInitializer component with dynamic import to ensure it only runs on client
+const APIInitializer = dynamic(
+  () => import('@/components/api-initializer').then(mod => mod.APIInitializer),
+  { ssr: false }
+);
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -68,6 +75,33 @@ export default function RootLayout({
       <head>
         <meta httpEquiv="Permissions-Policy" content="interest-cohort=(), browsing-topics=()" />
         <link rel="icon" href="/favicon.ico" sizes="any" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              // Define fallback API helper functions to prevent reference errors
+              if (typeof window !== 'undefined') {
+                window.getApiBaseUrl = function() {
+                  return window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+                    ? 'http://localhost:3003'
+                    : 'https://beenycool-github-io.onrender.com';
+                };
+                window.constructApiUrl = function(endpoint) {
+                  const apiBaseUrl = window.getApiBaseUrl();
+                  if (!endpoint.startsWith('/api/') && !endpoint.startsWith('api/')) {
+                    endpoint = 'api/' + endpoint;
+                  } else if (endpoint.startsWith('/api/')) {
+                    endpoint = endpoint.substring(1);
+                  }
+                  return apiBaseUrl + '/' + endpoint;
+                };
+                window.isGitHubPages = function() {
+                  return window.location.hostname.includes('github.io');
+                };
+                console.log('Fallback API helpers initialized');
+              }
+            `,
+          }}
+        />
       </head>
       <body className="min-h-screen bg-background text-foreground font-sans antialiased">
         <ThemeProvider
@@ -78,6 +112,7 @@ export default function RootLayout({
         >
           <NavigationHeader />
           {children}
+          <APIInitializer />
         </ThemeProvider>
       </body>
     </html>

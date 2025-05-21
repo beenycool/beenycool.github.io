@@ -18,6 +18,10 @@ function adjustPermissionsPolicy(response) {
       response.headers.delete('Permissions-Policy');
     }
   }
+  
+  // Also set the header directly on the response to ensure it's applied
+  // This helps with GitHub Pages deployments
+  response.headers.set('Permissions-Policy', 'interest-cohort=()');
   return response;
 }
 

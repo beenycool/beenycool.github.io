@@ -46,20 +46,28 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog"; // ADDED Dialog for OCR Preview
 import Papa from 'papaparse'; // Import PapaParse
 
-// Import API helpers
-import { getApiBaseUrl, constructApiUrl, isGitHubPages, initializeApiHelpers } from '@/lib/api-helpers';
-import { safeApiRequest, safeConstructApiUrl, safeFallbackInit } from '@/lib/api-fallback';
+// Import API helper functions from separate file to avoid temporal dead zone issues
+import { getApiBaseUrl, constructApiUrl, initializeApiHelpers, isGitHubPages } from '@/lib/api-helpers';
 
 // API URL for our backend
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || getApiBaseUrl();
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ||
+  (typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+      ? 'http://localhost:3003'  // Local development
+      : 'https://beenycool-github-io.onrender.com'); // Production URL
 
-// Initialize API helpers globally
+// Log the API URL for debugging
+console.log(`Using API URL: ${API_BASE_URL}`, `GitHub Pages: ${typeof window !== 'undefined' && isGitHubPages()}`);
+
+// Initialize API helpers and backend status
 if (typeof window !== 'undefined') {
+  // Initialize API helpers
   initializeApiHelpers();
-  // Initialize default backend status
-  window.BACKEND_STATUS = window.BACKEND_STATUS || { status: 'checking', lastChecked: null };
-  // Log the API URL for debugging
-  console.log('Using API URL:', API_BASE_URL, 'GitHub Pages:', isGitHubPages());
+  
+  // Set default backend status if not already set
+  if (!window.BACKEND_STATUS) {
+    window.BACKEND_STATUS = { status: 'checking', lastChecked: null };
+  }
 }
 
 // Constants moved to a separate section for easier management
@@ -1255,26 +1263,6 @@ const BatchProcessingControls = ({
 const AIMarker = () => {
   // console.log('AIMarker component is rendering', { window: typeof window !== 'undefined' ? window.location.hostname : 'SSR' });
   
-  // Initialize API helpers as early as possible
-  useEffect(() => {
-    // Make sure API helpers are initialized
-    if (typeof window !== 'undefined') {
-      const success = initializeApiHelpers();
-      
-      // If primary initialization failed, try the fallback
-      if (!success && typeof safeFallbackInit === 'function') {
-        safeFallbackInit();
-      }
-      
-      // Set up middleware if needed
-      createMiddlewareApiEndpoint().then(success => {
-        console.log(`API initialization ${success ? 'successful' : 'failed'}`);
-      }).catch(error => {
-        console.error('Error during API middleware initialization:', error);
-      });
-    }
-  }, [createMiddlewareApiEndpoint]);
-  
   // State for form inputs and data
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
@@ -1370,7 +1358,7 @@ const AIMarker = () => {
   };
   
   // MODIFIED: Handle image processing - convert to text using AI OCR
-  const handleProcessImage = useCallback(async () => {
+  const handleProcessImage = async () => {
     if (!image) return;
     
     try {
@@ -1419,7 +1407,7 @@ const AIMarker = () => {
     } finally {
       setImageLoading(false);
     }
-  }, [image, setImageLoading, setOcrTextPreview, setShowOcrPreviewDialog, setError]);
+  };
 
   // ADDED: Handle OCR text confirmation
   const handleConfirmOcrText = () => {
@@ -1480,7 +1468,7 @@ const AIMarker = () => {
   const [enableThinkingBudget, setEnableThinkingBudget] = useState(true);
 
   // Define the missing setCurrentModelForRequest function
-  const setCurrentModelForRequest = useCallback((model) => {
+  const setCurrentModelForRequest = (model) => {
     currentModelForRequestRef.current = model;
     
     // Update thinking budget based on the selected model
@@ -1493,16 +1481,17 @@ const AIMarker = () => {
       ...prev,
       [model]: Date.now()
     }));
-  }, [enableThinkingBudget, setThinkingBudget, setModelLastRequestTimes]);
+  };
 
   // Debounced save function for question and answer
-  const debouncedSaveDraft = useMemo(() =>
+  const debouncedSaveDraft = useCallback(
     debounce((q, a) => {
       localStorage.setItem(LOCALSTORAGE_KEYS.QUESTION, q);
       localStorage.setItem(LOCALSTORAGE_KEYS.ANSWER, a);
       // console.log('Draft saved');
     }, 1500), // Save after 1.5 seconds of inactivity
-  []);
+    []
+  );
 
   // Effect for auto-saving question and answer drafts
   useEffect(() => {
@@ -1547,9 +1536,9 @@ const AIMarker = () => {
     setRemainingRequestTokens(tokens.count);
 
     // Add default thinking budget for selected model
-    // setThinkingBudget(DEFAULT_THINKING_BUDGETS[selectedModel] || 1024); // Removed, handled by another useEffect that depends on selectedModel
+    setThinkingBudget(DEFAULT_THINKING_BUDGETS[selectedModel] || 1024);
 
-  }, [getRequestTokens]); // Added getRequestTokens. selectedModel is initialized within this effect.
+  }, []); // Empty dependency array means this runs once on mount
 
   // Effects for saving preferences to localStorage when they change
   useEffect(() => {
@@ -1676,7 +1665,7 @@ const AIMarker = () => {
 
   // Submit handler
 // Define the prompt building functions
-  const buildSystemPrompt = useCallback(() => {
+  const buildSystemPrompt = () => {
     // System prompt logic based on component state
     console.log("AIMarker state for system prompt:", { subject, examBoard, questionType, userType, markScheme, totalMarks, textExtract, relevantMaterial, tier, allSubjects });
     let prompt = `You are an AI assistant specialized in educational assessment.`;
@@ -1698,9 +1687,9 @@ const AIMarker = () => {
     if (relevantMaterial) prompt += `\n\nOther relevant material to consider:\n\`\`\`\n${relevantMaterial}\n\`\`\`\n`;
     prompt += "\nYour primary goal is to provide constructive feedback and a grade based on the user's answer to the question. Adhere to the provided mark scheme if available."
     return prompt;
-  }, [subject, examBoard, questionType, userType, markScheme, totalMarks, textExtract, relevantMaterial, tier, allSubjects]);
+  };
 
-  const buildUserPrompt = useCallback(() => {
+  const buildUserPrompt = () => {
     // User prompt logic based on component state
     console.log("AIMarker state for user prompt:", { question, answer, totalMarks, subject, examBoard, questionType, textExtract, relevantMaterial, relevantMaterialImageBase64 });
     let prompt = "Please assess the following student's answer.\n\n";
@@ -1742,7 +1731,7 @@ const AIMarker = () => {
     prompt += "4.  **Actionable Advice:** Suggestions for how the student can improve in the future.\n\n";
     prompt += "Present the feedback clearly and concisely. If a mark scheme was provided in the system prompt, ensure your feedback aligns with it.";
     return prompt;
-  }, [question, answer, totalMarks, subject, examBoard, questionType, textExtract, relevantMaterial, relevantMaterialImageBase64]);
+  };
   const handleSubmitForMarking = useCallback(async () => {
     // Clear previous feedback and errors
     setFeedback(""); // Clear feedback before streaming
@@ -1822,43 +1811,7 @@ const AIMarker = () => {
     setProcessingProgress("Sending request to AI model...");
     setSuccess({ message: `Processing with ${AI_MODELS.find(m => m.value === currentModelForRequestRef.current)?.label || currentModelForRequestRef.current}...` });
     
-          try {
-        // Record user event - with error handling for missing endpoint
-        try {
-          // Use imported constructApiUrl instead of window version
-          let eventApiUrl;
-          
-          try {
-            eventApiUrl = constructApiUrl('auth/events');
-          } catch (error) {
-            console.warn('Error using constructApiUrl for auth events:', error);
-            eventApiUrl = `${API_BASE_URL}/api/auth/events`;
-          }
-          
-          console.log('Sending event to:', eventApiUrl);
-          
-          const eventResponse = await fetch(eventApiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              eventType: 'question_submitted_stream',
-              eventData: {
-                model: currentModelForRequestRef.current,
-                questionLength: question?.length || 0,
-                answerLength: answer?.length || 0,
-                subject: subject
-              }
-            })
-          }); // End of fetch
-          if (!eventResponse.ok) {
-            console.warn(`Event recording failed with status: ${eventResponse.status}`);
-            // Continue with the main request even if event recording fails
-          }
-        } catch (eventError) { // Catch for inner try (event recording)
-          console.warn("Failed to record user event:", eventError);
-          // For GitHub Pages static export, this is expected and we can ignore it
-          console.log('Note: In static export mode, some API failures are expected');
-        } // End of inner try-catch for event recording
+          try {        // Record user event - with error handling for missing endpoint        try {          const eventApiUrl = constructApiUrl('auth/events');          console.log('Sending event to:', eventApiUrl);                    const eventResponse = await fetch(eventApiUrl, {            method: 'POST',            headers: { 'Content-Type': 'application/json' },            body: JSON.stringify({              eventType: 'question_submitted_stream',              eventData: {                model: currentModelForRequestRef.current,                questionLength: question?.length || 0,                answerLength: answer?.length || 0,                subject: subject              }            })          });                    if (!eventResponse.ok) {            console.warn(`Event recording failed with status: ${eventResponse.status}`);            // Continue with the main request even if event recording fails          }        } catch (eventError) {          console.warn("Failed to record user event:", eventError);          // For GitHub Pages static export, this is expected and we can ignore it          console.log('Note: In static export mode, some API failures are expected');        }
       
       const requestBodyPayload = {
         model: currentModelForRequestRef.current,
@@ -1882,25 +1835,7 @@ const AIMarker = () => {
       }
 
 
-      let completionsApiUrl;
-      
-      try {
-        completionsApiUrl = constructApiUrl('github/completions');
-      } catch (error) {
-        console.warn('Error using constructApiUrl for GitHub completions:', error);
-        completionsApiUrl = `${API_BASE_URL}/api/github/completions`;
-      }
-      
-      console.log('Sending completions request to:', completionsApiUrl);
-      
-      const response = await fetch(completionsApiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'text/event-stream',
-        },
-        body: JSON.stringify(requestBodyPayload),
-      });
+                  const completionsApiUrl = constructApiUrl('github/completions');      console.log('Sending completions request to:', completionsApiUrl);            const response = await fetch(completionsApiUrl, {        method: 'POST',        headers: {          'Content-Type': 'application/json',          'Accept': 'text/event-stream',        },        body: JSON.stringify(requestBodyPayload),      });
 
       if (!response.ok) {
         const errorStatus = response.status;
@@ -2021,27 +1956,28 @@ const AIMarker = () => {
         }
       } // End of outer while (true) for SSE stream
       // Success message will be set in the useEffect after parsing
-    } catch (error) { // This is the catch for the main try block starting at line 1830
+    } catch (error) {
       console.error("Error during streaming submission:", error);
       setError({ type: "api_error", message: `Streaming Error: ${error.message}`, onRetry: handleSubmitForMarking });
       setProcessingProgress("Error occurred.");
       setModelThinking("Error during stream.");
-    } finally { // This is the finally for the main try block
+    } finally {
       // setLoading will be set to false in the useEffect after feedback processing
       // This ensures history saving and parsing happens *after* all stream data is in.
     }
-  }, [ // Dependency array for handleSubmitForMarking
-    answer, question, subject, selectedModel,
-    modelLastRequestTimes, consumeToken,
-    buildSystemPrompt, buildUserPrompt,
-    relevantMaterialImage, relevantMaterialImageBase64,
-    setLoading, setActiveTab,
-    setModelLastRequestTimes,
-    setSelectedModel,
-    checkBackendStatus,
-    setCurrentModelForRequest,
-    handleProcessImage
-    // Removed unnecessary dependencies: allSubjects, autoMaxTokens, enableThinkingBudget, examBoard, lastRequestDate, lastRequestTime, markScheme, maxTokens, questionType, relevantMaterial, setDailyRequests, setLastRequestDate, textExtract, thinkingBudget, tier, totalMarks, userType
+  }, [
+    answer, question, subject, examBoard, questionType, userType, markScheme, totalMarks,
+    textExtract, relevantMaterial, selectedModel, tier, allSubjects, API_BASE_URL,
+    lastRequestDate, modelLastRequestTimes, lastRequestTime, consumeToken,
+    buildSystemPrompt, buildUserPrompt, // Assuming these are stable or correctly memoized
+    relevantMaterialImage, relevantMaterialImageBase64, // Added image dependencies
+    enableThinkingBudget, thinkingBudget, // Added thinking budget dependencies
+    // No need for setFeedback, setGrade etc. here as they are handled by stream or useEffect
+    setLoading, setActiveTab, setDailyRequests, setLastRequestDate, setLastRequestTime,
+    setModelLastRequestTimes, autoMaxTokens, maxTokens, // getRequestTokens,
+    setSelectedModel, // Keep if used in onRetryFallback
+    checkBackendStatus, // Added dependency
+    currentModelForRequestRef // Add ref if its .current value is used inside callbacks passed to children
   ]);
 
   // useEffect for post-processing feedback after streaming is complete and saving to history
@@ -2116,7 +2052,7 @@ const AIMarker = () => {
         setLoading(false); // Ensure loading is stopped on error too
         setProcessingProgress("Error occurred.");
     }
-  }, [loading, feedback, error, question, answer, subject, examBoard, questionType, userType, markScheme, totalMarks, relevantMaterial, selectedModel, tier, autoMaxTokens, maxTokens, enableThinkingBudget, thinkingBudget, relevantMaterialImage, setHistory, setGrade, setAchievedMarks, setTotalMarks, setSuccess, setLoading, setProcessingProgress]); // Removed HISTORY_LIMIT
+  }, [loading, feedback, error, question, answer, subject, examBoard, questionType, userType, markScheme, totalMarks, relevantMaterial, selectedModel, tier, autoMaxTokens, maxTokens, enableThinkingBudget, thinkingBudget, relevantMaterialImage, HISTORY_LIMIT, setHistory, setGrade, setAchievedMarks, setTotalMarks, setSuccess, setLoading, setProcessingProgress]);
 
   const generateMarkScheme = async () => {
     // Check if we have a question
@@ -2195,15 +2131,7 @@ TOTAL MARKS: ${marksToUse}` : ''}
         }
         
         try {
-          let geminiApiUrl;
-          
-          try {
-            geminiApiUrl = constructApiUrl('gemini/generate');
-          } catch (error) {
-            console.warn('Error using constructApiUrl for Gemini API:', error);
-            geminiApiUrl = `${API_BASE_URL}/api/gemini/generate`;
-          }
-          
+          const geminiApiUrl = constructApiUrl('gemini/generate');
           console.log('Sending Gemini generate request to:', geminiApiUrl);
           
           response = await fetch(geminiApiUrl, {
@@ -2220,15 +2148,7 @@ TOTAL MARKS: ${marksToUse}` : ''}
               console.warn(`Model ${currentModel} not supported by direct Gemini API, falling back to standard chat API`);
               
               // Fallback to using the standard chat API endpoint
-              let chatApiUrl;
-              
-              try {
-                chatApiUrl = constructApiUrl('chat/completions');
-              } catch (error) {
-                console.warn('Error using constructApiUrl for chat completions:', error);
-                chatApiUrl = `${API_BASE_URL}/api/chat/completions`;
-              }
-              
+              const chatApiUrl = constructApiUrl('chat/completions');
               console.log('Falling back to chat completions API:', chatApiUrl);
               
               response = await fetch(chatApiUrl, {
@@ -2253,15 +2173,7 @@ TOTAL MARKS: ${marksToUse}` : ''}
         }
       } else if (currentModel.startsWith("openai/") || currentModel.startsWith("xai/")) {
         // GitHub models API for GitHub and Grok models
-        let githubApiUrl;
-        
-        try {
-          githubApiUrl = constructApiUrl('github/completions');
-        } catch (error) {
-          console.warn('Error using constructApiUrl for GitHub API:', error);
-          githubApiUrl = `${API_BASE_URL}/api/github/completions`;
-        }
-        
+        const githubApiUrl = constructApiUrl('github/completions');
         console.log('Sending GitHub completions request to:', githubApiUrl);
         
         response = await fetch(githubApiUrl, {
@@ -2278,15 +2190,7 @@ TOTAL MARKS: ${marksToUse}` : ''}
           signal: AbortSignal.timeout(60000) // 60 second timeout
         });
       } else {
-        let chatApiUrl;
-        
-        try {
-          chatApiUrl = constructApiUrl('chat/completions');
-        } catch (error) {
-          console.warn('Error using constructApiUrl for chat API:', error);
-          chatApiUrl = `${API_BASE_URL}/api/chat/completions`;
-        }
-        
+        const chatApiUrl = constructApiUrl('chat/completions');
         console.log('Sending chat completions request to:', chatApiUrl);
         
         response = await fetch(chatApiUrl, {
@@ -3214,63 +3118,7 @@ Please respond to their question clearly and constructively. Keep your answer co
     }
   };
 
-        // Function to create middleware API endpoints or handle GitHub Pages mode
-  const createMiddlewareApiEndpoint = useCallback(async () => {
-    try {
-      // Check if we're running in a browser environment
-      if (typeof window === 'undefined') return false;
-      
-      // If we're on GitHub Pages, we've already set up everything in the API helpers
-      if (isGitHubPages()) {
-        console.log('GitHub Pages detected - API calls will be redirected to backend');
-        console.log(`Using API base URL: ${API_BASE_URL}`);
-        return true;
-      }
-      
-      // For non-GitHub Pages environments
-      try {
-        // Try to create middleware endpoints
-        const response = await fetch('/api/create-middleware', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            type: 'api_middleware',
-            endpoints: ['auth/events', 'github/completions', 'chat/completions']
-          })
-        });
-        
-        if (response.ok) {
-          console.log('Successfully created middleware API endpoints');
-          return true;
-        }
-      } catch (localApiError) {
-        console.warn('Local API middleware creation failed, falling back to remote API:', localApiError.message);
-        
-        // If local API fails, try to check if the remote API is available
-        try {
-          const healthCheckUrl = constructApiUrl('health');
-          const healthCheck = await fetch(healthCheckUrl, {
-            method: 'GET',
-            headers: { 'Content-Type': 'application/json' }
-          });
-          
-          if (healthCheck.ok) {
-            console.log('Remote API is available, will use it instead of local API');
-            return true;
-          }
-        } catch (remoteApiError) {
-          console.error('Remote API health check failed:', remoteApiError.message);
-        }
-      }
-      
-      return false;
-    } catch (error) {
-      console.error('Failed to create middleware API endpoint:', error);
-      return false;
-    }
-  }, [isGitHubPages]);
+      // Add a function to create a middleware API endpoint in Next.js    const createMiddlewareApiEndpoint = async () => {        try {            // Check if we're running in a browser environment            if (typeof window === 'undefined') return false;                        // Check if we're in static export mode            const isStaticExport = process.env.IS_STATIC_EXPORT === 'true';                        if (isStaticExport) {                console.log('Running in static export mode - API calls redirected to backend');        console.log(`Using API base URL: ${API_BASE_URL}`);        return true;            }                        try {        // Only try to use local API in development mode        const response = await fetch('/api/create-middleware', {                  method: 'POST',                  headers: {                      'Content-Type': 'application/json',                  },                  body: JSON.stringify({                      type: 'api_middleware',                      endpoints: ['auth/events', 'github/completions', 'chat/completions']                  })              });                            if (response.ok) {                  console.log('Successfully created middleware API endpoints');                  return true;              }      } catch (localApiError) {        console.warn('Local API middleware creation failed, falling back to remote API:', localApiError.message);                // If local API fails, try to check if the remote API is available        try {          const healthCheckUrl = constructApiUrl('health');          const healthCheck = await fetch(healthCheckUrl, {             method: 'GET',            headers: { 'Content-Type': 'application/json' }          });                    if (healthCheck.ok) {            console.log('Remote API is available, will use it instead of local API');            return true;          }        } catch (remoteApiError) {          console.error('Remote API health check failed:', remoteApiError.message);        }      }            return false;        } catch (error) {            console.error('Failed to create middleware API endpoint:', error);            // In static export, we want to gracefully handle this error            if (process.env.IS_STATIC_EXPORT === 'true') {                console.log('Running in static export mode - ignoring API middleware creation failure');                return true;            }            return false;        }    };
 
   return (
     <div className="min-h-screen bg-background text-foreground">
