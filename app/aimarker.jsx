@@ -1833,12 +1833,15 @@ const AIMarker = () => {
           try {        // Record user event - with error handling for missing endpoint        try {          const eventApiUrl = constructApiUrl('auth/events');          console.log('Sending event to:', eventApiUrl);                    const eventResponse = await fetch(eventApiUrl, {            method: 'POST',            headers: { 'Content-Type': 'application/json' },            body: JSON.stringify({              eventType: 'question_submitted_stream',              eventData: {                model: currentModelForRequestRef.current,                questionLength: question?.length || 0,                answerLength: answer?.length || 0,                subject: subject              }            })          });                    if (!eventResponse.ok) {            console.warn(`Event recording failed with status: ${eventResponse.status}`);            // Continue with the main request even if event recording fails          }        } catch (eventError) {          console.warn("Failed to record user event:", eventError);          // For GitHub Pages static export, this is expected and we can ignore it          console.log('Note: In static export mode, some API failures are expected');        }
       
       const requestBodyPayload = {
-        model: currentModelForRequestRef.current,
+        model: currentModelForRequestRef.current.startsWith("openai/") || currentModelForRequestRef.current.startsWith("xai/") 
+          ? currentModelForRequestRef.current 
+          : "xai/grok-3", // Default to Grok if model pattern doesn't match
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt }
         ],
-        // Add other parameters like temperature, top_p if your backend/model supports them for streaming
+        temperature: 0.7,
+        top_p: 1.0,
         stream: true
       };
       
@@ -2263,12 +2266,15 @@ TOTAL MARKS: ${marksToUse}` : ''}
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            model: currentModel,
+            model: currentModel.startsWith("openai/") || currentModel.startsWith("xai/") 
+              ? currentModel 
+              : "xai/grok-3", // Default to Grok if model pattern doesn't match
             messages: [
-              { role: "developer", content: systemPrompt },
+              { role: "system", content: systemPrompt }, // Changed from "developer" to "system" for compatibility
               { role: "user", content: userPrompt }
             ],
-            temperature: 0.3
+            temperature: 0.7,
+            top_p: 1.0
           }),
           signal: AbortSignal.timeout(60000) // 60 second timeout
         });
@@ -2633,10 +2639,13 @@ TOTAL MARKS: ${marksToUse}` : ''}
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            model: currentModelForItem,
-            messages: [{ role: "developer", content: systemPromptContent }, { role: "user", content: userPromptContent }],
+            model: currentModelForItem.startsWith("openai/") || currentModelForItem.startsWith("xai/") 
+              ? currentModelForItem 
+              : "xai/grok-3", // Default to Grok if model pattern doesn't match
+            messages: [{ role: "system", content: systemPromptContent }, { role: "user", content: userPromptContent }],
             max_tokens: autoMaxTokens ? undefined : maxTokens, 
-            temperature: 0.7
+            temperature: 0.7,
+            top_p: 1.0
           }),
         });
       } else {
@@ -3095,10 +3104,12 @@ Please respond to their question clearly and constructively. Keep your answer co
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: selectedModel,
+            model: selectedModel.startsWith("openai/") || selectedModel.startsWith("xai/") 
+              ? selectedModel 
+              : "xai/grok-3", // Default to Grok if model pattern doesn't match
             messages: [
               {
-                role: "developer",
+                role: "system",
                 content: `You are an AI tutor helping a student understand their GCSE feedback. Be clear, concise, and supportive.`
               },
               {
@@ -3107,7 +3118,8 @@ Please respond to their question clearly and constructively. Keep your answer co
               }
             ],
             max_tokens: autoMaxTokens ? undefined : maxTokens,
-            temperature: 0.7
+            temperature: 0.7,
+            top_p: 1.0
           }),
           // Add a timeout
           signal: AbortSignal.timeout(60000)
