@@ -1430,7 +1430,15 @@ const AIMarker = () => {
   const [lastRequestTime, setLastRequestTime] = useState(0);
   const [dailyRequests, setDailyRequests] = useState(0); // This seems locally managed, let's use getRequestTokens for display
   const [lastRequestDate, setLastRequestDate] = useState(new Date().toDateString());
-  // Model options for testing:  // "deepseek/deepseek-chat-v3-0324:free" - Balanced model  // "microsoft/mai-ds-r1:free" - Thinking model  // "xai/grok-3" - X AI model  // "o4-mini" - O4 mini model  // "gemini-2.5-flash-preview-04-17" - Gemini 2.5 Flash  const [selectedModel, setSelectedModel] = useState("deepseek/deepseek-chat-v3-0324:free");
+  
+  // Model options for testing:
+  // "deepseek/deepseek-chat-v3-0324:free" - Balanced model
+  // "microsoft/mai-ds-r1:free" - Thinking model
+  // "xai/grok-3" - X AI model
+  // "o4-mini" - O4 mini model
+  // "gemini-2.5-flash-preview-04-17" - Gemini 2.5 Flash
+  const [selectedModel, setSelectedModel] = useState("deepseek/deepseek-chat-v3-0324:free");
+  
   const [modelLastRequestTimes, setModelLastRequestTimes] = useState({});
   const [imageLoading, setImageLoading] = useState(false);
   const [backendError, setBackendError] = useState(false);
