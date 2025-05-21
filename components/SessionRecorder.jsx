@@ -10,7 +10,7 @@ import axios from 'axios';
 // Debounce helper function (moved outside the component)
 function debounce(func, wait) {
   let timeout;
-  return function executedFunction(...args) {
+  const debouncedFunction = function executedFunction(...args) {
     const later = () => {
       clearTimeout(timeout);
       func(...args);
@@ -18,6 +18,15 @@ function debounce(func, wait) {
     clearTimeout(timeout);
     timeout = setTimeout(later, wait);
   };
+  
+  // Add cancel method to the debounced function
+  debouncedFunction.cancel = function() {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  };
+  
+  return debouncedFunction;
 }
 
 const SessionRecorder = () => {
@@ -56,34 +65,42 @@ const SessionRecorder = () => {
       // Update last capture time
       lastCaptureTimeRef.current = Date.now();
       
-      // Create a screenshot using html2canvas
-      if (typeof window !== 'undefined' && window.html2canvas) {
-        const canvas = await window.html2canvas(document.body, {
-          scale: 0.5, // Scale down for performance and file size
-          logging: false,
-          useCORS: true,
-          ignoreElements: (element) => {
-            // Ignore elements with sensitive data
-            return element.classList.contains('no-capture') ||
-                   element.tagName === 'INPUT' ||
-                   element.tagName === 'TEXTAREA';
-          }
-        });
-        
-        // Convert to data URL (compressed JPEG)
-        const imageData = canvas.toDataURL('image/jpeg', 0.5);
-        
-        // Send to server
-        await axios.post(`${API_URL}/auth/record-screen`, {
-          sessionId: sessionIdRef.current,
-          imageData,
-          pageUrl: window.location.href,
-          eventTriggered: eventType
-        }, {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        });
+      // Create a screenshot using html2canvas - use dynamic import to ensure it's loaded
+      if (typeof window !== 'undefined') {
+        // Check if html2canvas is available
+        try {
+          // Use the global instance if available, otherwise try to dynamically import it
+          const html2canvas = window.html2canvas || await import('html2canvas').then(mod => mod.default);
+          
+          const canvas = await html2canvas(document.body, {
+            scale: 0.5, // Scale down for performance and file size
+            logging: false,
+            useCORS: true,
+            ignoreElements: (element) => {
+              // Ignore elements with sensitive data
+              return element.classList.contains('no-capture') ||
+                    element.tagName === 'INPUT' ||
+                    element.tagName === 'TEXTAREA';
+            }
+          });
+          
+          // Convert to data URL (compressed JPEG)
+          const imageData = canvas.toDataURL('image/jpeg', 0.5);
+          
+          // Send to server
+          await axios.post(`${API_URL}/auth/record-screen`, {
+            sessionId: sessionIdRef.current,
+            imageData,
+            pageUrl: window.location.href,
+            eventTriggered: eventType
+          }, {
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          });
+        } catch (importError) {
+          console.error('Failed to load html2canvas:', importError);
+        }
       }
     } catch (error) {
       console.error('Error capturing screen:', error);
@@ -150,39 +167,67 @@ const SessionRecorder = () => {
 
   // Initialize session recording
   useEffect(() => {
-    const token = localStorage.getItem('authToken');
-    if (!token) return; // Only record authenticated sessions
-    
-    // Generate a unique session ID if one doesn't exist
-    if (!sessionIdRef.current) {
-      sessionIdRef.current = crypto.randomUUID ? crypto.randomUUID() : 
-        Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    // Wrap initialization in a try-catch to prevent any potential errors from crashing the app
+    try {
+      const token = localStorage.getItem('authToken');
+      if (!token) return; // Only record authenticated sessions
+      
+      // Generate a unique session ID if one doesn't exist
+      if (!sessionIdRef.current) {
+        // Use a safer approach for generating UUID
+        if (typeof window !== 'undefined' && window.crypto && window.crypto.randomUUID) {
+          sessionIdRef.current = window.crypto.randomUUID();
+        } else {
+          sessionIdRef.current = Math.random().toString(36).substring(2, 15) + 
+                                 Math.random().toString(36).substring(2, 15);
+        }
+      }
+      
+      // Start capture interval with a slight delay to ensure everything is initialized
+      setTimeout(() => {
+        captureIntervalRef.current = setInterval(() => {
+          try {
+            captureScreen();
+          } catch (e) {
+            console.error('Error in scheduled capture:', e);
+          }
+        }, 60000); // Capture every minute
+        
+        // Initial capture (with a small delay)
+        setTimeout(() => {
+          try {
+            captureScreen();
+          } catch (e) {
+            console.error('Error in initial capture:', e);
+          }
+        }, 3000);
+      }, 1000);
+      
+      // Record page navigation
+      logEvent('navigation', {
+        url: window.location.href,
+        title: document.title,
+        referrer: document.referrer
+      });
+      
+      // Set up event listeners
+      window.addEventListener('click', handleClick);
+      window.addEventListener('input', handleInput);
+      
+      // Clean up on unmount
+      return () => {
+        if (captureIntervalRef.current) {
+          clearInterval(captureIntervalRef.current);
+        }
+        window.removeEventListener('click', handleClick);
+        window.removeEventListener('input', handleInput);
+        if (debouncedActualInputHandler && typeof debouncedActualInputHandler.cancel === 'function') {
+          debouncedActualInputHandler.cancel();
+        }
+      };
+    } catch (error) {
+      console.error('Error initializing session recorder:', error);
     }
-    
-    // Start capture interval
-    captureIntervalRef.current = setInterval(captureScreen, 60000); // Capture every minute
-    
-    // Initial capture
-    captureScreen();
-    
-    // Record page navigation
-    logEvent('navigation', {
-      url: window.location.href,
-      title: document.title,
-      referrer: document.referrer
-    });
-    
-    // Set up event listeners
-    window.addEventListener('click', handleClick);
-    window.addEventListener('input', handleInput); // Use the new handleInput
-    
-    // Clean up on unmount
-    return () => {
-      clearInterval(captureIntervalRef.current);
-      window.removeEventListener('click', handleClick);
-      window.removeEventListener('input', handleInput);
-      debouncedActualInputHandler.cancel(); // Cancel the debounced handler on unmount
-    };
   }, [captureScreen, handleClick, handleInput, logEvent, API_URL, debouncedActualInputHandler]);
   
   // This component doesn't render anything
