@@ -65,16 +65,7 @@ router.post('/github/completions', globalRateLimiter, async (req, res) => {
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders(); // flush the headers to establish SSE connection
 
-    // Request data from GitHub API (expects JSON)
-    const githubResponse = await fetch('https://api.github.com/copilot/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.GITHUB_API_KEY}`,
-        'Accept': 'application/json' // GitHub Copilot API expects JSON
-      },
-      body: JSON.stringify({ messages }) // stream: true removed, as we expect full JSON
-    });
+        // Check if GitHub API key is configured    if (!process.env.GITHUB_API_KEY) {      console.error('GitHub API key not configured');      res.write(`event: error\ndata: ${JSON.stringify({ error: 'GitHub API Error: API key not configured in backend. Please try a different model.', status: 401 })}\n\n`);      res.end();      return;    }        // Log the request for debugging (remove sensitive info)    console.log('GitHub API Request:', JSON.stringify({       endpoint: 'https://api.github.com/copilot/v1/chat/completions',      method: 'POST',      headers: {        'Content-Type': 'application/json',        'Authorization': 'Bearer [REDACTED]',        'Accept': 'application/json'      },      body: { messages: messages.map(m => ({ role: m.role, content: `${m.content.substring(0, 20)}...` })) }    }));        // Request data from GitHub API (expects JSON)    const githubResponse = await fetch('https://api.github.com/copilot/v1/chat/completions', {      method: 'POST',      headers: {        'Content-Type': 'application/json',        'Authorization': `Bearer ${process.env.GITHUB_API_KEY}`,        'Accept': 'application/json' // GitHub Copilot API expects JSON      },      body: JSON.stringify({ messages }) // stream: true removed, as we expect full JSON    });
 
     if (!githubResponse.ok) {
       const errorText = await githubResponse.text();

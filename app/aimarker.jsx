@@ -1872,6 +1872,15 @@ const AIMarker = () => {
         const errorStatus = response.status;
         const errorText = await response.text();
         console.error(`GitHub API error: ${errorStatus}`, errorText);
+        
+        // Try to parse as JSON for structured error messages
+        let parsedError = null;
+        try {
+          parsedError = JSON.parse(errorText);
+        } catch (e) {
+          // Not JSON, use as plain text
+        }
+        
         // Handle specific error codes
         if (errorStatus === 401) {
           setError({
@@ -1883,8 +1892,24 @@ const AIMarker = () => {
               handleProcessImage();
             }
           });
+        } else if (errorStatus === 404) {
+          // 404 commonly means the GitHub API key is missing or the endpoint is not available
+          setError({
+            type: "api_error",
+            message: "GitHub API is not available. Please try a different model.",
+            onRetry: () => {
+              setSelectedModel("deepseek/deepseek-chat-v3-0324:free");
+              setCurrentModelForRequest("deepseek/deepseek-chat-v3-0324:free");
+              handleProcessImage();
+            }
+          });
         } else {
-          setError({ type: "api_error", message: `API error (${errorStatus}): ${errorText || "Unknown error"}` });
+          const errorMessage = parsedError?.error || parsedError?.message || errorText || "Unknown error";
+          setError({ 
+            type: "api_error", 
+            message: `API error (${errorStatus}): ${errorMessage}`,
+            onRetry: errorStatus >= 500 ? () => handleProcessImage() : undefined 
+          });
         }
         setLoading(false);
         return;
