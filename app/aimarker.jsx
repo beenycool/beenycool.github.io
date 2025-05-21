@@ -1797,7 +1797,34 @@ const AIMarker = () => {
     const userPrompt = buildUserPrompt();
 
     setProcessingProgress("Sending request to AI model...");
-          setSuccess({ message: `Processing with ${AI_MODELS.find(m => m.value === currentModelForRequestRef.current)?.label || currentModelForRequestRef.current}...` });      try {        // Record user event - with error handling for missing endpoint        try {          const eventResponse = await fetch(`${API_BASE_URL}/auth/events`, {            method: 'POST',            headers: { 'Content-Type': 'application/json' },            body: JSON.stringify({              eventType: 'question_submitted_stream',              eventData: {                model: currentModelForRequestRef.current,                questionLength: question?.length || 0,                answerLength: answer?.length || 0,                subject: subject              }            })          });                    if (!eventResponse.ok) {            console.warn(`Event recording failed with status: ${eventResponse.status}`);            // Continue with the main request even if event recording fails          }        } catch (eventError) {           console.warn("Failed to record user event:", eventError);         }                const requestBodyPayload = {
+    setSuccess({ message: `Processing with ${AI_MODELS.find(m => m.value === currentModelForRequestRef.current)?.label || currentModelForRequestRef.current}...` });
+    
+    try {
+      // Record user event - with error handling for missing endpoint
+      try {
+        const eventResponse = await fetch(`${API_BASE_URL}/auth/events`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            eventType: 'question_submitted_stream',
+            eventData: {
+              model: currentModelForRequestRef.current,
+              questionLength: question?.length || 0,
+              answerLength: answer?.length || 0,
+              subject: subject
+            }
+          })
+        });
+        
+        if (!eventResponse.ok) {
+          console.warn(`Event recording failed with status: ${eventResponse.status}`);
+          // Continue with the main request even if event recording fails
+        }
+      } catch (eventError) {
+        console.warn("Failed to record user event:", eventError);
+      }
+      
+      const requestBodyPayload = {
         model: currentModelForRequestRef.current,
         messages: [
           { role: "system", content: systemPrompt },
@@ -1809,17 +1836,46 @@ const AIMarker = () => {
       
       // Add image if relevant for Gemini (assuming /api/github/completions handles this)
       if (currentModelForRequestRef.current.startsWith("gemini") && relevantMaterialImage && relevantMaterialImageBase64) {
-          // The backend /api/github/completions needs to be adapted to pass this to Gemini if it's the intermediary
-          // For simplicity, we assume the backend handles this structure.
-          // This part might need adjustment based on how the backend expects image data for Gemini streams.
-          requestBodyPayload.messages[1].content += "\n\nIMAGE PROVIDED: An image has been attached. Please analyze this image."
-          // The actual image data would need to be handled by the backend if it's proxying to Gemini.
-          // If hitting Gemini directly, the payload structure for images with streaming would be different.
-          // For this exercise, we'll assume the backend's /github/completions is smart enough.
+        // The backend /api/github/completions needs to be adapted to pass this to Gemini if it's the intermediary
+        // For simplicity, we assume the backend handles this structure.
+        // This part might need adjustment based on how the backend expects image data for Gemini streams.
+        requestBodyPayload.messages[1].content += "\n\nIMAGE PROVIDED: An image has been attached. Please analyze this image.";
+        // The actual image data would need to be handled by the backend if it's proxying to Gemini.
+        // If hitting Gemini directly, the payload structure for images with streaming would be different.
+        // For this exercise, we'll assume the backend's /github/completions is smart enough.
       }
 
 
-            const response = await fetch(`${API_BASE_URL}/api/github/completions`, {        method: 'POST',        headers: {          'Content-Type': 'application/json',          'Accept': 'text/event-stream',        },        body: JSON.stringify(requestBodyPayload),      });            if (!response.ok) {        const errorStatus = response.status;        const errorText = await response.text();        console.error(`GitHub API error: ${errorStatus}`, errorText);                // Handle specific error codes        if (errorStatus === 401) {          setError({             type: "api_error",             message: "Authentication error with GitHub API. Please try a different model.",            onRetry: () => {              setSelectedModel("deepseek/deepseek-chat-v3-0324:free");              setCurrentModelForRequest("deepseek/deepseek-chat-v3-0324:free");              handleProcessImage();            }          });        } else {          setError({ type: "api_error", message: `API error (${errorStatus}): ${errorText || "Unknown error"}` });        }                setLoading(false);        return;      }
+      const response = await fetch(`${API_BASE_URL}/api/github/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'text/event-stream',
+        },
+        body: JSON.stringify(requestBodyPayload),
+      });
+
+      if (!response.ok) {
+        const errorStatus = response.status;
+        const errorText = await response.text();
+        console.error(`GitHub API error: ${errorStatus}`, errorText);
+        // Handle specific error codes
+        if (errorStatus === 401) {
+          setError({
+            type: "api_error",
+            message: "Authentication error with GitHub API. Please try a different model.",
+            onRetry: () => {
+              setSelectedModel("deepseek/deepseek-chat-v3-0324:free");
+              setCurrentModelForRequest("deepseek/deepseek-chat-v3-0324:free");
+              handleProcessImage();
+            }
+          });
+        } else {
+          setError({ type: "api_error", message: `API error (${errorStatus}): ${errorText || "Unknown error"}` });
+        }
+        setLoading(false);
+        return;
+      }
 
       if (!response.ok) {
         const errorText = await response.text();
