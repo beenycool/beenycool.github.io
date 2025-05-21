@@ -5,11 +5,11 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "npx serve@latest out",
     "lint": "next lint",
     "static-build": "next build",
     "serve": "npx serve@latest out",
-    "build-and-serve": "npm run static-build && npm run serve",
+    "build-and-serve": "npm run build && npm run serve",
     "backend": "cd backend && node server-start.js",
     "backend-dev": "cd backend && nodemon server-start.js"
   },

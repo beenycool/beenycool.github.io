@@ -51,7 +51,16 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ||
   (typeof window !== 'undefined' &&
     (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
       ? 'http://localhost:3003'  // Local development
-      : 'https://beenycool-github-io.onrender.com/api'); // Production URL with /api endpoint
+      : 'https://beenycool-github-io.onrender.com'); // Production URL
+
+// For static exports, we need to construct API URLs properly
+const constructApiUrl = (endpoint) => {
+  // Make sure the endpoint starts with /api/ if it doesn't already
+  if (!endpoint.startsWith('/api/') && !endpoint.startsWith('api/')) {
+    endpoint = '/api/' + endpoint;
+  }
+  return `${API_BASE_URL}${endpoint}`;
+};
 
 // Log the API URL for debugging
 console.log('Using API URL:', API_BASE_URL);
@@ -3127,35 +3136,48 @@ Please respond to their question clearly and constructively. Keep your answer co
     }
   };
 
-  // Add a function to create a middleware API endpoint in Next.js
-  const createMiddlewareApiEndpoint = async () => {
-    try {
-      // Check if we're running in a browser environment
-      if (typeof window === 'undefined') return false;
-      
-      // Create a simple API route that can be used when the backend is down
-      const response = await fetch('/api/create-middleware', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          type: 'api_middleware',
-          endpoints: ['auth/events', 'api/github/completions', 'api/chat/completions']
-        })
-      });
-      
-      if (response.ok) {
-        console.log('Successfully created middleware API endpoints');
-        return true;
-      }
-      
-      return false;
-    } catch (error) {
-      console.error('Failed to create middleware API endpoint:', error);
-      return false;
-    }
-  };
+    // Add a function to create a middleware API endpoint in Next.js  
+    const createMiddlewareApiEndpoint = async () => {    
+      try {      
+        // Check if we're running in a browser environment      
+        if (typeof window === 'undefined') return false;            
+        
+        // Check if we're in static export mode      
+        const isStaticExport = process.env.IS_STATIC_EXPORT === 'true';            
+        
+        if (isStaticExport) {        
+          console.log('Running in static export mode - API calls redirected to backend');        
+          return true;      
+        }            
+        
+        // Create a simple API route that can be used when the backend is down      
+        const response = await fetch('/api/create-middleware', {        
+          method: 'POST',        
+          headers: {          
+            'Content-Type': 'application/json',        
+          },        
+          body: JSON.stringify({          
+            type: 'api_middleware',          
+            endpoints: ['auth/events', 'api/github/completions', 'api/chat/completions']        
+          })      
+        });            
+        
+        if (response.ok) {        
+          console.log('Successfully created middleware API endpoints');        
+          return true;      
+        }            
+        
+        return false;    
+      } catch (error) {      
+        console.error('Failed to create middleware API endpoint:', error);      
+        // In static export, we want to gracefully handle this error      
+        if (process.env.IS_STATIC_EXPORT === 'true') {        
+          console.log('Running in static export mode - ignoring API middleware creation failure');        
+          return true;      
+        }      
+        return false;    
+      }  
+    };
 
   return (
     <div className="min-h-screen bg-background text-foreground">

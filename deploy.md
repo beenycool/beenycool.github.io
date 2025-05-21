@@ -63,4 +63,60 @@ If you encounter any issues:
 2. Verify MongoDB connection is working
 3. Make sure all required npm packages are installed (openai and node-fetch have been made optional)
 4. Check that the health endpoint returns a 200 status code
-5. If you still see port conflicts, try setting a different `CHESS_PORT` environment variable 
+5. If you still see port conflicts, try setting a different `CHESS_PORT` environment variable
+
+# Deployment Guide for Static Export
+
+This application has been built using Next.js with static export. This means all pages are pre-rendered as HTML/CSS/JS files without the need for a Node.js server.
+
+## Deploying to GitHub Pages
+
+1. Build the application:
+   ```
+   npm run build
+   ```
+
+2. The static files will be generated in the `out` directory.
+
+3. Push these files to the `gh-pages` branch of your repository.
+
+## Local Testing
+
+To test the static build locally:
+
+1. Install serve:
+   ```
+   npm install -g serve
+   ```
+
+2. Run the static build:
+   ```
+   serve -s out
+   ```
+
+3. Visit `http://localhost:3000` in your browser.
+
+## API Configuration
+
+This application is configured to use a remote API backend at https://beenycool-github-io.onrender.com for dynamic functionality. The static export does not include the API routes since they require server-side execution.
+
+In static export mode:
+- API routes are disabled
+- API calls are redirected to the remote backend
+- Middleware is configured to handle static export conditions
+
+## Notes for GitHub Pages Deployment
+
+When deploying to GitHub Pages, make sure that:
+
+1. The repository settings point to the correct branch (`gh-pages` or `main` depending on your setup)
+2. Custom domain configuration (if any) is properly set up
+3. The base path in `next.config.js` matches your GitHub Pages URL structure
+
+## Troubleshooting
+
+If you encounter issues with API calls:
+
+1. Check that the `NEXT_PUBLIC_API_BASE_URL` is correctly set in `next.config.js`
+2. Verify that CORS is properly configured on your backend
+3. For local testing, you can run the development server with `npm run dev` which will enable API routes 

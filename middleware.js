@@ -8,7 +8,10 @@ export function middleware(request) {
   console.log(`Middleware processing: ${pathname}`);
   
   // Skip middleware in production builds when using static export
-  if (process.env.NODE_ENV === 'production' && process.env.NEXT_OUTPUT === 'export') {
+  // Check environment variables to determine if we're in static export mode
+  const isStaticExport = process.env.IS_STATIC_EXPORT === 'true';
+  if (isStaticExport || (process.env.NODE_ENV === 'production' && process.env.NEXT_OUTPUT === 'export')) {
+    console.log('Static export detected - middleware bypassed');
     return NextResponse.next();
   }
 
@@ -48,6 +51,12 @@ export function middleware(request) {
       pathname.startsWith('/api/github/completions') || 
       pathname.startsWith('/api/chat/completions')) {
     
+    // For static export, we need to handle this differently
+    if (isStaticExport) {
+      console.log('Static export detected - skipping API middleware');
+      return NextResponse.next();
+    }
+    
     // Check if we should use our local API handlers
     const useLocalApi = process.env.USE_LOCAL_API === 'true';
     
@@ -64,7 +73,10 @@ export function middleware(request) {
     
     // Otherwise, try the backend first
     const backendUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://beenycool-github-io.onrender.com';
-    return NextResponse.rewrite(new URL(pathname, backendUrl));
+    
+    // Make sure we're not appending /api twice for API calls
+    const apiPath = pathname.startsWith('/api/') ? pathname : `/api${pathname}`;
+    return NextResponse.rewrite(new URL(apiPath, backendUrl));
   }
 
   return NextResponse.next();
