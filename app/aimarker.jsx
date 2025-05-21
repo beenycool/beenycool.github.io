@@ -1460,15 +1460,18 @@ const AIMarker = () => {
 
   // Define the missing setCurrentModelForRequest function
   const setCurrentModelForRequest = (model) => {
-    console.log(`Setting current model for request: ${model}`);
     currentModelForRequestRef.current = model;
     
-    // Update thinking budget based on model
+    // Update thinking budget based on the selected model
     if (enableThinkingBudget && DEFAULT_THINKING_BUDGETS[model]) {
       setThinkingBudget(DEFAULT_THINKING_BUDGETS[model]);
     }
     
-    return model;
+    // Track the last request time for this model
+    setModelLastRequestTimes(prev => ({
+      ...prev,
+      [model]: Date.now()
+    }));
   };
 
   // Debounced save function for question and answer
