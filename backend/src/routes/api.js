@@ -124,4 +124,75 @@ router.post('/github/completions', globalRateLimiter, async (req, res) => {
   }
 });
 
+// Route for OpenRouter models
+router.post('/chat/completions', globalRateLimiter, async (req, res) => {
+  try {
+    const { model, messages, stream } = req.body;
+    if (!model || !messages || !Array.isArray(messages)) {
+      return res.status(400).json({ error: 'Invalid request: model and messages are required.' });
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const openRouterResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        // OpenRouter might infer HTTP-Referer from the request for identification
+        'HTTP-Referer': req.headers.origin || 'https://beenycool.github.io', 
+        'X-Title': 'GCSE AI Marker' // Optional: For OpenRouter to identify your app
+      },
+      body: JSON.stringify({ model, messages, stream: stream !== undefined ? stream : true })
+    });
+
+    if (!openRouterResponse.ok) {
+      const errorText = await openRouterResponse.text();
+      console.error('OpenRouter API error:', openRouterResponse.status, errorText);
+      res.write(`event: error\ndata: ${JSON.stringify({ error: `OpenRouter API Error (${openRouterResponse.status}): ${errorText}`, status: openRouterResponse.status })}\n\n`);
+      res.end();
+      return;
+    }
+
+    // Pipe the stream from OpenRouter to the client
+    if (openRouterResponse.body) {
+        const reader = openRouterResponse.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+                break;
+            }
+            const chunk = decoder.decode(value, { stream: true });
+            res.write(chunk); // Directly forward the chunk as OpenRouter SSE format is usually compatible
+        }
+    } else {
+        // Fallback if no body or not streamable (should not happen with stream:true)
+        const jsonData = await openRouterResponse.json();
+        res.write(`data: ${JSON.stringify(jsonData)}\n\n`);
+    }
+    
+    // OpenRouter streams usually end themselves, but ensure client knows.
+    // Sending [DONE] might be redundant if OpenRouter already sends it.
+    // Consider if client handles multiple [DONE] gracefully.
+    // res.write(`data: [DONE]\n\n`); 
+    res.end();
+
+  } catch (error) {
+    console.error('OpenRouter API error in /chat/completions:', error);
+    if (!res.headersSent) {
+        res.status(500).json({ error: error.message });
+    } else {
+        const errorMessage = (typeof error.message === 'string') ? error.message : JSON.stringify(error);
+        res.write(`event: error\ndata: ${JSON.stringify({ error: errorMessage })}\n\n`);
+        res.end();
+    }
+  }
+});
+
 module.exports = router;
