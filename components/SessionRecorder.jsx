@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback, useMemo } from 'react';
 import axios from 'axios';
 
 /**
@@ -45,7 +45,7 @@ const SessionRecorder = () => {
     } catch (error) {
       console.error('Error logging event:', error);
     }
-  }, [API_URL]);
+  }, [API_URL, sessionIdRef]);
 
   // Capture screen
   const captureScreen = useCallback(async (eventType = 'periodic') => {
@@ -117,29 +117,36 @@ const SessionRecorder = () => {
     }
   }, [logEvent, captureScreen]);
   
-  // Handle inputs (debounced)
-  const handleInput = useCallback(debounce((e) => {
-    // Get element info but sanitize sensitive data
-    const target = e.target;
-    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
-      const elementInfo = {
-        tagName: target.tagName,
-        id: target.id,
-        className: target.className,
-        type: target.type,
-        name: target.name
-      };
-      
-      // Don't log values for sensitive fields
-      if (target.type !== 'password' && target.type !== 'email' && !target.name.includes('password')) {
-        elementInfo.value = target.type === 'text' ?
-          '(text entered)' : // Don't record actual text content
-          target.value;
-      }
-      
-      logEvent('input', elementInfo);
-    }
-  }, 1000), [logEvent]);
+  // Memoized debounced function for input handling
+  const debouncedActualInputHandler = useMemo(
+    () =>
+      debounce((e) => {
+        const target = e.target;
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
+          const elementInfo = {
+            tagName: target.tagName,
+            id: target.id,
+            className: target.className,
+            type: target.type,
+            name: target.name,
+          };
+          // Don't log values for sensitive fields
+          if (target.type !== 'password' && target.type !== 'email' && !target.name.includes('password')) {
+            elementInfo.value = target.type === 'text' ? '(text entered)' : target.value;
+          }
+          logEvent('input', elementInfo); // logEvent is from outer scope
+        }
+      }, 1000),
+    [logEvent] // Dependency: logEvent
+  );
+
+  // useCallback for the event listener, calling the memoized debounced handler
+  const handleInput = useCallback(
+    (e) => {
+      debouncedActualInputHandler(e);
+    },
+    [debouncedActualInputHandler] // Dependency: the memoized debounced handler
+  );
 
   // Initialize session recording
   useEffect(() => {
@@ -167,15 +174,16 @@ const SessionRecorder = () => {
     
     // Set up event listeners
     window.addEventListener('click', handleClick);
-    window.addEventListener('input', handleInput);
+    window.addEventListener('input', handleInput); // Use the new handleInput
     
     // Clean up on unmount
     return () => {
       clearInterval(captureIntervalRef.current);
       window.removeEventListener('click', handleClick);
       window.removeEventListener('input', handleInput);
+      debouncedActualInputHandler.cancel(); // Cancel the debounced handler on unmount
     };
-  }, [captureScreen, handleClick, handleInput, logEvent, API_URL]); // Added API_URL as it's used by the memoized functions indirectly
+  }, [captureScreen, handleClick, handleInput, logEvent, API_URL, debouncedActualInputHandler]);
   
   // This component doesn't render anything
   return null;

@@ -1283,7 +1283,7 @@ export default function ChessComponent({ systemTheme }) {
       const sessions = getSavedSessions();
       setSavedSessions(sessions);
     }
-  }, []);
+  }, [getSavedSessions]);
 
   const onSquareClick = (square) => {
     if (preMove) {

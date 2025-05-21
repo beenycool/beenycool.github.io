@@ -213,7 +213,7 @@ export const useBackendStatus = (API_BASE_URL) => {
         status
       };
     }
-  }, []);
+  }, [API_BASE_URL]);
 
   return { checkBackendStatus };
 }; 

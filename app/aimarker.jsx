@@ -1275,7 +1275,7 @@ const AIMarker = () => {
         console.error('Error during API middleware initialization:', error);
       });
     }
-  }, []);
+  }, [createMiddlewareApiEndpoint]);
   
   // State for form inputs and data
   const [question, setQuestion] = useState("");
@@ -1421,7 +1421,7 @@ const AIMarker = () => {
     } finally {
       setImageLoading(false);
     }
-  }, [image, setImageLoading, setOcrTextPreview, setShowOcrPreviewDialog, setError, API_BASE_URL]);
+  }, [image, setImageLoading, setOcrTextPreview, setShowOcrPreviewDialog, setError]);
 
   // ADDED: Handle OCR text confirmation
   const handleConfirmOcrText = () => {
@@ -1678,7 +1678,7 @@ const AIMarker = () => {
 
   // Submit handler
 // Define the prompt building functions
-  const buildSystemPrompt = () => {
+  const buildSystemPrompt = useCallback(() => {
     // System prompt logic based on component state
     console.log("AIMarker state for system prompt:", { subject, examBoard, questionType, userType, markScheme, totalMarks, textExtract, relevantMaterial, tier, allSubjects });
     let prompt = `You are an AI assistant specialized in educational assessment.`;
@@ -1700,9 +1700,9 @@ const AIMarker = () => {
     if (relevantMaterial) prompt += `\n\nOther relevant material to consider:\n\`\`\`\n${relevantMaterial}\n\`\`\`\n`;
     prompt += "\nYour primary goal is to provide constructive feedback and a grade based on the user's answer to the question. Adhere to the provided mark scheme if available."
     return prompt;
-  };
+  }, [subject, examBoard, questionType, userType, markScheme, totalMarks, textExtract, relevantMaterial, tier, allSubjects]);
 
-  const buildUserPrompt = () => {
+  const buildUserPrompt = useCallback(() => {
     // User prompt logic based on component state
     console.log("AIMarker state for user prompt:", { question, answer, totalMarks, subject, examBoard, questionType, textExtract, relevantMaterial, relevantMaterialImageBase64 });
     let prompt = "Please assess the following student's answer.\n\n";
@@ -1744,7 +1744,7 @@ const AIMarker = () => {
     prompt += "4.  **Actionable Advice:** Suggestions for how the student can improve in the future.\n\n";
     prompt += "Present the feedback clearly and concisely. If a mark scheme was provided in the system prompt, ensure your feedback aligns with it.";
     return prompt;
-  };
+  }, [question, answer, totalMarks, subject, examBoard, questionType, textExtract, relevantMaterial, relevantMaterialImageBase64]);
   const handleSubmitForMarking = useCallback(async () => {
     // Clear previous feedback and errors
     setFeedback(""); // Clear feedback before streaming
@@ -2033,19 +2033,17 @@ const AIMarker = () => {
       // This ensures history saving and parsing happens *after* all stream data is in.
     }
   }, [ // Dependency array for handleSubmitForMarking
-    answer, question, subject, examBoard, questionType, userType, markScheme, totalMarks,
-    textExtract, relevantMaterial, selectedModel, tier, allSubjects, API_BASE_URL,
-    lastRequestDate, modelLastRequestTimes, lastRequestTime, consumeToken,
+    answer, question, subject, selectedModel,
+    modelLastRequestTimes, consumeToken,
     buildSystemPrompt, buildUserPrompt,
     relevantMaterialImage, relevantMaterialImageBase64,
-    enableThinkingBudget, thinkingBudget,
-    setLoading, setActiveTab, setDailyRequests, setLastRequestDate, setLastRequestTime,
-    setModelLastRequestTimes, autoMaxTokens, maxTokens,
+    setLoading, setActiveTab,
+    setModelLastRequestTimes,
     setSelectedModel,
     checkBackendStatus,
-    setCurrentModelForRequest, // Added: now stable
-    handleProcessImage, // Added: now stable
-    // currentModelForRequestRef // Removed: Refs are stable; their .current property usage is what matters for deps.
+    setCurrentModelForRequest,
+    handleProcessImage
+    // Removed unnecessary dependencies: allSubjects, autoMaxTokens, enableThinkingBudget, examBoard, lastRequestDate, lastRequestTime, markScheme, maxTokens, questionType, relevantMaterial, setDailyRequests, setLastRequestDate, textExtract, thinkingBudget, tier, totalMarks, userType
   ]);
 
   // useEffect for post-processing feedback after streaming is complete and saving to history
@@ -3219,7 +3217,7 @@ Please respond to their question clearly and constructively. Keep your answer co
   };
 
         // Function to create middleware API endpoints or handle GitHub Pages mode
-  const createMiddlewareApiEndpoint = async () => {
+  const createMiddlewareApiEndpoint = useCallback(async () => {
     try {
       // Check if we're running in a browser environment
       if (typeof window === 'undefined') return false;
@@ -3274,7 +3272,7 @@ Please respond to their question clearly and constructively. Keep your answer co
       console.error('Failed to create middleware API endpoint:', error);
       return false;
     }
-  };
+  }, [isGitHubPages]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
