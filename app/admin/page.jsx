@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 
@@ -69,7 +69,7 @@ const AdminDashboard = () => {
   }, [router, API_URL]);
   
   // Load dashboard data
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('authToken');
@@ -87,10 +87,10 @@ const AdminDashboard = () => {
       setError('Failed to load dashboard data');
       setLoading(false);
     }
-  };
+  }, [API_URL, timeRange]);
   
   // Load active sessions
-  const fetchActiveSessions = async () => {
+  const fetchActiveSessions = useCallback(async () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('authToken');
@@ -108,10 +108,10 @@ const AdminDashboard = () => {
       setError('Failed to load active sessions');
       setLoading(false);
     }
-  };
+  }, [API_URL]);
   
   // Load users
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('authToken');
@@ -129,7 +129,7 @@ const AdminDashboard = () => {
       setError('Failed to load users');
       setLoading(false);
     }
-  };
+  }, [API_URL]);
   
   // When tab changes, load the required data
   useEffect(() => {

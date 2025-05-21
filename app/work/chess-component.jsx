@@ -320,12 +320,33 @@ export default function ChessComponent({ systemTheme }) {
   
   // Check for existing auth token on component mount
   useEffect(() => {
+    const fetchUserDataInternal = async (token) => {
+      try {
+        const response = await axios.get(`${API_URL}/api/auth/user`, {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+        
+        if (response.data.success) {
+          setCurrentUser({
+            id: response.data.user.id,
+            username: response.data.user.username,
+            role: response.data.user.role
+          });
+        }
+      } catch (error) {
+        console.error('Failed to fetch user data:', error);
+        localStorage.removeItem('authToken');
+      }
+    };
+
     const token = localStorage.getItem('authToken');
     
-    if (token && fetchUserData) {
-      fetchUserData(token);
+    if (token) {
+      fetchUserDataInternal(token);
     }
-  }, [fetchUserData]);
+  }, [API_URL]); // API_URL is a constant, but good practice to list if it were dynamic. setCurrentUser is stable.
   
   // Connect to socket when component mounts
   useEffect(() => {
@@ -611,7 +632,7 @@ export default function ChessComponent({ systemTheme }) {
         }
       };
     }
-  }, [gameMode]);
+  }, [gameMode, roomId, playerName, playerColor, moveHistory, preMove]);
   
   // Parse roomId from URL on component mount
   useEffect(() => {
@@ -1128,21 +1149,21 @@ export default function ChessComponent({ systemTheme }) {
     }
   };
   
-  const getGamePassword = (roomId) => {
+  const getGamePassword = useCallback((roomId) => {
     if (typeof window !== 'undefined' && window.localStorage) {
       return window.localStorage.getItem(`${PASSWORD_KEY_PREFIX}${roomId}`);
     }
     return null;
-  };
+  }, []);
   
-  const getSavedSessions = () => {
+  const getSavedSessions = useCallback(() => {
     if (typeof window !== 'undefined' && window.localStorage) {
       const sessions = JSON.parse(window.localStorage.getItem(SESSION_KEY_PREFIX) || '[]');
       // Sort by most recent first
       return sessions.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     }
     return [];
-  };
+  }, []);
   
   const handlePasswordProtection = (e) => {
     e.preventDefault();
@@ -1288,27 +1309,7 @@ export default function ChessComponent({ systemTheme }) {
   // API URL for backend
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://beenycool-github-io.onrender.com';
   
-  // Fetch user data with token
-  const fetchUserData = async (token) => {
-    try {
-      const response = await axios.get(`${API_URL}/api/auth/user`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-      
-      if (response.data.success) {
-        setCurrentUser({
-          id: response.data.user.id,
-          username: response.data.user.username,
-          role: response.data.user.role
-        });
-      }
-    } catch (error) {
-      console.error('Failed to fetch user data:', error);
-      localStorage.removeItem('authToken');
-    }
-  };
+  // fetchUserData has been moved inside the useEffect at line 322
   
   const handleAuthInputChange = (e) => {
     const { name, value } = e.target;

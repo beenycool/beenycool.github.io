@@ -4,7 +4,21 @@ export async function POST(req) {
   try {
     const data = await req.json();
     
-    // Forward the request to create middleware
+    // Check if we're on GitHub Pages by inspecting the request URL or headers
+    const url = new URL(req.url);
+    const isGitHubPages = url.hostname.includes('github.io');
+    
+    if (isGitHubPages) {
+      console.log('GitHub Pages detected - simulating successful middleware creation');
+      // For GitHub Pages, we simply return success without actually trying to create middleware
+      return NextResponse.json({ 
+        success: true, 
+        message: 'GitHub Pages mode - middleware simulation successful',
+        isGitHubPages: true
+      });
+    }
+    
+    // For non-GitHub Pages environments, forward the request to create middleware
     const backendUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://beenycool-github-io.onrender.com/api';
     const response = await fetch(`${backendUrl}/create-middleware`, {
       method: 'POST',
