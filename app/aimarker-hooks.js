@@ -82,21 +82,42 @@ export const useBackendStatus = (API_BASE_URL) => {
           (window.location.hostname.includes('github.io') || 
            window.location.hostname === 'beenycool.github.io')) {
         console.log('Running on GitHub Pages - simulating online status for UI rendering');
-        // Always return online status for GitHub Pages to ensure UI renders
+        
+        // Enable local API fallbacks when on GitHub Pages
         if (typeof window !== 'undefined') {
+          try {
+            // Set environment variable to use local API handlers
+            window.localStorage.setItem('USE_LOCAL_API', 'true');
+            
+            // Create middleware endpoints if needed
+            await fetch('/api/create-middleware', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'api_middleware',
+                endpoints: ['auth/events', 'api/github/completions', 'api/chat/completions']
+              })
+            });
+          } catch (e) {
+            console.warn('Failed to set up local API fallbacks:', e);
+          }
+          
           window.BACKEND_STATUS = { 
             status: 'online', 
             lastChecked: new Date().toLocaleTimeString(),
-            isGitHubPages: true
+            isGitHubPages: true,
+            usingLocalFallbacks: true
           };
         }
+        
         return { 
           ok: true, 
           data: { 
             status: 'ok', 
             openaiClient: true, 
             apiKeyConfigured: true,
-            isGitHubPages: true
+            isGitHubPages: true,
+            usingLocalFallbacks: true
           },
           status: 'online'
         };

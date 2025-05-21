@@ -1460,8 +1460,15 @@ const AIMarker = () => {
 
   // Define the missing setCurrentModelForRequest function
   const setCurrentModelForRequest = (model) => {
+    console.log(`Setting current model for request: ${model}`);
     currentModelForRequestRef.current = model;
-    console.log(`Current model for request set to: ${model}`);
+    
+    // Update thinking budget based on model
+    if (enableThinkingBudget && DEFAULT_THINKING_BUDGETS[model]) {
+      setThinkingBudget(DEFAULT_THINKING_BUDGETS[model]);
+    }
+    
+    return model;
   };
 
   // Debounced save function for question and answer
@@ -1790,22 +1797,7 @@ const AIMarker = () => {
     const userPrompt = buildUserPrompt();
 
     setProcessingProgress("Sending request to AI model...");
-    setSuccess({ message: `Processing with ${AI_MODELS.find(m => m.value === currentModelForRequestRef.current)?.label || currentModelForRequestRef.current}...` });
-
-    try {
-      // Record user event
-      try {
-        await fetch(`${API_BASE_URL}/auth/events`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            eventType: 'question_submitted_stream', // New event type for streaming
-            eventData: { /* ... relevant data ... */ }
-          })
-        });
-      } catch (eventError) { console.warn("Failed to record user event:", eventError); }
-
-      const requestBodyPayload = {
+          setSuccess({ message: `Processing with ${AI_MODELS.find(m => m.value === currentModelForRequestRef.current)?.label || currentModelForRequestRef.current}...` });      try {        // Record user event - with error handling for missing endpoint        try {          const eventResponse = await fetch(`${API_BASE_URL}/auth/events`, {            method: 'POST',            headers: { 'Content-Type': 'application/json' },            body: JSON.stringify({              eventType: 'question_submitted_stream',              eventData: {                model: currentModelForRequestRef.current,                questionLength: question?.length || 0,                answerLength: answer?.length || 0,                subject: subject              }            })          });                    if (!eventResponse.ok) {            console.warn(`Event recording failed with status: ${eventResponse.status}`);            // Continue with the main request even if event recording fails          }        } catch (eventError) {           console.warn("Failed to record user event:", eventError);         }                const requestBodyPayload = {
         model: currentModelForRequestRef.current,
         messages: [
           { role: "system", content: systemPrompt },
@@ -1827,14 +1819,7 @@ const AIMarker = () => {
       }
 
 
-      const response = await fetch(`${API_BASE_URL}/api/github/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'text/event-stream',
-        },
-        body: JSON.stringify(requestBodyPayload),
-      });
+            const response = await fetch(`${API_BASE_URL}/api/github/completions`, {        method: 'POST',        headers: {          'Content-Type': 'application/json',          'Accept': 'text/event-stream',        },        body: JSON.stringify(requestBodyPayload),      });            if (!response.ok) {        const errorStatus = response.status;        const errorText = await response.text();        console.error(`GitHub API error: ${errorStatus}`, errorText);                // Handle specific error codes        if (errorStatus === 401) {          setError({             type: "api_error",             message: "Authentication error with GitHub API. Please try a different model.",            onRetry: () => {              setSelectedModel("deepseek/deepseek-chat-v3-0324:free");              setCurrentModelForRequest("deepseek/deepseek-chat-v3-0324:free");              handleProcessImage();            }          });        } else {          setError({ type: "api_error", message: `API error (${errorStatus}): ${errorText || "Unknown error"}` });        }                setLoading(false);        return;      }
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -3058,6 +3043,36 @@ Please respond to their question clearly and constructively. Keep your answer co
       setFollowUpResponse("I'm sorry, I couldn't process your question due to a technical issue. Please try again later or try a different model.");
     } finally {
       setFollowUpLoading(false);
+    }
+  };
+
+  // Add a function to create a middleware API endpoint in Next.js
+  const createMiddlewareApiEndpoint = async () => {
+    try {
+      // Check if we're running in a browser environment
+      if (typeof window === 'undefined') return false;
+      
+      // Create a simple API route that can be used when the backend is down
+      const response = await fetch('/api/create-middleware', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'api_middleware',
+          endpoints: ['auth/events', 'api/github/completions', 'api/chat/completions']
+        })
+      });
+      
+      if (response.ok) {
+        console.log('Successfully created middleware API endpoints');
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Failed to create middleware API endpoint:', error);
+      return false;
     }
   };
 
