@@ -124,7 +124,16 @@ export const useBackendStatus = (API_BASE_URL) => {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 12000); // Increased timeout to 12 seconds
           
-                    // Use the constructApiUrl function if available          const healthEndpoint = typeof window !== 'undefined' && window.constructApiUrl             ? window.constructApiUrl('health')            : `${API_BASE_URL}/api/health`;                    console.log(`Checking backend health at ${healthEndpoint}`);                    const response = await fetch(`${healthEndpoint}?timestamp=${Date.now()}`, {            method: 'GET',            signal: controller.signal,            mode: 'cors',            headers: {              'Cache-Control': 'no-cache, no-store, must-revalidate',              'Pragma': 'no-cache',              'Expires': '0'            }          });
+                    // Use the constructApiUrl function if available
+          const isGitHubPagesEnv = typeof window !== 'undefined' && 
+            (window.location.hostname.includes('github.io') || window.location.hostname === 'beenycool.github.io');
+          
+          // Direct URL for GitHub Pages, otherwise use constructApiUrl
+          const healthEndpoint = isGitHubPagesEnv
+            ? `${API_BASE_URL}/health`
+            : (typeof window !== 'undefined' && window.constructApiUrl 
+                ? window.constructApiUrl('health')
+                : `${API_BASE_URL}/api/health`);                    console.log(`Checking backend health at ${healthEndpoint}`);                    const response = await fetch(`${healthEndpoint}?timestamp=${Date.now()}`, {            method: 'GET',            signal: controller.signal,            mode: 'cors',            headers: {              'Cache-Control': 'no-cache, no-store, must-revalidate',              'Pragma': 'no-cache',              'Expires': '0'            }          });
           
           clearTimeout(timeoutId);
           
