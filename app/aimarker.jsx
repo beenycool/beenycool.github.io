@@ -1914,11 +1914,11 @@ const AIMarker = () => {
         if (done) {
           setProcessingProgress("Stream finished.");
           setModelThinking("Stream complete.");
-          break;
+          break; // Exit while loop
         }
 
         accumulatedChunk += decoder.decode(value, { stream: true });
-        
+        let errorEncounteredInStream = false;
         let newlineIndex;
         while ((newlineIndex = accumulatedChunk.indexOf('\n\n')) >= 0) {
             const eventBlock = accumulatedChunk.substring(0, newlineIndex);
@@ -1926,34 +1926,56 @@ const AIMarker = () => {
 
             const lines = eventBlock.split('\n');
             for (const line of lines) {
-                if (line.startsWith('data: ')) {
+                if (line.startsWith('event: error')) {
+                    // Improved SSE error event handling
+                    console.error("SSE stream error event received:", eventBlock);
+                    const errorDataLineContent = lines.find(l => l.startsWith('data: '))?.substring(6);
+                    let errorMessage = "Error in stream";
+                    if (errorDataLineContent) {
+                        try {
+                            const parsedError = JSON.parse(errorDataLineContent);
+                            errorMessage = parsedError.error || (parsedError.message || "Unknown error from stream");
+                        } catch (e) {
+                            errorMessage = "Malformed error data in stream";
+                        }
+                    }
+                    setError({ type: "api_stream_error", message: errorMessage, onRetry: handleSubmitForMarking });
+                    errorEncounteredInStream = true;
+                    break; // Break from inner for-loop (lines)
+                } else if (line.startsWith('data: ')) {
                     const jsonDataString = line.substring(6);
                     if (jsonDataString.trim() === '[DONE]') {
                         console.log('Stream signaled DONE.');
-                        // The loop will break on reader.done, this is just an explicit signal from data
+                        // This might indicate the end of the stream from the source,
+                        // but the outer reader.read() loop will handle the actual 'done' state.
                         continue;
                     }
                     try {
                         const parsedData = JSON.parse(jsonDataString);
                         if (parsedData.choices && parsedData.choices[0] && parsedData.choices[0].delta && parsedData.choices[0].delta.content) {
                             setFeedback(prev => prev + parsedData.choices[0].delta.content);
-                        } else if (parsedData.text) { // Fallback for simpler text stream
+                        } else if (parsedData.text) { 
                              setFeedback(prev => prev + parsedData.text);
                         }
-                        // Potentially handle other structured data here if models stream differently
                     } catch (e) {
                         console.warn('Failed to parse streamed JSON data:', jsonDataString, e);
-                        // If it's not JSON, but still data, append directly (less ideal)
-                        // setFeedback(prev => prev + jsonDataString);
                     }
-                } else if (line.startsWith('event: error')) {
-                    // The next line should be data: {error details}
-                    // This logic assumes the error data will also be caught by the 'data:' handler
-                    console.error("SSE stream error event received.");
                 }
-            }
+            } // End of for-loop (lines)
+            if (errorEncounteredInStream) break; // Break from inner while-loop (eventBlock processing)
+        } // End of inner while-loop (eventBlock processing)
+
+        if (errorEncounteredInStream) {
+             setLoading(false); // Ensure loading is stopped
+             setProcessingProgress("Error occurred during stream.");
+             setModelThinking("Error processing stream.");
+             // Cleanly close the reader if possible
+             if (reader && typeof reader.cancel === 'function') {
+                reader.cancel().catch(cancelError => console.warn("Error cancelling reader:", cancelError));
+             }
+             break; // Break from outer while-loop (reader.read())
         }
-      }
+      } // End of outer while (true) for SSE stream
       // Success message will be set in the useEffect after parsing
     } catch (error) {
       console.error("Error during streaming submission:", error);
