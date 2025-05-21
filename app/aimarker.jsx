@@ -1805,7 +1805,7 @@ const AIMarker = () => {
     try {
       // Record user event - with error handling for missing endpoint
       try {
-        const eventResponse = await fetch(`${API_BASE_URL}/auth/events`, {
+        const eventResponse = await fetch(`${API_BASE_URL}/api/auth/events`, { // ADDED /api here
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

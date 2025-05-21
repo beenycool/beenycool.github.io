@@ -59,87 +59,66 @@ router.post('/github/completions', globalRateLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Invalid request format' });
     }
 
-    // Set headers for SSE
+    // Set headers for SSE to the client
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders(); // flush the headers to establish SSE connection
 
-    // Forward request to GitHub API with streaming enabled
+    // Request data from GitHub API (expects JSON)
     const githubResponse = await fetch('https://api.github.com/copilot/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${process.env.GITHUB_API_KEY}`,
-        'Accept': 'text/event-stream' // Request SSE from GitHub
+        'Accept': 'application/json' // GitHub Copilot API expects JSON
       },
-      body: JSON.stringify({ messages, stream: true }) // Enable streaming
+      body: JSON.stringify({ messages }) // stream: true removed, as we expect full JSON
     });
 
     if (!githubResponse.ok) {
       const errorText = await githubResponse.text();
       console.error('GitHub API error:', githubResponse.status, errorText);
-      // Send an error event before closing
-      res.write(`event: error\ndata: ${JSON.stringify({ error: errorText, status: githubResponse.status })}\n\n`);
+      // Send an error event to the client before closing
+      res.write(`event: error\ndata: ${JSON.stringify({ error: `GitHub API Error (${githubResponse.status}): ${errorText}`, status: githubResponse.status })}\n\n`);
       res.end();
       return;
     }
 
-    // Pipe the stream from GitHub to the client
-    const reader = githubResponse.body.getReader();
-    const decoder = new TextDecoder();
+    const githubData = await githubResponse.json();
 
-    let buffer = '';
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-      buffer += decoder.decode(value, { stream: true });
-      
-      // Process buffer line by line for SSE events
-      let eolIndex;
-      while ((eolIndex = buffer.indexOf('\n\n')) !== -1) {
-        const eventLines = buffer.substring(0, eolIndex);
-        buffer = buffer.substring(eolIndex + 2); // +2 for \n\n
-
-        // Forward each complete SSE event from GitHub
-        // Ensure it's properly formatted as an SSE message to our client
-        const lines = eventLines.split('\n');
-        lines.forEach(line => {
-          if (line.startsWith('data: ')) {
-            // Check if it's the [DONE] signal
-            if (line.substring(6).trim() === '[DONE]') {
-              res.write('event: done\ndata: [DONE]\n\n');
-            } else {
-              res.write(`${line}\n`); // Forward data line
-            }
-          } else if (line.startsWith('event: ')) {
-            res.write(`${line}\n`); // Forward event line
-          } else if (line.trim() !== '') {
-             // Forward other lines if any (e.g. id, retry)
-            res.write(`${line}\n`);
-          }
-        });
-        if (eventLines.trim() !== '') {
-            res.write('\n'); // Add the final newline for the event
-        }
-      }
-    }
-    // Ensure any remaining buffer is processed if it's a [DONE] message
-    if (buffer.includes('data: [DONE]')) {
-        res.write('data: [DONE]\n\n');
+    let completionText = '';
+    // Try to extract content based on common structures; adjust if GitHub's actual structure differs
+    if (githubData.choices && githubData.choices[0] && githubData.choices[0].message && githubData.choices[0].message.content) {
+      completionText = githubData.choices[0].message.content;
+    } else if (githubData.completion) { // Fallback for a simpler structure
+        completionText = githubData.completion;
+    } else if (typeof githubData.content === 'string') { // Another possible simple structure
+        completionText = githubData.content;
+    } else {
+      console.error('Unexpected GitHub API response structure or empty content:', githubData);
+      res.write(`event: error\ndata: ${JSON.stringify({ error: 'Unexpected GitHub API response structure or empty content' })}\n\n`);
+      res.end();
+      return;
     }
 
+    // Send the completion text to the client, simulating the OpenAI SSE stream format
+    if (completionText) {
+        // Send the entire completion as one data event, as the frontend accumulates deltas.
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: completionText } }] })}\n\n`);
+    }
+    
+    res.write(`data: [DONE]\n\n`);
+    res.end();
 
-    res.end(); // End the SSE stream
   } catch (error) {
-    console.error('Streaming API error:', error);
-    // Send an error event if an exception occurs before or during streaming
+    console.error('Streaming API error in /github/completions:', error);
     if (!res.headersSent) {
         res.status(500).json({ error: error.message });
     } else {
-        res.write(`event: error\ndata: ${JSON.stringify({ error: error.message })}\n\n`);
+        // Ensure error is stringified if it's an object
+        const errorMessage = (typeof error.message === 'string') ? error.message : JSON.stringify(error);
+        res.write(`event: error\ndata: ${JSON.stringify({ error: errorMessage })}\n\n`);
         res.end();
     }
   }

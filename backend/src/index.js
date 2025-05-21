@@ -43,6 +43,9 @@ const chessServer = require('./chess-server');
 const app = express();
 const server = http.createServer(app);
 
+// Trust proxy for Render deployment (important for rate limiting)
+app.set('trust proxy', 1);
+
 // Setup event handling for chess server failures if using child process
 process.on('message', (message) => {
   if (message.type === 'chess-server-failed') {
