@@ -963,7 +963,13 @@ async function startServer(port) {
 }
 
 // Start the server asynchronously
-startServer(currentPort);
+// startServer(currentPort); // OLD LINE TO BE COMMENTED OUT OR REMOVED
+
+if (process.env.DISABLE_CHESS_SERVER !== 'true') {
+  startServer(currentPort);
+} else {
+  console.log('Dedicated chess server HTTP listener is disabled (DISABLE_CHESS_SERVER=true). Socket.IO logic will attach to the main server.');
+}
 
 // Cleanup on server shutdown
 process.on('SIGINT', () => {
