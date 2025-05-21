@@ -1379,9 +1379,9 @@ const AIMarker = () => {
         (window.location.hostname.includes('github.io') || window.location.hostname === 'beenycool.github.io');
         
              // Always use the remote server for GitHub Pages since GitHub Pages can't handle file uploads
-      // The backend server may not expect the /api prefix in the URL
+      // The backend server REQUIRES the /api prefix in the URL
       const apiUrl = isGitHubPagesEnv 
-        ? 'https://beenycool-github-io.onrender.com/github/completions'
+        ? 'https://beenycool-github-io.onrender.com/api/github/completions'
         : constructApiUrl('github/completions');
       
       setProcessingStep("analyzing_content");
@@ -1858,10 +1858,10 @@ const AIMarker = () => {
       const isGitHubPagesEnv = typeof window !== 'undefined' && 
         (window.location.hostname.includes('github.io') || window.location.hostname === 'beenycool.github.io');
         
-      // Always use the remote server for GitHub Pages without /api prefix
-      // The backend server may not expect the /api prefix in the URL
+      // Always use the remote server for GitHub Pages
+      // The backend server REQUIRES the /api prefix in the URL
       const completionsApiUrl = isGitHubPagesEnv 
-        ? 'https://beenycool-github-io.onrender.com/github/completions'
+        ? 'https://beenycool-github-io.onrender.com/api/github/completions'
         : constructApiUrl('github/completions');
       
       console.log('Sending completions request to:', completionsApiUrl);
@@ -2167,9 +2167,9 @@ TOTAL MARKS: ${marksToUse}` : ''}
             (window.location.hostname.includes('github.io') || window.location.hostname === 'beenycool.github.io');
             
                      // Always use the remote server for GitHub Pages
-           // The backend server may not expect the /api prefix in the URL
+           // The backend server REQUIRES the /api prefix in the URL
            const geminiApiUrl = isGitHubPagesEnv 
-             ? 'https://beenycool-github-io.onrender.com/gemini/generate'
+             ? 'https://beenycool-github-io.onrender.com/api/gemini/generate'
              : constructApiUrl('gemini/generate');
           
           console.log('Sending Gemini generate request to:', geminiApiUrl);
@@ -2193,9 +2193,9 @@ TOTAL MARKS: ${marksToUse}` : ''}
                 (window.location.hostname.includes('github.io') || window.location.hostname === 'beenycool.github.io');
                 
                              // Always use the remote server for GitHub Pages
-               // The backend server may not expect the /api prefix in the URL
+               // The backend server REQUIRES the /api prefix in the URL
               const chatApiUrl = isGitHubPagesEnv 
-                ? 'https://beenycool-github-io.onrender.com/chat/completions'
+                ? 'https://beenycool-github-io.onrender.com/api/chat/completions'
                 : constructApiUrl('chat/completions');
               
               console.log('Falling back to chat completions API:', chatApiUrl);
@@ -2227,9 +2227,9 @@ TOTAL MARKS: ${marksToUse}` : ''}
           (window.location.hostname.includes('github.io') || window.location.hostname === 'beenycool.github.io');
           
                  // Always use the remote server for GitHub Pages
-         // The backend server may not expect the /api prefix in the URL
+         // The backend server REQUIRES the /api prefix in the URL
         const githubApiUrl = isGitHubPagesEnv 
-          ? 'https://beenycool-github-io.onrender.com/github/completions'
+          ? 'https://beenycool-github-io.onrender.com/api/github/completions'
           : constructApiUrl('github/completions');
         
         console.log('Sending GitHub completions request to:', githubApiUrl);
