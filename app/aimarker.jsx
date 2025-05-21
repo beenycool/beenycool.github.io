@@ -1359,16 +1359,34 @@ const AIMarker = () => {
   
   // MODIFIED: Handle image processing - convert to text using AI OCR
   const handleProcessImage = async () => {
-    if (!image) return;
-    
+    if (!selectedImage) {
+      toast.error("Please upload an image first");
+      return;
+    }
+
     try {
-      setImageLoading(true);
-      toast.info("Processing image with AI OCR...", { duration: 5000 });
+      toast.info("Processing image...");
+      
+      setProcessingStep("reading_image");
+      setIsProcessing(true);
+      setProcessingProgress(10);
       
       const formData = new FormData();
-      formData.append('image', image);
+      formData.append('image', selectedImage);
       
-      const response = await fetch(`${API_BASE_URL}/api/ocr`, {
+      // Use the CORRECT backend URL when on GitHub Pages
+      const isGitHubPagesEnv = typeof window !== 'undefined' && 
+        (window.location.hostname.includes('github.io') || window.location.hostname === 'beenycool.github.io');
+        
+      // Always use the remote server for GitHub Pages since GitHub Pages can't handle file uploads
+      const apiUrl = isGitHubPagesEnv 
+        ? 'https://beenycool-github-io.onrender.com/api/github/completions'
+        : constructApiUrl('github/completions');
+      
+      setProcessingStep("analyzing_content");
+      setProcessingProgress(30);
+      
+      const response = await fetch(apiUrl, {
         method: 'POST',
         body: formData,
       });
@@ -1835,7 +1853,18 @@ const AIMarker = () => {
       }
 
 
-                  const completionsApiUrl = constructApiUrl('github/completions');      console.log('Sending completions request to:', completionsApiUrl);            const response = await fetch(completionsApiUrl, {        method: 'POST',        headers: {          'Content-Type': 'application/json',          'Accept': 'text/event-stream',        },        body: JSON.stringify(requestBodyPayload),      });
+      // Use the CORRECT backend URL when on GitHub Pages
+      const isGitHubPagesEnv = typeof window !== 'undefined' && 
+        (window.location.hostname.includes('github.io') || window.location.hostname === 'beenycool.github.io');
+        
+      // Always use the remote server for GitHub Pages
+      const completionsApiUrl = isGitHubPagesEnv 
+        ? 'https://beenycool-github-io.onrender.com/api/github/completions'
+        : constructApiUrl('github/completions');
+      
+      console.log('Sending completions request to:', completionsApiUrl);
+      
+      const response = await fetch(completionsApiUrl, {        method: 'POST',        headers: {          'Content-Type': 'application/json',          'Accept': 'text/event-stream',        },        body: JSON.stringify(requestBodyPayload),      });
 
       if (!response.ok) {
         const errorStatus = response.status;
@@ -2131,7 +2160,15 @@ TOTAL MARKS: ${marksToUse}` : ''}
         }
         
         try {
-          const geminiApiUrl = constructApiUrl('gemini/generate');
+          // Use the CORRECT backend URL when on GitHub Pages
+          const isGitHubPagesEnv = typeof window !== 'undefined' && 
+            (window.location.hostname.includes('github.io') || window.location.hostname === 'beenycool.github.io');
+            
+          // Always use the remote server for GitHub Pages
+          const geminiApiUrl = isGitHubPagesEnv 
+            ? 'https://beenycool-github-io.onrender.com/api/gemini/generate'
+            : constructApiUrl('gemini/generate');
+          
           console.log('Sending Gemini generate request to:', geminiApiUrl);
           
           response = await fetch(geminiApiUrl, {
@@ -2148,7 +2185,15 @@ TOTAL MARKS: ${marksToUse}` : ''}
               console.warn(`Model ${currentModel} not supported by direct Gemini API, falling back to standard chat API`);
               
               // Fallback to using the standard chat API endpoint
-              const chatApiUrl = constructApiUrl('chat/completions');
+              // Use the CORRECT backend URL when on GitHub Pages
+              const isGitHubPagesEnv = typeof window !== 'undefined' && 
+                (window.location.hostname.includes('github.io') || window.location.hostname === 'beenycool.github.io');
+                
+              // Always use the remote server for GitHub Pages
+              const chatApiUrl = isGitHubPagesEnv 
+                ? 'https://beenycool-github-io.onrender.com/api/chat/completions'
+                : constructApiUrl('chat/completions');
+              
               console.log('Falling back to chat completions API:', chatApiUrl);
               
               response = await fetch(chatApiUrl, {
@@ -2173,7 +2218,15 @@ TOTAL MARKS: ${marksToUse}` : ''}
         }
       } else if (currentModel.startsWith("openai/") || currentModel.startsWith("xai/")) {
         // GitHub models API for GitHub and Grok models
-        const githubApiUrl = constructApiUrl('github/completions');
+        // Use the CORRECT backend URL when on GitHub Pages
+        const isGitHubPagesEnv = typeof window !== 'undefined' && 
+          (window.location.hostname.includes('github.io') || window.location.hostname === 'beenycool.github.io');
+          
+        // Always use the remote server for GitHub Pages
+        const githubApiUrl = isGitHubPagesEnv 
+          ? 'https://beenycool-github-io.onrender.com/api/github/completions'
+          : constructApiUrl('github/completions');
+        
         console.log('Sending GitHub completions request to:', githubApiUrl);
         
         response = await fetch(githubApiUrl, {

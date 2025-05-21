@@ -89,15 +89,8 @@ export const useBackendStatus = (API_BASE_URL) => {
             // Set environment variable to use local API handlers
             window.localStorage.setItem('USE_LOCAL_API', 'true');
             
-            // Create middleware endpoints if needed
-            await fetch('/api/create-middleware', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                type: 'api_middleware',
-                endpoints: ['auth/events', 'api/github/completions', 'api/chat/completions']
-              })
-            });
+            // Don't try to create middleware endpoints on GitHub Pages
+            // GitHub Pages can't handle POST requests (static hosting only)
           } catch (e) {
             console.warn('Failed to set up local API fallbacks:', e);
           }

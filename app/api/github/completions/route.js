@@ -1,58 +1,62 @@
+"use client";
+
 import { NextResponse } from 'next/server';
+
+// This file is a placeholder that will be used in non-GitHub Pages environments
+// In GitHub Pages, all calls should be redirected to the remote backend by api-helpers.js
 
 // Remove dynamic export for static build
 // export const dynamic = 'force-dynamic';
 
-// Handle POST requests for GitHub completions
-export async function POST(req) {
-  try {
-    const { messages } = await req.json();
-    
-    // Forward the request to the backend
-    const backendUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://beenycool-github-io.onrender.com/api';
-    const response = await fetch(`${backendUrl}/github/completions`, {
-      method: 'POST',
+// Handle GET requests for GitHub completions
+export async function GET(request) {
+  // Redirect to backend server
+  return new NextResponse(
+    JSON.stringify({
+      message: 'GitHub Pages static redirect - please use the dynamic API URL',
+      redirected: true
+    }),
+    {
+      status: 200,
       headers: {
         'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ messages }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Backend responded with status: ${response.status}`);
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+      }
     }
+  );
+}
 
-    // Get the response headers
-    const contentType = response.headers.get('content-type');
-    
-    // If it's an SSE stream, handle it accordingly
-    if (contentType && contentType.includes('text/event-stream')) {
-      const reader = response.body.getReader();
-      const stream = new ReadableStream({
-        async start(controller) {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            controller.enqueue(value);
-          }
-          controller.close();
-        },
-      });
-
-      return new NextResponse(stream, {
-        headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
-        },
-      });
+// Handle POST requests for GitHub completions
+export async function POST(request) {
+  // Redirect to backend server
+  return new NextResponse(
+    JSON.stringify({
+      message: 'GitHub Pages static redirect - please use the dynamic API URL',
+      redirected: true
+    }),
+    {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+      }
     }
+  );
+}
 
-    // For non-SSE responses, return as JSON
-    const result = await response.json();
-    return NextResponse.json(result);
-  } catch (error) {
-    console.error('Error in github/completions route:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+export async function OPTIONS(request) {
+  // Handle preflight requests
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Max-Age': '86400'
+    }
+  });
 } 
