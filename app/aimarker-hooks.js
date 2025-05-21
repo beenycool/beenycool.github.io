@@ -73,40 +73,26 @@ export const useSubjectDetection = (subjectKeywords, loading) => {
   return { classifySubjectAI, debouncedClassifySubject };
 };
 
+// Import API helpers
+import { isGitHubPages, constructApiUrl } from '@/lib/api-helpers';
+
 // Backend status checker hook
 export const useBackendStatus = (API_BASE_URL) => {
   const checkBackendStatus = useCallback(async (model) => {
     try {
       // Special case for GitHub Pages to always show the UI
-      if (typeof window !== 'undefined' && 
-          (window.location.hostname.includes('github.io') || 
-           window.location.hostname === 'beenycool.github.io')) {
+      if (typeof window !== 'undefined' && isGitHubPages()) {
         console.log('Running on GitHub Pages - simulating online status for UI rendering');
         
-        // Enable local API fallbacks when on GitHub Pages
+        // When on GitHub Pages, we skip the actual backend check and simulate an online status
+        // This allows the UI to render and all API calls will be redirected to the backend
         if (typeof window !== 'undefined') {
-          try {
-            // Set environment variable to use local API handlers
-            window.localStorage.setItem('USE_LOCAL_API', 'true');
-            
-            // Create middleware endpoints if needed
-            await fetch('/api/create-middleware', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                type: 'api_middleware',
-                endpoints: ['auth/events', 'api/github/completions', 'api/chat/completions']
-              })
-            });
-          } catch (e) {
-            console.warn('Failed to set up local API fallbacks:', e);
-          }
-          
+          // Initialize API status for GitHub Pages environment
           window.BACKEND_STATUS = { 
             status: 'online', 
             lastChecked: new Date().toLocaleTimeString(),
             isGitHubPages: true,
-            usingLocalFallbacks: true
+            usingRemoteAPI: true
           };
         }
         
@@ -131,11 +117,14 @@ export const useBackendStatus = (API_BASE_URL) => {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 12000); // Increased timeout to 12 seconds
           
-          // Use the constructApiUrl function if available
-          const healthEndpoint = typeof window !== 'undefined' && window.constructApiUrl 
-            ? window.constructApiUrl('health')
-            : `${API_BASE_URL}/api/health`;
-            
+          // Use the imported constructApiUrl function
+          let healthEndpoint;
+          try {
+            healthEndpoint = constructApiUrl('health');
+          } catch (error) {
+            healthEndpoint = `${API_BASE_URL}/api/health`;
+            console.warn('Error using constructApiUrl, falling back to direct URL');
+          }
           console.log(`Checking backend health at ${healthEndpoint}`);
           
           const response = await fetch(`${healthEndpoint}?timestamp=${Date.now()}`, {

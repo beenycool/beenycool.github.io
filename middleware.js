@@ -1,5 +1,26 @@
 import { NextResponse } from 'next/server';
 
+// Helper function to remove 'interest-cohort' from Permissions-Policy header
+function adjustPermissionsPolicy(response) {
+  const policyHeader = response.headers.get('Permissions-Policy');
+  if (policyHeader) {
+    const directives = policyHeader.split(',').map(d => d.trim());
+    // Filter out any directive that starts with 'interest-cohort'
+    const filteredDirectives = directives.filter(directive =>
+      !directive.toLowerCase().startsWith('interest-cohort')
+    );
+    const newPolicy = filteredDirectives.join(', ');
+
+    if (newPolicy) {
+      response.headers.set('Permissions-Policy', newPolicy);
+    } else {
+      // If the policy becomes empty, remove the header
+      response.headers.delete('Permissions-Policy');
+    }
+  }
+  return response;
+}
+
 // Middleware function that handles incoming requests
 export function middleware(request) {
   const { pathname } = request.nextUrl;
@@ -12,14 +33,14 @@ export function middleware(request) {
   const isStaticExport = process.env.IS_STATIC_EXPORT === 'true';
   if (isStaticExport || (process.env.NODE_ENV === 'production' && process.env.NEXT_OUTPUT === 'export')) {
     console.log('Static export detected - middleware bypassed');
-    return NextResponse.next();
+    return adjustPermissionsPolicy(NextResponse.next());
   }
 
   // For WebSocket requests to the chess socket endpoint
   if (pathname.startsWith('/api/chess-socket') && 
       request.headers.get('upgrade') === 'websocket') {
     // Let the API route handle WebSocket upgrades
-    return NextResponse.next();
+    return adjustPermissionsPolicy(NextResponse.next());
   }
 
   // For normal API requests
@@ -29,21 +50,22 @@ export function middleware(request) {
     response.headers.set('Access-Control-Allow-Origin', '*');
     response.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    return response;
+    return adjustPermissionsPolicy(response);
   }
 
   // Handle 404s for GitHub Pages by redirecting to the correct path
   if (pathname.endsWith('.html') || 
       pathname.endsWith('/')) {
-    return NextResponse.next();
+    return adjustPermissionsPolicy(NextResponse.next());
   }
 
-  // Add trailing slash for consistent routing
-  if (!pathname.endsWith('/') && 
+  // Add trailing slash for consistent routing, but not for API routes
+  if (!pathname.startsWith('/api/') && // Do not add trailing slash to API routes
+      !pathname.endsWith('/') &&
       !pathname.includes('.')) {
     const url = request.nextUrl.clone();
     url.pathname += '/';
-    return NextResponse.redirect(url);
+    return adjustPermissionsPolicy(NextResponse.redirect(url));
   }
 
   // Handle API requests that might need to be redirected
@@ -54,7 +76,7 @@ export function middleware(request) {
     // For static export, we need to handle this differently
     if (isStaticExport) {
       console.log('Static export detected - skipping API middleware');
-      return NextResponse.next();
+      return adjustPermissionsPolicy(NextResponse.next());
     }
     
     // Check if we should use our local API handlers
@@ -68,7 +90,7 @@ export function middleware(request) {
       
       const url = request.nextUrl.clone();
       url.pathname = newPathname;
-      return NextResponse.rewrite(url);
+      return adjustPermissionsPolicy(NextResponse.rewrite(url));
     }
     
     // Otherwise, try the backend first
@@ -76,10 +98,10 @@ export function middleware(request) {
     
     // Make sure we're not appending /api twice for API calls
     const apiPath = pathname.startsWith('/api/') ? pathname : `/api${pathname}`;
-    return NextResponse.rewrite(new URL(apiPath, backendUrl));
+    return adjustPermissionsPolicy(NextResponse.rewrite(new URL(apiPath, backendUrl)));
   }
 
-  return NextResponse.next();
+  return adjustPermissionsPolicy(NextResponse.next());
 }
 
 // Configure which paths this middleware will run on

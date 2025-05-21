@@ -195,18 +195,18 @@ router.post('/chat/completions', globalRateLimiter, async (req, res) => {
   }
 });
 
-// Route for Direct Gemini API (e.g., gemini-2.5-flash-preview)
+// Route for Direct Gemini API (e.g., gemini-2.5-flash-preview-05-20)
 router.post('/gemini/generate', globalRateLimiter, async (req, res) => {
   try {
-    const { contents, generationConfig, model } = req.body; // model might be passed from frontend to specify e.g. gemini-pro or a specific version
+    const { contents, generationConfig, model } = req.body; // model might be passed from frontend to specify e.g. gemini-2.5-flash-preview-05-20 or a specific version
     if (!contents || !Array.isArray(contents)) {
       return res.status(400).json({ error: 'Invalid request: contents array is required.' });
     }
 
-    // Determine the model to use. Frontend might send it, or we default to gemini-pro or a configured one.
-    // For gemini-2.5-flash-preview, the model name is often part of the URL or needs to be correctly specified.
-    // Let's assume the frontend sends the correct model identifier in `req.body.model` if it's not gemini-pro.
-    const geminiModel = model || 'gemini-pro'; // Default, adjust if needed
+    // Determine the model to use. Frontend might send it, or we default to gemini-2.5-flash-preview-05-20 or a configured one.
+    // For gemini-2.5-flash-preview-05-20, the model name is often part of the URL or needs to be correctly specified.
+    // Let's assume the frontend sends the correct model identifier in `req.body.model` if it's not gemini-2.5-flash-preview-05-20.
+    const geminiModel = model || 'gemini-2.5-flash-preview-05-20'; // Default, adjust if needed
     const geminiApiKey = process.env.GEMINI_API_KEY;
 
     if (!geminiApiKey) {
