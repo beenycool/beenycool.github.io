@@ -12,7 +12,7 @@ const nextConfig = {
   assetPrefix: '',
   trailingSlash: true,
   env: {
-    NEXT_PUBLIC_API_BASE_URL: 'https://beenycool-github-io.onrender.com',
+    NEXT_PUBLIC_API_BASE_URL: 'https://beenycool-github-io.onrender.com/api',
   },
   webpack: (config, { dev, isServer }) => {
     // Add optimization settings
