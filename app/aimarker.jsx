@@ -53,22 +53,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ||
       ? 'http://localhost:3003'  // Local development
       : 'https://beenycool-github-io.onrender.com'); // Production URL
 
-// For static exports, we need to construct API URLs properly
-const constructApiUrl = (endpoint) => {
-  // Make sure the endpoint starts with /api/ if it doesn't already
-  if (!endpoint.startsWith('/api/') && !endpoint.startsWith('api/')) {
-    endpoint = '/api/' + endpoint;
-  }
-  return `${API_BASE_URL}${endpoint}`;
-};
-
-// Log the API URL for debugging
-console.log('Using API URL:', API_BASE_URL);
-
-// Initialize default backend status
-if (typeof window !== 'undefined') {
-  window.BACKEND_STATUS = window.BACKEND_STATUS || { status: 'checking', lastChecked: null };
-}
+// For static exports, we need to construct API URLs properlyconst constructApiUrl = (endpoint) => {  // Make sure the endpoint starts with /api/ if it doesn't already  if (!endpoint.startsWith('/api/') && !endpoint.startsWith('api/')) {    endpoint = '/api/' + endpoint;  }  return `${API_BASE_URL}${endpoint}`;};// Make constructApiUrl available globally for other modules to useif (typeof window !== 'undefined') {  window.constructApiUrl = constructApiUrl;}// Log the API URL for debuggingconsole.log('Using API URL:', API_BASE_URL);// Initialize default backend statusif (typeof window !== 'undefined') {  window.BACKEND_STATUS = window.BACKEND_STATUS || { status: 'checking', lastChecked: null };}
 
 // Constants moved to a separate section for easier management
 const HISTORY_LIMIT = 10; // Define the maximum number of history items to keep
@@ -1811,30 +1796,7 @@ const AIMarker = () => {
     setProcessingProgress("Sending request to AI model...");
     setSuccess({ message: `Processing with ${AI_MODELS.find(m => m.value === currentModelForRequestRef.current)?.label || currentModelForRequestRef.current}...` });
     
-    try {
-      // Record user event - with error handling for missing endpoint
-      try {
-        const eventResponse = await fetch(`${API_BASE_URL}/api/auth/events`, { // ADDED /api here
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            eventType: 'question_submitted_stream',
-            eventData: {
-              model: currentModelForRequestRef.current,
-              questionLength: question?.length || 0,
-              answerLength: answer?.length || 0,
-              subject: subject
-            }
-          })
-        });
-        
-        if (!eventResponse.ok) {
-          console.warn(`Event recording failed with status: ${eventResponse.status}`);
-          // Continue with the main request even if event recording fails
-        }
-      } catch (eventError) {
-        console.warn("Failed to record user event:", eventError);
-      }
+          try {        // Record user event - with error handling for missing endpoint        try {          const eventApiUrl = constructApiUrl('auth/events');          console.log('Sending event to:', eventApiUrl);                    const eventResponse = await fetch(eventApiUrl, {            method: 'POST',            headers: { 'Content-Type': 'application/json' },            body: JSON.stringify({              eventType: 'question_submitted_stream',              eventData: {                model: currentModelForRequestRef.current,                questionLength: question?.length || 0,                answerLength: answer?.length || 0,                subject: subject              }            })          });                    if (!eventResponse.ok) {            console.warn(`Event recording failed with status: ${eventResponse.status}`);            // Continue with the main request even if event recording fails          }        } catch (eventError) {          console.warn("Failed to record user event:", eventError);          // For GitHub Pages static export, this is expected and we can ignore it          console.log('Note: In static export mode, some API failures are expected');        }
       
       const requestBodyPayload = {
         model: currentModelForRequestRef.current,
@@ -1858,14 +1820,7 @@ const AIMarker = () => {
       }
 
 
-      const response = await fetch(`${API_BASE_URL}/api/github/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'text/event-stream',
-        },
-        body: JSON.stringify(requestBodyPayload),
-      });
+                  const completionsApiUrl = constructApiUrl('github/completions');      console.log('Sending completions request to:', completionsApiUrl);            const response = await fetch(completionsApiUrl, {        method: 'POST',        headers: {          'Content-Type': 'application/json',          'Accept': 'text/event-stream',        },        body: JSON.stringify(requestBodyPayload),      });
 
       if (!response.ok) {
         const errorStatus = response.status;
@@ -2161,7 +2116,10 @@ TOTAL MARKS: ${marksToUse}` : ''}
         }
         
         try {
-          response = await fetch(`${API_BASE_URL}/api/gemini/generate`, {
+          const geminiApiUrl = constructApiUrl('gemini/generate');
+          console.log('Sending Gemini generate request to:', geminiApiUrl);
+          
+          response = await fetch(geminiApiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestBody),
@@ -2175,7 +2133,10 @@ TOTAL MARKS: ${marksToUse}` : ''}
               console.warn(`Model ${currentModel} not supported by direct Gemini API, falling back to standard chat API`);
               
               // Fallback to using the standard chat API endpoint
-              response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
+              const chatApiUrl = constructApiUrl('chat/completions');
+              console.log('Falling back to chat completions API:', chatApiUrl);
+              
+              response = await fetch(chatApiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -2197,7 +2158,10 @@ TOTAL MARKS: ${marksToUse}` : ''}
         }
       } else if (currentModel.startsWith("openai/") || currentModel.startsWith("xai/")) {
         // GitHub models API for GitHub and Grok models
-        response = await fetch(`${API_BASE_URL}/api/github/completions`, {
+        const githubApiUrl = constructApiUrl('github/completions');
+        console.log('Sending GitHub completions request to:', githubApiUrl);
+        
+        response = await fetch(githubApiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -2211,7 +2175,10 @@ TOTAL MARKS: ${marksToUse}` : ''}
           signal: AbortSignal.timeout(60000) // 60 second timeout
         });
       } else {
-        response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
+        const chatApiUrl = constructApiUrl('chat/completions');
+        console.log('Sending chat completions request to:', chatApiUrl);
+        
+        response = await fetch(chatApiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -3136,48 +3103,7 @@ Please respond to their question clearly and constructively. Keep your answer co
     }
   };
 
-    // Add a function to create a middleware API endpoint in Next.js  
-    const createMiddlewareApiEndpoint = async () => {    
-      try {      
-        // Check if we're running in a browser environment      
-        if (typeof window === 'undefined') return false;            
-        
-        // Check if we're in static export mode      
-        const isStaticExport = process.env.IS_STATIC_EXPORT === 'true';            
-        
-        if (isStaticExport) {        
-          console.log('Running in static export mode - API calls redirected to backend');        
-          return true;      
-        }            
-        
-        // Create a simple API route that can be used when the backend is down      
-        const response = await fetch('/api/create-middleware', {        
-          method: 'POST',        
-          headers: {          
-            'Content-Type': 'application/json',        
-          },        
-          body: JSON.stringify({          
-            type: 'api_middleware',          
-            endpoints: ['auth/events', 'api/github/completions', 'api/chat/completions']        
-          })      
-        });            
-        
-        if (response.ok) {        
-          console.log('Successfully created middleware API endpoints');        
-          return true;      
-        }            
-        
-        return false;    
-      } catch (error) {      
-        console.error('Failed to create middleware API endpoint:', error);      
-        // In static export, we want to gracefully handle this error      
-        if (process.env.IS_STATIC_EXPORT === 'true') {        
-          console.log('Running in static export mode - ignoring API middleware creation failure');        
-          return true;      
-        }      
-        return false;    
-      }  
-    };
+      // Add a function to create a middleware API endpoint in Next.js    const createMiddlewareApiEndpoint = async () => {        try {            // Check if we're running in a browser environment            if (typeof window === 'undefined') return false;                        // Check if we're in static export mode            const isStaticExport = process.env.IS_STATIC_EXPORT === 'true';                        if (isStaticExport) {                console.log('Running in static export mode - API calls redirected to backend');        console.log(`Using API base URL: ${API_BASE_URL}`);        return true;            }                        try {        // Only try to use local API in development mode        const response = await fetch('/api/create-middleware', {                  method: 'POST',                  headers: {                      'Content-Type': 'application/json',                  },                  body: JSON.stringify({                      type: 'api_middleware',                      endpoints: ['auth/events', 'github/completions', 'chat/completions']                  })              });                            if (response.ok) {                  console.log('Successfully created middleware API endpoints');                  return true;              }      } catch (localApiError) {        console.warn('Local API middleware creation failed, falling back to remote API:', localApiError.message);                // If local API fails, try to check if the remote API is available        try {          const healthCheckUrl = constructApiUrl('health');          const healthCheck = await fetch(healthCheckUrl, {             method: 'GET',            headers: { 'Content-Type': 'application/json' }          });                    if (healthCheck.ok) {            console.log('Remote API is available, will use it instead of local API');            return true;          }        } catch (remoteApiError) {          console.error('Remote API health check failed:', remoteApiError.message);        }      }            return false;        } catch (error) {            console.error('Failed to create middleware API endpoint:', error);            // In static export, we want to gracefully handle this error            if (process.env.IS_STATIC_EXPORT === 'true') {                console.log('Running in static export mode - ignoring API middleware creation failure');                return true;            }            return false;        }    };
 
   return (
     <div className="min-h-screen bg-background text-foreground">
