@@ -53,7 +53,27 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ||
       ? 'http://localhost:3003'  // Local development
       : 'https://beenycool-github-io.onrender.com'); // Production URL
 
-// For static exports, we need to construct API URLs properlyconst constructApiUrl = (endpoint) => {  // Make sure the endpoint starts with /api/ if it doesn't already  if (!endpoint.startsWith('/api/') && !endpoint.startsWith('api/')) {    endpoint = '/api/' + endpoint;  }  return `${API_BASE_URL}${endpoint}`;};// Make constructApiUrl available globally for other modules to useif (typeof window !== 'undefined') {  window.constructApiUrl = constructApiUrl;}// Log the API URL for debuggingconsole.log('Using API URL:', API_BASE_URL);// Initialize default backend statusif (typeof window !== 'undefined') {  window.BACKEND_STATUS = window.BACKEND_STATUS || { status: 'checking', lastChecked: null };}
+// For static exports, we need to construct API URLs properly
+const constructApiUrl = (endpoint) => {
+  // Make sure the endpoint starts with /api/ if it doesn't already
+  if (!endpoint.startsWith('/api/') && !endpoint.startsWith('api/')) {
+    endpoint = '/api/' + endpoint;
+  }
+  return `${API_BASE_URL}${endpoint}`;
+};
+
+// Make constructApiUrl available globally for other modules to use
+if (typeof window !== 'undefined') {
+  window.constructApiUrl = constructApiUrl;
+}
+
+// Log the API URL for debugging
+console.log('Using API URL:', API_BASE_URL, 'GitHub Pages:', typeof window !== 'undefined' && (window.location.hostname.includes('github.io') || window.location.hostname === 'beenycool.github.io'));
+
+// Initialize default backend status
+if (typeof window !== 'undefined') {
+  window.BACKEND_STATUS = window.BACKEND_STATUS || { status: 'checking', lastChecked: null };
+}
 
 // Constants moved to a separate section for easier management
 const HISTORY_LIMIT = 10; // Define the maximum number of history items to keep
