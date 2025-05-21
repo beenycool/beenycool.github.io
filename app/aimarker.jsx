@@ -1796,7 +1796,7 @@ const AIMarker = () => {
     setProcessingProgress("Sending request to AI model...");
     setSuccess({ message: `Processing with ${AI_MODELS.find(m => m.value === currentModelForRequestRef.current)?.label || currentModelForRequestRef.current}...` });
     
-          try {        // Record user event - with error handling for missing endpoint        try {          const eventApiUrl = constructApiUrl('auth/events');          console.log('Sending event to:', eventApiUrl);                    const eventResponse = await fetch(eventApiUrl, {            method: 'POST',            headers: { 'Content-Type': 'application/json' },            body: JSON.stringify({              eventType: 'question_submitted_stream',              eventData: {                model: currentModelForRequestRef.current,                questionLength: question?.length || 0,                answerLength: answer?.length || 0,                subject: subject              }            })          });                    if (!eventResponse.ok) {            console.warn(`Event recording failed with status: ${eventResponse.status}`);            // Continue with the main request even if event recording fails          }        } catch (eventError) {          console.warn("Failed to record user event:", eventError);          // For GitHub Pages static export, this is expected and we can ignore it          console.log('Note: In static export mode, some API failures are expected');        }
+          try {        // Record user event - with error handling for missing endpoint        try {          const eventApiUrl = window.constructApiUrl('auth/events');          console.log('Sending event to:', eventApiUrl);                    const eventResponse = await fetch(eventApiUrl, {            method: 'POST',            headers: { 'Content-Type': 'application/json' },            body: JSON.stringify({              eventType: 'question_submitted_stream',              eventData: {                model: currentModelForRequestRef.current,                questionLength: question?.length || 0,                answerLength: answer?.length || 0,                subject: subject              }            })          });                    if (!eventResponse.ok) {            console.warn(`Event recording failed with status: ${eventResponse.status}`);            // Continue with the main request even if event recording fails          }        } catch (eventError) {          console.warn("Failed to record user event:", eventError);          // For GitHub Pages static export, this is expected and we can ignore it          console.log('Note: In static export mode, some API failures are expected');        }
       
       const requestBodyPayload = {
         model: currentModelForRequestRef.current,
@@ -1820,7 +1820,7 @@ const AIMarker = () => {
       }
 
 
-                  const completionsApiUrl = constructApiUrl('github/completions');      console.log('Sending completions request to:', completionsApiUrl);            const response = await fetch(completionsApiUrl, {        method: 'POST',        headers: {          'Content-Type': 'application/json',          'Accept': 'text/event-stream',        },        body: JSON.stringify(requestBodyPayload),      });
+                  const completionsApiUrl = window.constructApiUrl('github/completions');      console.log('Sending completions request to:', completionsApiUrl);            const response = await fetch(completionsApiUrl, {        method: 'POST',        headers: {          'Content-Type': 'application/json',          'Accept': 'text/event-stream',        },        body: JSON.stringify(requestBodyPayload),      });
 
       if (!response.ok) {
         const errorStatus = response.status;
@@ -2116,7 +2116,7 @@ TOTAL MARKS: ${marksToUse}` : ''}
         }
         
         try {
-          const geminiApiUrl = constructApiUrl('gemini/generate');
+          const geminiApiUrl = window.constructApiUrl('gemini/generate');
           console.log('Sending Gemini generate request to:', geminiApiUrl);
           
           response = await fetch(geminiApiUrl, {
@@ -2133,7 +2133,7 @@ TOTAL MARKS: ${marksToUse}` : ''}
               console.warn(`Model ${currentModel} not supported by direct Gemini API, falling back to standard chat API`);
               
               // Fallback to using the standard chat API endpoint
-              const chatApiUrl = constructApiUrl('chat/completions');
+              const chatApiUrl = window.constructApiUrl('chat/completions');
               console.log('Falling back to chat completions API:', chatApiUrl);
               
               response = await fetch(chatApiUrl, {
@@ -2158,7 +2158,7 @@ TOTAL MARKS: ${marksToUse}` : ''}
         }
       } else if (currentModel.startsWith("openai/") || currentModel.startsWith("xai/")) {
         // GitHub models API for GitHub and Grok models
-        const githubApiUrl = constructApiUrl('github/completions');
+        const githubApiUrl = window.constructApiUrl('github/completions');
         console.log('Sending GitHub completions request to:', githubApiUrl);
         
         response = await fetch(githubApiUrl, {
@@ -2175,7 +2175,7 @@ TOTAL MARKS: ${marksToUse}` : ''}
           signal: AbortSignal.timeout(60000) // 60 second timeout
         });
       } else {
-        const chatApiUrl = constructApiUrl('chat/completions');
+        const chatApiUrl = window.constructApiUrl('chat/completions');
         console.log('Sending chat completions request to:', chatApiUrl);
         
         response = await fetch(chatApiUrl, {

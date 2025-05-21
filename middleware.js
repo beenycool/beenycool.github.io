@@ -38,8 +38,9 @@ export function middleware(request) {
     return NextResponse.next();
   }
 
-  // Add trailing slash for consistent routing
-  if (!pathname.endsWith('/') && 
+  // Add trailing slash for consistent routing, but not for API routes
+  if (!pathname.startsWith('/api/') && // Do not add trailing slash to API routes
+      !pathname.endsWith('/') &&
       !pathname.includes('.')) {
     const url = request.nextUrl.clone();
     url.pathname += '/';
