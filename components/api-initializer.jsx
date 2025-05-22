@@ -10,9 +10,10 @@ import { initializeApiHelpers } from '@/lib/api-helpers';
  */
 export function APIInitializer() {
   useEffect(() => {
-    // Ensure critical variables exist before proceeding
+    // Initialize critical variables immediately - no delay
     if (typeof window !== 'undefined') {
-      window.aV = window.aV || {};
+      // Make sure aV exists before any code tries to access it
+      if (!window.aV) window.aV = {};
       window.API_HELPERS = window.API_HELPERS || {};
       window.BACKEND_STATUS = window.BACKEND_STATUS || { status: 'checking' };
     }
@@ -33,7 +34,7 @@ export function APIInitializer() {
         console.error('Error initializing API helpers from component:', error);
         // Attempt recovery by reinitializing critical variables
         if (typeof window !== 'undefined') {
-          window.aV = window.aV || {};
+          if (!window.aV) window.aV = {};
           window.API_HELPERS = window.API_HELPERS || {};
           window.BACKEND_STATUS = window.BACKEND_STATUS || { status: 'checking' };
         }

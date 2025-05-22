@@ -90,7 +90,7 @@ export default function RootLayout({
                 // Define these functions before any module loading happens
                 window.API_HELPERS.getApiBaseUrl = window.getApiBaseUrl = function() {
                   return window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-                    ? 'http://localhost:3003'
+                    ? 'http://localhost:3000'
                     : DEFAULT_BACKEND_URL;
                 };
                 
