@@ -69,7 +69,15 @@ const LoginContent = () => {
         localStorage.setItem('authToken', mockToken);
         
         // If redirect is to admin, go there directly
-        router.push(redirect);
+        console.log("Redirecting to:", redirect);
+        
+        // Force redirect to admin page if that was the original request
+        if (redirect.includes('/admin')) {
+          window.location.href = '/admin';
+        } else {
+          router.push(redirect);
+        }
+        
         setLoading(false);
         return;
       }
