@@ -1,53 +1,124 @@
-# BeenyCool AI GCSE Marker
+# Beenycool AI GCSE Marker
 
-AI-powered feedback and grading for GCSE exam questions.
+A unified web application for GCSE exam grading and feedback using AI, with integrated analytics.
 
-## Important Notice for Static Export
+## Features
 
-This application uses Next.js with static export, which does not support API routes. All API calls are redirected to the remote backend at https://beenycool-github-io.onrender.com.
+- AI-powered exam grading and feedback
+- Admin dashboard for user management and analytics
+- Chess game functionality
+- Todo list management
+- PostHog analytics integration for tracking user behavior
 
-## Getting Started
+## Architecture
+
+This application uses a unified server architecture:
+
+- **Frontend**: Next.js React application
+- **Backend**: Express.js server
+- **Database**: PostgreSQL
+- **Analytics**: PostHog
+- **Authentication**: JWT-based auth system
+- **Socket.IO**: For real-time features like chess games
+
+Both frontend and backend run on the same server, simplifying deployment and management.
+
+## Setup
+
+### Prerequisites
+
+- Node.js 18+ and npm
+- PostgreSQL database
+- PostHog account (for analytics)
+
+### Environment Variables
+
+Create a `.env` file in the root directory with the following variables:
+
+```
+# Database Configuration
+DATABASE_URL=postgres://user:password@localhost:5432/dbname
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=beenycool
+DB_USER=postgres
+DB_PASSWORD=postgres
+
+# JWT Configuration
+JWT_SECRET=your_jwt_secret_key
+JWT_EXPIRES_IN=7d
+
+# API Configuration
+NEXT_PUBLIC_API_URL=http://localhost:3000/api
+PORT=3000
+
+# PostHog Analytics
+POSTHOG_API_KEY=your_posthog_api_key
+POSTHOG_HOST=https://app.posthog.com
+NEXT_PUBLIC_POSTHOG_KEY=your_posthog_public_key
+NEXT_PUBLIC_POSTHOG_HOST=https://app.posthog.com
+
+# Node Environment
+NODE_ENV=development
+```
+
+### Installation
 
 1. Install dependencies:
    ```
    npm install
    ```
 
-2. Run the development server:
-   ```
-   npm run dev
-   ```
-
-3. Build for production:
+2. Build the frontend:
    ```
    npm run build
    ```
 
-4. To serve the static export locally:
+3. Create admin user:
    ```
-   npx serve@latest out
+   node backend/src/scripts/create-admin.js
    ```
 
-## Notes on API Routes
+4. Start the unified server:
+   ```
+   npm start
+   ```
 
-- In development mode (`npm run dev`), API routes work normally
-- In production/static export, API routes are disabled and calls are redirected to the remote backend
-- The app displays simulated "online" status for GitHub Pages deployments
+### Development
 
-## Common Issues
+For development, you can run both frontend and backend in watch mode:
 
-If you encounter the error:
 ```
-Error: "next start" does not work with "output: export" configuration. Use "npx serve@latest out" instead.
-```
-
-This means you're trying to use `npm run start` with a static export. Instead, use:
-```
-npx serve@latest out
+npm run unified-dev
 ```
 
-## Environment Configuration
+## Deployment
 
-The application uses these environment variables:
-- `NEXT_PUBLIC_API_BASE_URL`: API backend URL (default: https://beenycool-github-io.onrender.com)
-- `IS_STATIC_EXPORT`: Set to 'true' in production builds 
+### Render Deployment
+
+This application is designed to be deployed on Render. Use the following settings:
+
+1. **Build Command**: `npm run build`
+2. **Start Command**: `npm start`
+
+Set all the required environment variables in the Render dashboard.
+
+## Analytics
+
+This application uses PostHog for analytics. Key events tracked include:
+
+- Page views
+- User logins/registrations
+- Admin actions
+- Feature usage
+
+## Admin Access
+
+Access the admin dashboard at `/admin` with the following credentials:
+
+- Username: beeny
+- Password: Beeny1234!?
+
+## License
+
+This project is proprietary and confidential. 

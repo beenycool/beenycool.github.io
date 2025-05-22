@@ -75,18 +75,75 @@ testConnection()
     console.log('Starting server without database connection. Some features may be limited.');
   });
 
+// PostHog Integration
+let posthog;
+if (process.env.POSTHOG_API_KEY) {
+  try {
+    const { PostHog } = require('posthog-node');
+    posthog = new PostHog(
+      process.env.POSTHOG_API_KEY,
+      { host: process.env.POSTHOG_HOST || 'https://app.posthog.com' }
+    );
+    console.log('PostHog analytics initialized successfully');
+    
+    // Add PostHog middleware
+    app.use((req, res, next) => {
+      // Skip tracking for static assets
+      if (!req.path.startsWith('/api') && 
+          (req.path.includes('.') || req.path.includes('_next'))) {
+        return next();
+      }
+      
+      const distinctId = req.headers['x-forwarded-for'] || 
+                         req.connection.remoteAddress || 
+                         'anonymous';
+      
+      posthog.capture({
+        distinctId,
+        event: 'page_view',
+        properties: {
+          path: req.path,
+          referrer: req.headers.referer || '',
+          userAgent: req.headers['user-agent'] || '',
+          ip: req.ip
+        }
+      });
+      
+      // Attach posthog to req for use in routes
+      req.posthog = posthog;
+      next();
+    });
+  } catch (error) {
+    console.error('Failed to initialize PostHog:', error);
+    console.warn('Analytics will be disabled');
+  }
+} else {
+  console.warn('POSTHOG_API_KEY not set. Analytics will be disabled.');
+}
+
 // Apply middleware
 app.use(cors());
 app.use(express.json({ limit: '5mb' })); // Increased limit for screen captures
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev')); // Log HTTP requests
-app.use(helmet()); // Security headers
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://app.posthog.com"],
+      connectSrc: ["'self'", "https://app.posthog.com"],
+      imgSrc: ["'self'", "data:", "https:"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      fontSrc: ["'self'", "data:"],
+    },
+  },
+}));
 
 // Rate limiting
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // Limit each IP to 100 requests per windowMs
-            message: {
+  message: {
     success: false,
     message: 'Too many requests, please try again later.'
   }
@@ -101,14 +158,45 @@ app.use(attachRequestMetrics);
 // Use API routes
 app.use('/api', apiRoutes);
 
-// Serve static files from public directory
-let publicDir = path.join(__dirname, '../../public');
+// Determine the Next.js build directory
+let nextBuildDir = path.join(__dirname, '../../../.next');
+
 // Check if we're on Render
 if (process.env.RENDER) {
   // Try different paths that might work on Render
   const possiblePaths = [
+    path.join(__dirname, '../../../.next'),
+    path.join(__dirname, '../../.next'),
+    path.join(process.cwd(), '.next'),
+    '/opt/render/project/src/.next'
+  ];
+  
+  // Use the first path that exists
+  for (const testPath of possiblePaths) {
+    if (fs.existsSync(testPath)) {
+      nextBuildDir = testPath;
+      console.log(`Found Next.js build directory at: ${nextBuildDir}`);
+      break;
+    }
+  }
+}
+
+// Serve Next.js static files
+if (fs.existsSync(nextBuildDir)) {
+  console.log('Serving Next.js static files from:', nextBuildDir);
+  app.use('/_next', express.static(path.join(nextBuildDir, '_next')));
+} else {
+  console.warn(`Next.js build directory not found at ${nextBuildDir}`);
+}
+
+// Serve static files from public directory
+let publicDir = path.join(__dirname, '../../../public');
+// Check if we're on Render
+if (process.env.RENDER) {
+  // Try different paths that might work on Render
+  const possiblePaths = [
+    path.join(__dirname, '../../../public'),
     path.join(__dirname, '../../public'),
-    path.join(__dirname, '../public'),
     path.join(process.cwd(), 'public'),
     '/opt/render/project/src/public'
   ];
@@ -123,55 +211,7 @@ if (process.env.RENDER) {
   }
 }
 
-if (!fs.existsSync(publicDir)) {
-  console.log(`Public directory not found at ${publicDir}, creating it...`);
-  try {
-    fs.mkdirSync(publicDir, { recursive: true });
-    // Create a basic index.html file
-    const indexHtml = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Beenycool API Server</title>
-          <style>
-            body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-            h1 { color: #333; }
-            .endpoint { background: #f4f4f4; padding: 10px; border-radius: 4px; margin-bottom: 10px; }
-            code { background: #eee; padding: 2px 4px; border-radius: 3px; }
-          </style>
-        </head>
-        <body>
-          <h1>Beenycool API Server</h1>
-          <p>This is the backend API server for beenycool.github.io.</p>
-          <h2>Available Endpoints:</h2>
-          <div class="endpoint">
-            <h3>GET /api/games</h3>
-            <p>List all saved chess games</p>
-          </div>
-          <div class="endpoint">
-            <h3>GET /api/games/:id</h3>
-            <p>Get details of a specific chess game</p>
-          </div>
-          <div class="endpoint">
-            <h3>GET /api/players/:id/stats</h3>
-            <p>Get player statistics</p>
-          </div>
-          <div class="endpoint">
-            <h3>GET /health</h3>
-            <p>Health check endpoint</p>
-          </div>
-          <p>For WebSocket connections, connect to <code>/socket.io</code></p>
-        </body>
-      </html>
-    `;
-    fs.writeFileSync(path.join(publicDir, 'index.html'), indexHtml);
-    console.log('Created basic index.html file at:', path.join(publicDir, 'index.html'));
-  } catch (err) {
-    console.error('Error creating public directory:', err);
-  }
-}
-
-console.log('Using public directory:', publicDir);
+// Serve static files
 app.use(express.static(publicDir));
 
 // Initialize chess server which sets up Socket.io
@@ -187,11 +227,6 @@ if (typeof chessServer.setup === 'function') {
   chessServer.setup(io);
 }
 
-// Default route
-app.get('/', (req, res) => {
-  res.send('Chess Server is running');
-});
-
 // Health check endpoint for Render
 app.get('/health', (req, res) => {
   res.status(200).json({ 
@@ -203,18 +238,38 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Catch-all route to serve main HTML file
+// Catch-all route to serve Next.js pages
 app.get('*', (req, res) => {
+  // Check if this is an API request that wasn't handled
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ 
+      success: false, 
+      message: 'API endpoint not found' 
+    });
+  }
+
+  // For all other requests, serve the Next.js app
   const indexPath = path.join(publicDir, 'index.html');
   if (fs.existsSync(indexPath)) {
     res.sendFile(indexPath);
   } else {
     res.send(`
       <html>
-        <head><title>Beenycool API Server</title></head>
+        <head>
+          <title>Beenycool Server</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <style>
+            body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+            h1 { color: #333; }
+            .card { background: #f9f9f9; border-radius: 8px; padding: 20px; margin: 20px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+          </style>
+        </head>
         <body>
-          <h1>Beenycool API Server</h1>
-          <p>Server is running. API endpoints available under /api/</p>
+          <h1>Beenycool Server</h1>
+          <div class="card">
+            <p>Server is running. The frontend application is not yet built.</p>
+            <p>To build the frontend, run: <code>npm run build</code></p>
+          </div>
         </body>
       </html>
     `);

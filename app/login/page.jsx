@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import axios from 'axios';
+import { useAnalytics } from '../hooks/useAnalytics';
 
 // Create a wrapper component to handle useSearchParams
 const LoginContent = () => {
@@ -20,9 +21,28 @@ const LoginContent = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get('redirect') || '/';
+  const analytics = useAnalytics();
   
-  // API base URL
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://beenycool-github-io.onrender.com/api';
+  // API base URL - updated to handle GitHub Pages deployment
+  const API_URL = (() => {
+    if (typeof window !== 'undefined') {
+      // Check if we're in a GitHub Pages environment
+      const isGitHubPages = window.location.hostname.includes('github.io');
+      
+      if (isGitHubPages) {
+        // Use the Render backend URL for GitHub Pages
+        return 'https://beenycool-github-io.onrender.com/api';
+      }
+    }
+    
+    // For local development or other environments, use the environment variable or default
+    return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
+  })();
+  
+  // Track page view
+  useEffect(() => {
+    analytics.trackPageView('login_page');
+  }, [analytics]);
   
   // Check if already logged in
   useEffect(() => {
@@ -62,27 +82,14 @@ const LoginContent = () => {
         return;
       }
       
-      // Special handling for Beeny user
-      if (isLogin && formData.username === 'Beeny' && formData.password === 'Beeny1234!?') {
-        // Create a mock token for Beeny with admin privileges
-        const mockToken = 'mock-token-for-beeny-admin-access';
-        localStorage.setItem('authToken', mockToken);
-        
-        // If redirect is to admin, go there directly
-        console.log("Redirecting to:", redirect);
-        
-        // Force redirect to admin page if that was the original request
-        if (redirect.includes('/admin')) {
-          window.location.href = '/admin';
-        } else {
-          router.push(redirect);
-        }
-        
-        setLoading(false);
-        return;
-      }
+      console.log('Attempting authentication with API URL:', API_URL); // Debug log
       
       const endpoint = isLogin ? `${API_URL}/auth/login` : `${API_URL}/auth/register`;
+      
+      // Track authentication attempt
+      analytics.trackEvent(isLogin ? 'login_attempt' : 'registration_attempt', {
+        username: formData.username,
+      });
       
       const response = await axios.post(endpoint, formData);
       
@@ -90,8 +97,27 @@ const LoginContent = () => {
       if (response.data.success) {
         localStorage.setItem('authToken', response.data.token);
         
+        // Track successful authentication
+        analytics.trackEvent(isLogin ? 'login_success' : 'registration_success', {
+          username: formData.username,
+          userId: response.data.user?.id,
+        });
+        
+        // Identify the user in PostHog
+        if (response.data.user) {
+          analytics.identifyUser(response.data.user.id, {
+            username: response.data.user.username,
+            role: response.data.user.role,
+          });
+        }
+        
         if (isLogin) {
-          router.push(redirect);
+          // For admin redirects, use window.location.href to force a full page reload
+          if (redirect.includes('/admin')) {
+            window.location.href = '/admin';
+          } else {
+            router.push(redirect);
+          }
         } else {
           // For registration, show success message then redirect to login
           setSuccess(true);
@@ -111,7 +137,27 @@ const LoginContent = () => {
       setLoading(false);
     } catch (err) {
       console.error('Authentication error:', err);
-      setError(err.response?.data?.message || 'An error occurred. Please try again.');
+      
+      // More detailed error handling
+      let errorMessage = 'An error occurred. Please try again.';
+      if (err.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        errorMessage = err.response.data.message || errorMessage;
+        console.error('Error response:', err.response.data);
+      } else if (err.request) {
+        // The request was made but no response was received
+        errorMessage = 'No response from server. Please try again later.';
+        console.error('No response received:', err.request);
+      }
+      
+      // Track authentication failure
+      analytics.trackEvent(isLogin ? 'login_failure' : 'registration_failure', {
+        username: formData.username,
+        error: errorMessage,
+      });
+      
+      setError(errorMessage);
       setLoading(false);
     }
   };

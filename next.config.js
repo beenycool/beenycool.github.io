@@ -1,10 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // Enable static export for GitHub Pages
-  // Note: When using middleware with static export, you need to handle middleware differently
-  // For local development, comment out 'output: export' to test middleware functionality
-  output: process.env.NODE_ENV === 'production' ? 'export' : undefined,
+  // For unified server, we don't need static export anymore
+  // output: process.env.NODE_ENV === 'production' ? 'export' : undefined,
   images: {
     unoptimized: true
   },
@@ -12,8 +10,10 @@ const nextConfig = {
   assetPrefix: '',
   trailingSlash: true,
   env: {
-    NEXT_PUBLIC_API_BASE_URL: 'https://beenycool-github-io.onrender.com',
-    IS_STATIC_EXPORT: process.env.NODE_ENV === 'production' ? 'true' : 'false'
+    // Use environment variables or default values
+    NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api',
+    NEXT_PUBLIC_POSTHOG_KEY: process.env.NEXT_PUBLIC_POSTHOG_KEY || '',
+    NEXT_PUBLIC_POSTHOG_HOST: process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://app.posthog.com'
   },
   webpack: (config, { dev, isServer }) => {
     // Add optimization settings

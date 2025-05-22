@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
+import { useAnalytics } from '../hooks/useAnalytics';
 
 // Components
 import DashboardStats from './components/DashboardStats';
@@ -24,9 +25,29 @@ const AdminDashboard = () => {
   const [timeRange, setTimeRange] = useState(7); // 7 days default
   
   const router = useRouter();
+  const analytics = useAnalytics();
   
-  // API base URL
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
+  // API base URL - updated to handle GitHub Pages deployment
+  const API_URL = (() => {
+    // Check if we're in a GitHub Pages environment
+    const isGitHubPages = window.location.hostname.includes('github.io');
+    
+    if (isGitHubPages) {
+      // Use the Render backend URL for GitHub Pages
+      return 'https://beenycool-github-io.onrender.com/api';
+    }
+    
+    // For local development or other environments, use the environment variable or default
+    return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
+  })();
+  
+  // Track page view
+  useEffect(() => {
+    analytics.trackPageView('admin_dashboard', {
+      tab: activeTab,
+      timeRange: timeRange
+    });
+  }, [analytics, activeTab, timeRange]);
   
   // Authentication check
   useEffect(() => {
@@ -40,6 +61,9 @@ const AdminDashboard = () => {
     const checkAuth = async () => {
       try {
         setLoading(true);
+        setError(null); // Clear any previous errors
+        
+        console.log('Checking auth with API URL:', API_URL); // Debug log
         
         const response = await axios.get(`${API_URL}/auth/user`, {
           headers: {
@@ -51,23 +75,56 @@ const AdminDashboard = () => {
         
         if (userData.role !== 'admin') {
           setError('Access denied. Admin permissions required.');
+          analytics.trackEvent('admin_access_denied', {
+            username: userData.username,
+            role: userData.role
+          });
           router.push('/');
           return;
         }
         
         setUser(userData);
+        
+        // Identify the admin user in PostHog
+        analytics.identifyUser(userData.id, {
+          username: userData.username,
+          role: userData.role,
+          isAdmin: true
+        });
+        
+        analytics.trackEvent('admin_login_success', {
+          username: userData.username
+        });
+        
         setLoading(false);
       } catch (err) {
         console.error('Auth error:', err);
         
-        setError('Authentication failed. Please log in again.');
+        // More detailed error handling
+        let errorMessage = 'Authentication failed. Please log in again.';
+        if (err.response) {
+          // The request was made and the server responded with a status code
+          // that falls out of the range of 2xx
+          errorMessage = err.response.data.message || errorMessage;
+          console.error('Error response:', err.response.data);
+        } else if (err.request) {
+          // The request was made but no response was received
+          errorMessage = 'No response from server. Please try again later.';
+          console.error('No response received:', err.request);
+        }
+        
+        analytics.trackEvent('admin_auth_error', {
+          error: errorMessage
+        });
+        
+        setError(errorMessage);
         localStorage.removeItem('authToken');
         router.push('/login?redirect=/admin');
       }
     };
     
     checkAuth();
-  }, [router, API_URL]);
+  }, [router, analytics]);
   
   // Load dashboard data
   const fetchDashboardData = useCallback(async () => {
@@ -82,13 +139,19 @@ const AdminDashboard = () => {
       });
       
       setDashboardData(response.data.data);
+      analytics.trackEvent('admin_dashboard_loaded', {
+        timeRange: timeRange
+      });
       setLoading(false);
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
       setError('Failed to load dashboard data');
+      analytics.trackEvent('admin_dashboard_error', {
+        error: err.message || 'Failed to load dashboard data'
+      });
       setLoading(false);
     }
-  }, [API_URL, timeRange]);
+  }, [API_URL, timeRange, analytics]);
   
   // Load active sessions
   const fetchActiveSessions = useCallback(async () => {
