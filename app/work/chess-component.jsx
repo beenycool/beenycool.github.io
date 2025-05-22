@@ -49,6 +49,7 @@ import {
   easterEggEffects,
   easterEggAnimations 
 } from './chess-easter-eggs';
+import { updateURLWithRoomId, addNotification, addRecentGame } from '@/lib/utils'; // Assuming these are in utils
 
 // Import custom CSS
 import './theme.css';
@@ -195,6 +196,19 @@ const getPieceValue = (piece) => {
   return values[piece] || 0;
 };
 
+const findKingSquare = (chessInstance, kingColor) => {
+  const board = chessInstance.board();
+  for (let r = 0; r < 8; r++) {
+    for (let f = 0; f < 8; f++) {
+      const piece = board[r][f];
+      if (piece && piece.type === 'k' && piece.color === kingColor) {
+        return `${String.fromCharCode('a'.charCodeAt(0) + f)}${8 - r}`;
+      }
+    }
+  }
+  return null; // Should not happen in a valid game with a king
+};
+
 // New function to update check and game over status
 const updateGameStatus = (currentGame) => {
   if (!currentGame) return;
@@ -294,6 +308,13 @@ export default function ChessComponent({ systemTheme }) {
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [authForm, setAuthForm] = useState({ username: '', password: '' });
   const [authError, setAuthError] = useState(null);
+
+  // Added missing useState hooks
+  const [gameHistory, setGameHistory] = useState([]);
+  const [chatHistory, setChatHistory] = useState([]);
+  const [matchmakingStatus, setMatchmakingStatus] = useState('idle'); // e.g., idle, searching, found
+  const [isReady, setIsReady] = useState(false);
+  const [gameStarted, setGameStarted] = useState(false);
   
   const socketRef = useRef(null);
   const messageContainerRef = useRef(null);
@@ -311,6 +332,10 @@ export default function ChessComponent({ systemTheme }) {
   const [gameOverMessage, setGameOverMessage] = useState(""); 
   const [isGameOverState, setIsGameOverState] = useState(false); // Renamed to avoid conflict with game.isGameOver()
   
+  // Define king squares for highlighting
+  const whiteKingSq = findKingSquare(game, 'w');
+  const blackKingSq = findKingSquare(game, 'b');
+
   // Scroll chat to bottom when new messages arrive
   useEffect(() => {
     if (messageContainerRef.current) {
@@ -843,10 +868,9 @@ export default function ChessComponent({ systemTheme }) {
       // Calculate scores based on final position and game history
       const pScore = calculatePlayerScore(game, playerTimeRemaining, moveHistory);
       const oScore = calculatePlayerScore(
-        game, 
-        opponentTimeRemaining, 
-        moveHistory, 
-        playerColor === 'white' ? 'b' : 'w'
+        game,
+        opponentTimeRemaining,
+        moveHistory
       );
       
       setPlayerScore(pScore);
@@ -1806,11 +1830,11 @@ export default function ChessComponent({ systemTheme }) {
                     [preMove.from]: { backgroundColor: 'rgba(0, 0, 255, 0.3)' }, // Blueish for pre-move source
                     [preMove.to]: { backgroundColor: 'rgba(0, 0, 255, 0.3)' }    // Blueish for pre-move target
                   }),
-                  ...(isCheck && game.kingAttackers('w').length > 0 && game.get(game.kingSquare('w'))?.color === 'w' && {
-                    [game.kingSquare('w')]: { backgroundColor: 'rgba(255, 0, 0, 0.5)' } // Red for white king in check
+                  ...(isCheck && whiteKingSq && game.isAttacked(whiteKingSq, 'b') && game.get(whiteKingSq)?.color === 'w' && {
+                    [whiteKingSq]: { backgroundColor: 'rgba(255, 0, 0, 0.5)' } // Red for white king in check
                   }),
-                  ...(isCheck && game.kingAttackers('b').length > 0 && game.get(game.kingSquare('b'))?.color === 'b' && {
-                    [game.kingSquare('b')]: { backgroundColor: 'rgba(255, 0, 0, 0.5)' } // Red for black king in check
+                  ...(isCheck && blackKingSq && game.isAttacked(blackKingSq, 'w') && game.get(blackKingSq)?.color === 'b' && {
+                    [blackKingSq]: { backgroundColor: 'rgba(255, 0, 0, 0.5)' } // Red for black king in check
                   })
                 }}
                 customDarkSquareStyle={{ backgroundColor: currentStyles.dark }}
