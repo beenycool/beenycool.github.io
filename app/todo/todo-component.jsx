@@ -54,18 +54,43 @@ const TodoComponent = () => {
   useEffect(() => {
     const savedTodos = localStorage.getItem('todos');
     if (savedTodos) {
+      console.log('DEBUG: Raw savedTodos from localStorage:', savedTodos);
       try {
-        const parsedTodos = JSON.parse(savedTodos);
-        setTodos(parsedTodos);
+        const rawParsedTodos = JSON.parse(savedTodos);
+        console.log('localStorage rawParsedTodos:', rawParsedTodos, 'Type:', typeof rawParsedTodos);
+        const ensuredTodosArray = Array.isArray(rawParsedTodos) ? rawParsedTodos : [];
+        console.log('localStorage ensuredTodosArray:', ensuredTodosArray, 'Type:', typeof ensuredTodosArray);
+
+        const processedTodos = ensuredTodosArray.map(todo => {
+          console.log('Processing todo from localStorage - todo:', todo, 'Type of todo.subtasks:', typeof todo.subtasks);
+          const ensuredSubtasks = Array.isArray(todo.subtasks) ? todo.subtasks : [];
+          return {
+            ...todo,
+            subtasks: ensuredSubtasks
+          };
+        });
+        console.log('localStorage processedTodos for setTodos:', processedTodos);
+        setTodos(processedTodos);
         
         // Initialize expanded state for todos with subtasks
-        const initialExpanded = parsedTodos
-          .filter(todo => todo.subtasks && todo.subtasks.length > 0)
+        console.log('localStorage initialExpanded - processedTodos:', processedTodos, 'Type:', typeof processedTodos);
+        const initialExpanded = processedTodos
+          .filter(todo => {
+            const subtasks = Array.isArray(todo.subtasks) ? todo.subtasks : [];
+            return subtasks.length > 0;
+           })
           .map(todo => todo.id);
         setExpandedTodos(initialExpanded);
       } catch (e) {
-        console.error('Failed to parse todos from localStorage:', e);
+        console.error('DEBUG: Failed to parse todos from localStorage or process them:', e);
+        setTodos([]); // Default to empty array on parsing error
+        setExpandedTodos([]);
       }
+    } else {
+      // No saved todos, ensure todos is an empty array (already default state, but good for clarity)
+      console.log('DEBUG: No saved todos found in localStorage. Initializing with empty array.');
+      setTodos([]);
+      setExpandedTodos([]);
     }
     
     // Add a small delay for animation purposes
@@ -98,28 +123,35 @@ const TodoComponent = () => {
 
   // Toggle a todo's completed status
   const toggleTodo = (id) => {
-    setTodos(
-      todos.map(todo => {
+    setTodos(prevTodos => {
+      console.log('toggleTodo - prevTodos:', prevTodos, 'Type:', typeof prevTodos);
+      const currentTodos = Array.isArray(prevTodos) ? prevTodos : [];
+      return currentTodos.map(todo => {
         if (todo.id === id) {
-          // If marking as complete, also mark all subtasks as complete
-          const updatedSubtasks = todo.completed 
-            ? todo.subtasks 
-            : todo.subtasks.map(subtask => ({...subtask, completed: true}));
+          console.log('toggleTodo - current todo.subtasks:', todo.subtasks, 'Type:', typeof todo.subtasks);
+          const ensuredSubtasks = Array.isArray(todo.subtasks) ? todo.subtasks : [];
+          const updatedSubtasks = todo.completed
+            ? ensuredSubtasks
+            : ensuredSubtasks.map(subtask => ({...subtask, completed: true}));
           
-          return { 
-            ...todo, 
+          return {
+            ...todo,
             completed: !todo.completed,
             subtasks: updatedSubtasks
           };
         }
         return todo;
-      })
-    );
+      });
+    });
   };
 
   // Delete a todo
   const deleteTodo = (id) => {
-    setTodos(todos.filter(todo => todo.id !== id));
+    setTodos(prevTodos => {
+      console.log('deleteTodo - prevTodos:', prevTodos, 'Type:', typeof prevTodos);
+      const currentTodos = Array.isArray(prevTodos) ? prevTodos : [];
+      return currentTodos.filter(todo => todo.id !== id);
+    });
   };
 
   // Start editing a todo
@@ -132,11 +164,13 @@ const TodoComponent = () => {
   const saveEdit = () => {
     if (editingId === null) return;
     
-    setTodos(
-      todos.map(todo =>
+    setTodos(prevTodos => {
+      console.log('saveEdit - prevTodos:', prevTodos, 'Type:', typeof prevTodos);
+      const currentTodos = Array.isArray(prevTodos) ? prevTodos : [];
+      return currentTodos.map(todo =>
         todo.id === editingId ? { ...todo, text: editText.trim() } : todo
-      )
-    );
+      );
+    });
     
     setEditingId(null);
   };
@@ -159,22 +193,27 @@ const TodoComponent = () => {
   const addSubtask = (todoId) => {
     if (!newSubtaskText.trim()) return;
     
-    setTodos(todos.map(todo => {
-      if (todo.id === todoId) {
-        const newSubtask = {
-          id: `${todoId}-sub-${Date.now()}`,
-          text: newSubtaskText.trim(),
-          completed: false,
-          createdAt: Date.now()
-        };
-        
-        return {
-          ...todo,
-          subtasks: [...todo.subtasks, newSubtask]
-        };
-      }
-      return todo;
-    }));
+    setTodos(prevTodos => {
+      console.log('addSubtask - prevTodos:', prevTodos, 'Type:', typeof prevTodos);
+      const currentTodos = Array.isArray(prevTodos) ? prevTodos : [];
+      return currentTodos.map(todo => {
+        if (todo.id === todoId) {
+          const newSubtask = {
+            id: `${todoId}-sub-${Date.now()}`,
+            text: newSubtaskText.trim(),
+            completed: false,
+            createdAt: Date.now()
+          };
+          console.log('addSubtask - current todo.subtasks:', todo.subtasks, 'Type:', typeof todo.subtasks);
+          const ensuredSubtasks = Array.isArray(todo.subtasks) ? todo.subtasks : [];
+          return {
+            ...todo,
+            subtasks: [...ensuredSubtasks, newSubtask]
+          };
+        }
+        return todo;
+      });
+    });
     
     setNewSubtaskText('');
     setAddingSubtaskFor(null);
@@ -182,38 +221,50 @@ const TodoComponent = () => {
   
   // Toggle a subtask's completed status
   const toggleSubtask = (todoId, subtaskId) => {
-    setTodos(todos.map(todo => {
-      if (todo.id === todoId) {
-        const updatedSubtasks = todo.subtasks.map(subtask => 
-          subtask.id === subtaskId 
-            ? {...subtask, completed: !subtask.completed} 
-            : subtask
-        );
-        
-        // If all subtasks are complete, mark the todo as complete too
-        const allComplete = updatedSubtasks.every(subtask => subtask.completed);
-        
-        return {
-          ...todo,
-          subtasks: updatedSubtasks,
-          completed: allComplete ? true : todo.completed
-        };
-      }
-      return todo;
-    }));
+    setTodos(prevTodos => {
+      console.log('toggleSubtask - prevTodos:', prevTodos, 'Type:', typeof prevTodos);
+      const currentTodos = Array.isArray(prevTodos) ? prevTodos : [];
+      return currentTodos.map(todo => {
+        if (todo.id === todoId) {
+          console.log('toggleSubtask - current todo.subtasks:', todo.subtasks, 'Type:', typeof todo.subtasks);
+          const ensuredSubtasks = Array.isArray(todo.subtasks) ? todo.subtasks : [];
+          const updatedSubtasks = ensuredSubtasks.map(subtask =>
+            subtask.id === subtaskId
+              ? {...subtask, completed: !subtask.completed}
+              : subtask
+          );
+          
+          // If all subtasks are complete, mark the todo as complete too
+          const allComplete = updatedSubtasks.every(subtask => subtask.completed);
+          
+          return {
+            ...todo,
+            subtasks: updatedSubtasks,
+            completed: allComplete ? true : todo.completed
+          };
+        }
+        return todo;
+      });
+    });
   };
   
   // Delete a subtask
   const deleteSubtask = (todoId, subtaskId) => {
-    setTodos(todos.map(todo => {
-      if (todo.id === todoId) {
-        return {
-          ...todo,
-          subtasks: todo.subtasks.filter(subtask => subtask.id !== subtaskId)
-        };
-      }
-      return todo;
-    }));
+    setTodos(prevTodos => {
+      console.log('deleteSubtask - prevTodos:', prevTodos, 'Type:', typeof prevTodos);
+      const currentTodos = Array.isArray(prevTodos) ? prevTodos : [];
+      return currentTodos.map(todo => {
+        if (todo.id === todoId) {
+          console.log('deleteSubtask - current todo.subtasks:', todo.subtasks, 'Type:', typeof todo.subtasks);
+          const ensuredSubtasks = Array.isArray(todo.subtasks) ? todo.subtasks : [];
+          return {
+            ...todo,
+            subtasks: ensuredSubtasks.filter(subtask => subtask.id !== subtaskId)
+          };
+        }
+        return todo;
+      });
+    });
   };
   
   // Start editing a subtask
@@ -226,19 +277,25 @@ const TodoComponent = () => {
   const saveSubtaskEdit = (todoId) => {
     if (editingSubtaskId === null) return;
     
-    setTodos(todos.map(todo => {
-      if (todo.id === todoId) {
-        return {
-          ...todo,
-          subtasks: todo.subtasks.map(subtask =>
-            subtask.id === editingSubtaskId 
-              ? {...subtask, text: editSubtaskText.trim()} 
-              : subtask
-          )
-        };
-      }
-      return todo;
-    }));
+    setTodos(prevTodos => {
+      console.log('saveSubtaskEdit - prevTodos:', prevTodos, 'Type:', typeof prevTodos);
+      const currentTodos = Array.isArray(prevTodos) ? prevTodos : [];
+      return currentTodos.map(todo => {
+        if (todo.id === todoId) {
+          console.log('saveSubtaskEdit - current todo.subtasks:', todo.subtasks, 'Type:', typeof todo.subtasks);
+          const ensuredSubtasks = Array.isArray(todo.subtasks) ? todo.subtasks : [];
+          return {
+            ...todo,
+            subtasks: ensuredSubtasks.map(subtask =>
+              subtask.id === editingSubtaskId
+                ? {...subtask, text: editSubtaskText.trim()}
+                : subtask
+            )
+          };
+        }
+        return todo;
+      });
+    });
     
     setEditingSubtaskId(null);
     setEditSubtaskText('');
@@ -251,7 +308,9 @@ const TodoComponent = () => {
   };
 
   // Filter todos based on current filter
-  const filteredTodos = todos.filter(todo => {
+  console.log('filteredTodos - todos:', todos, 'Type:', typeof todos);
+  const currentTodosForFilter = Array.isArray(todos) ? todos : [];
+  const filteredTodos = currentTodosForFilter.filter(todo => {
     if (filter === 'all') return showCompleted ? true : !todo.completed;
     if (filter === 'active') return !todo.completed;
     if (filter === 'completed') return todo.completed;
@@ -433,7 +492,10 @@ const TodoComponent = () => {
                           </motion.div>
                         )}
                         
-                        {sortedTodos.map(todo => (
+                        {(() => {
+                          console.log('Render sortedTodos - sortedTodos:', sortedTodos, 'Type:', typeof sortedTodos);
+                          const currentSortedTodos = Array.isArray(sortedTodos) ? sortedTodos : [];
+                          return currentSortedTodos.map(todo => (
                           <motion.div
                             key={todo.id}
                             initial={{ opacity: 0, y: -10 }}
@@ -489,12 +551,16 @@ const TodoComponent = () => {
                                           {todo.priority.charAt(0).toUpperCase() + todo.priority.slice(1)}
                                         </Badge>
                                         
-                                        {todo.subtasks && todo.subtasks.length > 0 && (
-                                          <Badge variant="outline" className="bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800/50">
-                                            <ListTodo className="h-3 w-3 mr-1" />
-                                            {todo.subtasks.filter(st => st.completed).length}/{todo.subtasks.length}
-                                          </Badge>
-                                        )}
+                                        {(() => {
+                                          console.log('Render Badge subtask count - todo.subtasks:', todo.subtasks, 'Type:', typeof todo.subtasks, 'for todo.id:', todo.id);
+                                          const ensuredSubtasks = Array.isArray(todo.subtasks) ? todo.subtasks : [];
+                                          return ensuredSubtasks.length > 0 && (
+                                            <Badge variant="outline" className="bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800/50">
+                                              <ListTodo className="h-3 w-3 mr-1" />
+                                              {ensuredSubtasks.filter(st => st.completed).length}/{ensuredSubtasks.length}
+                                            </Badge>
+                                          );
+                                        })()}
                                         
                                         <span className="flex items-center text-muted-foreground">
                                           <Calendar className="h-3 w-3 mr-0.5" />
@@ -546,122 +612,129 @@ const TodoComponent = () => {
                                 </div>
                                 
                                 {/* Subtasks section */}
-                                {todo.subtasks && todo.subtasks.length > 0 && (
-                                  <Collapsible 
-                                    open={expandedTodos.includes(todo.id)}
-                                    onOpenChange={() => toggleExpanded(todo.id)}
-                                    className="ml-9 mt-2"
-                                  >
-                                    <div className="flex items-center">
-                                      <CollapsibleTrigger asChild>
-                                        <Button variant="ghost" size="sm" className="p-0 h-6 hover:bg-transparent">
-                                          {expandedTodos.includes(todo.id) ? (
-                                            <ChevronDown className="h-4 w-4 mr-1 text-muted-foreground" />
-                                          ) : (
-                                            <ChevronRight className="h-4 w-4 mr-1 text-muted-foreground" />
-                                          )}
-                                          <span className="text-xs text-muted-foreground">
-                                            {expandedTodos.includes(todo.id) ? 'Hide' : 'Show'} {todo.subtasks.length} subtask{todo.subtasks.length !== 1 ? 's' : ''}
-                                          </span>
-                                        </Button>
-                                      </CollapsibleTrigger>
-                                    </div>
-                                    
-                                    <CollapsibleContent className="mt-1">
-                                      <div className="space-y-2 border-l-2 border-muted pl-3">
-                                        {todo.subtasks.map(subtask => (
-                                          <div key={subtask.id} className={`py-1 px-2 rounded ${subtask.completed ? 'bg-muted/30' : 'bg-card'}`}>
-                                            {editingSubtaskId === subtask.id ? (
-                                              <div className="flex items-center gap-2">
-                                                <Input 
-                                                  value={editSubtaskText}
-                                                  onChange={(e) => setEditSubtaskText(e.target.value)}
-                                                  onKeyDown={(e) => e.key === 'Enter' && saveSubtaskEdit(todo.id)}
-                                                  autoFocus
-                                                  className="flex-grow h-7 text-sm"
-                                                />
-                                                <div className="flex space-x-1">
-                                                  <Button size="sm" variant="ghost" onClick={() => saveSubtaskEdit(todo.id)} className="h-7 w-7 p-0">
-                                                    <Save className="h-3 w-3" />
-                                                  </Button>
-                                                  <Button size="sm" variant="ghost" onClick={cancelSubtaskEdit} className="h-7 w-7 p-0">
-                                                    <X className="h-3 w-3" />
-                                                  </Button>
-                                                </div>
-                                              </div>
+                                {(() => {
+                                  console.log('Render Collapsible subtasks section - todo.subtasks:', todo.subtasks, 'Type:', typeof todo.subtasks, 'for todo.id:', todo.id);
+                                  const ensuredSubtasksForCollapsible = Array.isArray(todo.subtasks) ? todo.subtasks : [];
+                                  return ensuredSubtasksForCollapsible.length > 0 && (
+                                    <Collapsible
+                                      open={expandedTodos.includes(todo.id)}
+                                      onOpenChange={() => toggleExpanded(todo.id)}
+                                      className="ml-9 mt-2"
+                                    >
+                                      <div className="flex items-center">
+                                        <CollapsibleTrigger asChild>
+                                          <Button variant="ghost" size="sm" className="p-0 h-6 hover:bg-transparent">
+                                            {expandedTodos.includes(todo.id) ? (
+                                              <ChevronDown className="h-4 w-4 mr-1 text-muted-foreground" />
                                             ) : (
-                                              <div className="flex items-center justify-between">
-                                                <div className="flex items-center gap-2">
-                                                  <button 
-                                                    onClick={() => toggleSubtask(todo.id, subtask.id)}
-                                                    className="flex-shrink-0"
-                                                  >
-                                                    {subtask.completed ? (
-                                                      <CheckCircle2 className="h-4 w-4 text-primary" />
-                                                    ) : (
-                                                      <Circle className="h-4 w-4 text-muted-foreground hover:text-primary" />
-                                                    )}
-                                                  </button>
-                                                  <span className={`text-sm ${subtask.completed ? 'line-through text-muted-foreground' : ''}`}>
-                                                    {subtask.text}
-                                                  </span>
-                                                </div>
-                                                
-                                                <div className="flex space-x-1">
-                                                  {!subtask.completed && (
-                                                    <Button 
-                                                      size="sm" 
-                                                      variant="ghost" 
-                                                      onClick={() => startEditingSubtask(todo.id, subtask)}
-                                                      className="h-6 w-6 p-0"
-                                                    >
-                                                      <Edit2 className="h-3 w-3" />
-                                                    </Button>
-                                                  )}
-                                                  <Button 
-                                                    size="sm" 
-                                                    variant="ghost" 
-                                                    onClick={() => deleteSubtask(todo.id, subtask.id)}
-                                                    className="h-6 w-6 p-0"
-                                                  >
-                                                    <Trash2 className="h-3 w-3" />
-                                                  </Button>
-                                                </div>
-                                              </div>
+                                              <ChevronRight className="h-4 w-4 mr-1 text-muted-foreground" />
                                             )}
-                                          </div>
-                                        ))}
-                                        
-                                        {/* Add new subtask UI */}
-                                        {addingSubtaskFor === todo.id && (
-                                          <div className="flex items-center gap-2 mt-1">
-                                            <Input
-                                              value={newSubtaskText}
-                                              onChange={(e) => setNewSubtaskText(e.target.value)}
-                                              placeholder="Add new subtask..."
-                                              className="flex-grow h-7 text-sm"
-                                              onKeyDown={(e) => e.key === 'Enter' && addSubtask(todo.id)}
-                                              autoFocus
-                                            />
-                                            <div className="flex space-x-1">
-                                              <Button size="sm" variant="default" onClick={() => addSubtask(todo.id)} className="h-7">
-                                                <Plus className="h-3 w-3 mr-1" />
-                                                Add
-                                              </Button>
-                                              <Button size="sm" variant="ghost" onClick={() => setAddingSubtaskFor(null)} className="h-7 p-0 w-7">
-                                                <X className="h-3 w-3" />
-                                              </Button>
-                                            </div>
-                                          </div>
-                                        )}
+                                            <span className="text-xs text-muted-foreground">
+                                              {expandedTodos.includes(todo.id) ? 'Hide' : 'Show'} {ensuredSubtasksForCollapsible.length} subtask{ensuredSubtasksForCollapsible.length !== 1 ? 's' : ''}
+                                            </span>
+                                          </Button>
+                                        </CollapsibleTrigger>
                                       </div>
-                                    </CollapsibleContent>
-                                  </Collapsible>
-                                )}
+                                      
+                                      <CollapsibleContent className="mt-1">
+                                        <div className="space-y-2 border-l-2 border-muted pl-3">
+                                          {(() => {
+                                            console.log('Render subtasks list - ensuredSubtasksForCollapsible:', ensuredSubtasksForCollapsible, 'Type:', typeof ensuredSubtasksForCollapsible, 'for todo.id:', todo.id);
+                                            return ensuredSubtasksForCollapsible.map(subtask => (
+                                              <div key={subtask.id} className={`py-1 px-2 rounded ${subtask.completed ? 'bg-muted/30' : 'bg-card'}`}>
+                                                {editingSubtaskId === subtask.id ? (
+                                                  <div className="flex items-center gap-2">
+                                                    <Input
+                                                      value={editSubtaskText}
+                                                      onChange={(e) => setEditSubtaskText(e.target.value)}
+                                                      onKeyDown={(e) => e.key === 'Enter' && saveSubtaskEdit(todo.id)}
+                                                      autoFocus
+                                                      className="flex-grow h-7 text-sm"
+                                                    />
+                                                    <div className="flex space-x-1">
+                                                      <Button size="sm" variant="ghost" onClick={() => saveSubtaskEdit(todo.id)} className="h-7 w-7 p-0">
+                                                        <Save className="h-3 w-3" />
+                                                      </Button>
+                                                      <Button size="sm" variant="ghost" onClick={cancelSubtaskEdit} className="h-7 w-7 p-0">
+                                                        <X className="h-3 w-3" />
+                                                      </Button>
+                                                    </div>
+                                                  </div>
+                                                ) : (
+                                                  <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-2">
+                                                      <button
+                                                        onClick={() => toggleSubtask(todo.id, subtask.id)}
+                                                        className="flex-shrink-0"
+                                                      >
+                                                        {subtask.completed ? (
+                                                          <CheckCircle2 className="h-4 w-4 text-primary" />
+                                                        ) : (
+                                                          <Circle className="h-4 w-4 text-muted-foreground hover:text-primary" />
+                                                        )}
+                                                      </button>
+                                                      <span className={`text-sm ${subtask.completed ? 'line-through text-muted-foreground' : ''}`}>
+                                                        {subtask.text}
+                                                      </span>
+                                                    </div>
+                                                    
+                                                    <div className="flex space-x-1">
+                                                      {!subtask.completed && (
+                                                        <Button
+                                                          size="sm"
+                                                          variant="ghost"
+                                                          onClick={() => startEditingSubtask(todo.id, subtask)}
+                                                          className="h-6 w-6 p-0"
+                                                        >
+                                                          <Edit2 className="h-3 w-3" />
+                                                        </Button>
+                                                      )}
+                                                      <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        onClick={() => deleteSubtask(todo.id, subtask.id)}
+                                                        className="h-6 w-6 p-0"
+                                                      >
+                                                        <Trash2 className="h-3 w-3" />
+                                                      </Button>
+                                                    </div>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            ));
+                                          })()}
+                                          
+                                          {/* Add new subtask UI */}
+                                          {addingSubtaskFor === todo.id && (
+                                            <div className="flex items-center gap-2 mt-1">
+                                              <Input
+                                                value={newSubtaskText}
+                                                onChange={(e) => setNewSubtaskText(e.target.value)}
+                                                placeholder="Add new subtask..."
+                                                className="flex-grow h-7 text-sm"
+                                                onKeyDown={(e) => e.key === 'Enter' && addSubtask(todo.id)}
+                                                autoFocus
+                                              />
+                                              <div className="flex space-x-1">
+                                                <Button size="sm" variant="default" onClick={() => addSubtask(todo.id)} className="h-7">
+                                                  <Plus className="h-3 w-3 mr-1" />
+                                                  Add
+                                                </Button>
+                                                <Button size="sm" variant="ghost" onClick={() => setAddingSubtaskFor(null)} className="h-7 p-0 w-7">
+                                                  <X className="h-3 w-3" />
+                                                </Button>
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </CollapsibleContent>
+                                    </Collapsible>
+                                  );
+                                })()}
                               </div>
                             )}
                           </motion.div>
-                        ))}
+                        )); })()}
                       </AnimatePresence>
                     </div>
                   </ScrollArea>
@@ -670,20 +743,44 @@ const TodoComponent = () => {
                 <CardFooter className="flex flex-wrap justify-between gap-2 border-t pt-4">
                   <div className="flex items-center gap-2">
                     <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
-                      {todos.filter(t => !t.completed).length} items left
+                      {(() => {
+                        console.log('Footer items left - todos:', todos, 'Type:', typeof todos);
+                        const currentTodos = Array.isArray(todos) ? todos : [];
+                        return currentTodos.filter(t => !t.completed).length;
+                      })()} items left
                     </Badge>
-                    {todos.filter(t => t.completed).length > 0 && (
+                    {(() => {
+                      console.log('Footer completed count check - todos:', todos, 'Type:', typeof todos);
+                      const currentTodos = Array.isArray(todos) ? todos : [];
+                      return currentTodos.filter(t => t.completed).length > 0;
+                    })() && (
                       <Badge variant="outline" className="bg-muted">
-                        {todos.filter(t => t.completed).length} completed
+                        {(() => {
+                          console.log('Footer completed count display - todos:', todos, 'Type:', typeof todos);
+                          const currentTodos = Array.isArray(todos) ? todos : [];
+                          return currentTodos.filter(t => t.completed).length;
+                        })()} completed
                       </Badge>
                     )}
                   </div>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={() => setTodos(todos.filter(todo => !todo.completed))}
-                    disabled={!todos.some(todo => todo.completed)}
-                    className={todos.some(todo => todo.completed) ? 'hover:bg-destructive/10 hover:text-destructive hover:border-destructive/50' : ''}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setTodos(prevTodos => {
+                      console.log('Footer clear completed - prevTodos:', prevTodos, 'Type:', typeof prevTodos);
+                      const currentTodos = Array.isArray(prevTodos) ? prevTodos : [];
+                      return currentTodos.filter(todo => !todo.completed);
+                    })}
+                    disabled={!(() => {
+                      console.log('Footer clear completed (disabled check) - todos:', todos, 'Type:', typeof todos);
+                      const currentTodos = Array.isArray(todos) ? todos : [];
+                      return currentTodos.some(todo => todo.completed);
+                    })()}
+                    className={(() => {
+                      console.log('Footer clear completed (className check) - todos:', todos, 'Type:', typeof todos);
+                      const currentTodos = Array.isArray(todos) ? todos : [];
+                      return currentTodos.some(todo => todo.completed);
+                    })() ? 'hover:bg-destructive/10 hover:text-destructive hover:border-destructive/50' : ''}
                   >
                     <Trash2 className="mr-1 h-3.5 w-3.5" />
                     Clear completed
