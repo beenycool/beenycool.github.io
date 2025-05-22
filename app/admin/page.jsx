@@ -71,6 +71,17 @@ const AdminDashboard = () => {
           }
         });
         
+        // Add robust checks for user data and role
+        if (!response.data || !response.data.user) {
+          setError('Invalid user data received from server.');
+          analytics.trackEvent('admin_auth_error', {
+            error: 'Invalid user data'
+          });
+          localStorage.removeItem('authToken');
+          router.push('/login?redirect=/admin');
+          return;
+        }
+        
         const userData = response.data.user;
         
         if (userData.role !== 'admin') {
