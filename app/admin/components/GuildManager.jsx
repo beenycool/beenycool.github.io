@@ -73,7 +73,7 @@ const GuildManager = ({ guilds, onCreateGuild, onUpdateGuild, onDeleteGuild }) =
   
   // Confirm delete guild
   const handleConfirmDelete = (guildId) => {
-    if (window.confirm('Are you sure you want to delete this guild? This action cannot be undone.')) {
+    if (typeof window !== 'undefined' && window.confirm('Are you sure you want to delete this guild? This action cannot be undone.')) {
       onDeleteGuild(guildId);
       handleCancel();
     }

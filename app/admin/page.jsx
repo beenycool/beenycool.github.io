@@ -30,18 +30,23 @@ const AdminDashboard = () => {
   const analytics = useAnalytics();
   
   // API base URL - updated to handle GitHub Pages deployment
-  const API_URL = (() => {
-    // Check if we're in a GitHub Pages environment
-    const isGitHubPages = window.location.hostname.includes('github.io');
-    
-    if (isGitHubPages) {
-      // Use the Render backend URL for GitHub Pages
-      return 'https://beenycool-github-io.onrender.com/api';
+  const getApiUrl = () => {
+    // Check if we're in a browser environment
+    if (typeof window !== 'undefined') {
+      // Check if we're in a GitHub Pages environment
+      const isGitHubPages = window.location.hostname.includes('github.io');
+      
+      if (isGitHubPages) {
+        // Use the Render backend URL for GitHub Pages
+        return 'https://beenycool-github-io.onrender.com/api';
+      }
     }
     
     // For local development or other environments, use the environment variable or default
     return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
-  })();
+  };
+
+  const API_URL = getApiUrl();
   
   // Track page view
   useEffect(() => {
@@ -137,7 +142,7 @@ const AdminDashboard = () => {
     };
     
     checkAuth();
-  }, [router, analytics]);
+  }, [router, analytics, API_URL]);
   
   // Load dashboard data
   const fetchDashboardData = useCallback(async () => {
