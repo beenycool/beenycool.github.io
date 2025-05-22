@@ -5,15 +5,15 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "node backend/src/index.js",
+    "start": "node server-start.js",
     "lint": "next lint",
     "static-build": "next build",
     "serve": "npx serve@latest out",
     "build-and-serve": "npm run build && npm run serve",
     "backend": "cd backend && node src/index.js",
     "backend-dev": "cd backend && nodemon src/index.js",
-    "unified-dev": "concurrently \"npm run dev\" \"npm run backend-dev\"",
-    "unified-build": "npm run build && npm run start"
+    "unified-dev": "nodemon server-start.js",
+    "unified-build": "next build && npm run start"
   },
   "dependencies": {
     "@radix-ui/react-collapsible": "^1.1.10",
