@@ -63,7 +63,7 @@ const SessionViewer = ({ session, onEndSession, onBack }) => {
             <div className="space-y-3">
               <div>
                 <span className="block text-sm font-medium text-gray-500">Session ID</span>
-                <span className="text-sm">{session.id}</span>
+                <span className="text-sm">{session.sessionId}</span>
               </div>
               <div>
                 <span className="block text-sm font-medium text-gray-500">Status</span>
@@ -144,7 +144,7 @@ const SessionViewer = ({ session, onEndSession, onBack }) => {
         
         <div className="mt-6 pt-4 border-t">
           <button
-            onClick={() => onEndSession(session.id)}
+            onClick={() => onEndSession(session.sessionId)}
             className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
           >
             End Session

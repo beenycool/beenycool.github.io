@@ -153,13 +153,13 @@ const ActiveSessions = ({ sessions, onViewDetails, onEndSession }) => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <button
-                      onClick={() => onViewDetails(session.id)}
+                      onClick={() => onViewDetails(session.sessionId)}
                       className="text-blue-600 hover:text-blue-800 mr-3"
                     >
                       View
                     </button>
                     <button
-                      onClick={() => onEndSession(session.id)}
+                      onClick={() => onEndSession(session.sessionId)}
                       className="text-red-600 hover:text-red-800"
                     >
                       End Session

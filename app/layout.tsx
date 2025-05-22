@@ -78,22 +78,27 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html: `
+              // Immediately initialize critical variables to prevent TDZ issues
+              window.aV = window.aV || {};
+              window.API_HELPERS = window.API_HELPERS || {};
+              window.BACKEND_STATUS = window.BACKEND_STATUS || { status: 'checking' };
+              
               // Define critical API helper functions to avoid temporal dead zone issues
               if (typeof window !== 'undefined') {
                 const DEFAULT_BACKEND_URL = 'https://beenycool-github-io.onrender.com';
                 
                 // Define these functions before any module loading happens
-                window.getApiBaseUrl = function() {
+                window.API_HELPERS.getApiBaseUrl = window.getApiBaseUrl = function() {
                   return window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
                     ? 'http://localhost:3003'
                     : DEFAULT_BACKEND_URL;
                 };
                 
-                window.isGitHubPages = function() {
+                window.API_HELPERS.isGitHubPages = window.isGitHubPages = function() {
                   return window.location.hostname.includes('github.io');
                 };
                 
-                window.constructApiUrl = function(endpoint) {
+                window.API_HELPERS.constructApiUrl = window.constructApiUrl = function(endpoint) {
                   const apiBaseUrl = window.getApiBaseUrl();
                   const isGH = window.isGitHubPages();
                   
@@ -112,12 +117,11 @@ export default function RootLayout({
                   return apiBaseUrl + '/' + endpoint;
                 };
                 
-                // Set up minimums to avoid TDZ errors during initialization
-                if (!window.BACKEND_STATUS) {
-                  window.BACKEND_STATUS = { status: 'checking' };
-                }
+                // Initialize any other critical variables that might be needed early
+                window.API_BASE_URL = window.getApiBaseUrl();
+                window.IS_GITHUB_PAGES = window.isGitHubPages();
                 
-                console.log('Critical API helpers initialized in <head>');
+                console.log('Critical API helpers and variables initialized in <head>');
               }
             `,
           }}

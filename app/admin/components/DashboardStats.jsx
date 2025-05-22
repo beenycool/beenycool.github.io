@@ -92,7 +92,7 @@ const DashboardStats = ({ data }) => {
         ];
         
         return {
-          label: type.replace('todo_', '').capitalize(),
+          label: capitalize(type.replace('todo_', '')),
           data: todoLabels.map(date => {
             const matchingItem = data.todoActivityByDay.find(
               item => item._id.date === date && item._id.action === type
@@ -341,8 +341,9 @@ const DashboardStats = ({ data }) => {
 };
 
 // Helper to capitalize first letter
-String.prototype.capitalize = function() {
-  return this.charAt(0).toUpperCase() + this.slice(1);
+const capitalize = (str) => {
+  if (!str) return '';
+  return str.charAt(0).toUpperCase() + str.slice(1);
 };
 
 export default DashboardStats; 
