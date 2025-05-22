@@ -134,45 +134,40 @@ const AdminDashboard = () => {
   
   // When tab changes, load the required data
   useEffect(() => {
-    if (!user) return;
-    
-    switch (activeTab) {
-      case 'dashboard':
-        fetchDashboardData();
-        break;
-      case 'sessions':
-        fetchActiveSessions();
-        break;
-      case 'users':
-        fetchUsers();
-        break;
-      default:
-        break;
-    }
-  }, [activeTab, user, timeRange, fetchDashboardData, fetchActiveSessions, fetchUsers]);
-  
-  // Authentication check for logged in user
-  useEffect(() => {
-    if (!user) {
-      router.push('/login');
-    }
-  }, [user, router, API_URL]);
-  
-  // Initialize data and setup refresh intervals
-  useEffect(() => {
-    fetchDashboardData();
-    fetchUsers();
-    fetchActiveSessions();
-    
-    // Set up interval to refresh data
-    const intervalId = setInterval(() => {
-      fetchDashboardData();
-      fetchUsers();
-      fetchActiveSessions();
-    }, 60000); // Refresh every minute
-    
-    return () => clearInterval(intervalId);
-  }, [fetchDashboardData, fetchUsers, fetchActiveSessions]);
+    if (!user) return; // Don't fetch if user is not authenticated
+
+    // setLoading(true); // Consider setting loading true at the start of data fetching for a tab
+
+    const loadTabData = async () => {
+      try {
+        switch (activeTab) {
+          case 'dashboard':
+            await fetchDashboardData();
+            break;
+          case 'sessions':
+            await fetchActiveSessions();
+            break;
+          case 'users':
+            await fetchUsers();
+            break;
+          // Add cases for 'leaderboards' and 'guilds' if they fetch data this way
+          // For now, they seem to handle their own data fetching internally via API_URL prop
+          default:
+            break;
+        }
+      } catch (tabError) {
+        // It's generally better for individual fetch functions to handle their own errors
+        // and set specific error messages. This is a fallback.
+        console.error(`Error loading data for tab ${activeTab}:`, tabError);
+        setError(`Failed to load data for ${activeTab}`);
+      } finally {
+        // setLoading(false); // Set loading false after all data for the tab is fetched
+      }
+    };
+
+    loadTabData();
+
+  }, [activeTab, user, timeRange, fetchDashboardData, fetchActiveSessions, fetchUsers]); // Removed setError from dependencies as it causes re-runs
   
   // View session details
   const viewSessionDetails = async (sessionId) => {
