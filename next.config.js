@@ -2,7 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   // For unified server, we don't need static export anymore
-  // output: process.env.NODE_ENV === 'production' ? 'export' : undefined,
+  output: 'export',
   images: {
     unoptimized: true
   },
