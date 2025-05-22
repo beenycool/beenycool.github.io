@@ -1,9 +1,9 @@
 'use client';
 
-import { usePostHog } from 'posthog-js/react';
+// import { usePostHog } from 'posthog-js/react'; // Commented out
 
 export function useAnalytics() {
-  const posthog = usePostHog();
+  // const posthog = usePostHog(); // Commented out
 
   return {
     /**
@@ -12,9 +12,10 @@ export function useAnalytics() {
      * @param {Object} properties - Additional properties to track
      */
     trackEvent: (eventName, properties = {}) => {
-      if (posthog) {
-        posthog.capture(eventName, properties);
-      }
+      // if (posthog) { // Commented out
+      //   posthog.capture(eventName, properties);
+      // }
+      console.log('Analytics (PostHog removed): trackEvent', eventName, properties);
     },
 
     /**
@@ -23,18 +24,20 @@ export function useAnalytics() {
      * @param {Object} properties - User properties
      */
     identifyUser: (userId, properties = {}) => {
-      if (posthog && userId) {
-        posthog.identify(userId, properties);
-      }
+      // if (posthog && userId) { // Commented out
+      //   posthog.identify(userId, properties);
+      // }
+      console.log('Analytics (PostHog removed): identifyUser', userId, properties);
     },
 
     /**
      * Reset the user identity (for logout)
      */
     resetUser: () => {
-      if (posthog) {
-        posthog.reset();
-      }
+      // if (posthog) { // Commented out
+      //   posthog.reset();
+      // }
+      console.log('Analytics (PostHog removed): resetUser');
     },
 
     /**
@@ -43,12 +46,13 @@ export function useAnalytics() {
      * @param {Object} properties - Additional properties
      */
     trackPageView: (pageName, properties = {}) => {
-      if (posthog) {
-        posthog.capture('$pageview', {
-          page_name: pageName,
-          ...properties
-        });
-      }
+      // if (posthog) { // Commented out
+      //   posthog.capture('$pageview', {
+      //     page_name: pageName,
+      //     ...properties
+      //   });
+      // }
+      console.log('Analytics (PostHog removed): trackPageView', pageName, properties);
     },
 
     /**
@@ -56,13 +60,14 @@ export function useAnalytics() {
      * @param {boolean} enabled - Whether tracking should be enabled
      */
     setTracking: (enabled) => {
-      if (posthog) {
-        if (enabled) {
-          posthog.opt_in_capturing();
-        } else {
-          posthog.opt_out_capturing();
-        }
-      }
+      // if (posthog) { // Commented out
+      //   if (enabled) {
+      //     posthog.opt_in_capturing();
+      //   } else {
+      //     posthog.opt_out_capturing();
+      //   }
+      // }
+      console.log('Analytics (PostHog removed): setTracking', enabled);
     }
   };
 } 

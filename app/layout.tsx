@@ -73,7 +73,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <meta httpEquiv="Permissions-Policy" content="interest-cohort=(), browsing-topics=()" />
+        <meta httpEquiv="Permissions-Policy" content="browsing-topics=()" />
         <link rel="icon" href="/favicon.ico" sizes="any" />
         <script
           dangerouslySetInnerHTML={{
