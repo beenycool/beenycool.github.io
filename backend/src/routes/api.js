@@ -48,8 +48,20 @@ router.get('/admin/users/:id', authenticateToken, isAdmin, adminController.getUs
 router.get('/admin/dashboard', authenticateToken, isAdmin, adminController.getSiteActivityDashboard);
 router.get('/admin/sessions', authenticateToken, isAdmin, adminController.getActiveSessions);
 router.post('/admin/sessions/end', authenticateToken, isAdmin, adminController.endUserSession);
-router.get('/admin/leaderboard/chess', authenticateToken, adminController.getChessLeaderboard);
-router.get('/admin/leaderboard/guilds', authenticateToken, adminController.getGuildLeaderboard);
+
+// Consolidated leaderboard route for admin
+router.get('/admin/leaderboards', authenticateToken, isAdmin, adminController.getCombinedLeaderboards); // New
+
+// Admin Guild Management Routes
+router.get('/admin/guilds', authenticateToken, isAdmin, adminController.adminGetAllGuilds); // New
+router.post('/admin/guilds', authenticateToken, isAdmin, adminController.adminCreateGuild); // New
+router.put('/admin/guilds/:id', authenticateToken, isAdmin, adminController.adminUpdateGuild); // New
+router.delete('/admin/guilds/:id', authenticateToken, isAdmin, adminController.adminDeleteGuild); // New
+
+// Note: Original specific leaderboard routes can be kept for other purposes or removed if no longer needed
+router.get('/admin/leaderboard/chess', authenticateToken, isAdmin, adminController.getChessLeaderboard);
+router.get('/admin/leaderboard/guilds', authenticateToken, isAdmin, adminController.getGuildLeaderboard);
+
 
 // GitHub model API routes
 router.post('/github/completions', globalRateLimiter, async (req, res) => {

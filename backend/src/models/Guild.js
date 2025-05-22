@@ -26,10 +26,6 @@ const Guild = sequelize.define('Guild', {
     type: DataTypes.ARRAY(DataTypes.INTEGER),
     defaultValue: []
   },
-  members: {
-    type: DataTypes.JSONB,
-    defaultValue: []
-  },
   stats: {
     type: DataTypes.JSONB,
     defaultValue: {
@@ -66,6 +62,13 @@ Guild.associate = function(models) {
     foreignKey: 'ownerId',
     as: 'owner'
   });
+
+  Guild.belongsToMany(models.User, {
+    through: 'UserGuilds', // Join table name
+    as: 'members',         // Alias for accessing members from a guild instance
+    foreignKey: 'guildId',   // Foreign key in UserGuilds linking to Guild
+    otherKey: 'userId'     // Foreign key in UserGuilds linking to User
+  });
 };
 
 // Instance method to recalculate stats
@@ -73,19 +76,18 @@ Guild.prototype.recalculateStats = async function() {
   const User = sequelize.models.User;
   
   try {
-    // Get all guild members
-    const memberIds = this.members;
+    // Get all guild members using the new association
+    const members = await this.getMembers(); // Uses the 'members' alias from belongsToMany
     
-    if (!memberIds || memberIds.length === 0) {
+    if (!members || members.length === 0) {
+      // If no members, reset relevant stats and save
+      this.stats = {
+        ...this.stats,
+        averageRating: 1200, // Default rating
+        memberCount: 0
+      };
       return this.save();
     }
-    
-    // Get user data for all members
-    const members = await User.findAll({
-      where: {
-        id: memberIds
-      }
-    });
     
     // Calculate average rating
     let totalRating = 0;

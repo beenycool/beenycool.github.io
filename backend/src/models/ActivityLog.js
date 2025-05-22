@@ -10,9 +10,18 @@ const ActivityLog = sequelize.define('ActivityLog', {
     type: DataTypes.STRING,
     allowNull: false
   },
-  details: {
+  username: { // Added username field
+    type: DataTypes.STRING,
+    allowNull: true // Allow null if the action is not user-specific or user is deleted
+  },
+  actionDetails: { // Renamed from details
     type: DataTypes.JSONB,
     defaultValue: {}
+  },
+  performedAt: { // Added performedAt field
+    type: DataTypes.DATE,
+    allowNull: false,
+    defaultValue: DataTypes.NOW
   },
   ipAddress: {
     type: DataTypes.STRING,

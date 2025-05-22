@@ -81,6 +81,13 @@ User.associate = function(models) {
     foreignKey: 'userId',
     as: 'sessions'
   });
+
+  User.belongsToMany(models.Guild, {
+    through: 'UserGuilds', // This will be the name of the join table
+    as: 'guilds',         // Alias for when accessing guilds from a user instance
+    foreignKey: 'userId',    // Foreign key in UserGuilds linking to User
+    otherKey: 'guildId'      // Foreign key in UserGuilds linking to Guild
+  });
 };
 
 module.exports = User; 

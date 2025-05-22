@@ -22,6 +22,8 @@ const AdminDashboard = () => {
   const [activeSessions, setActiveSessions] = useState([]);
   const [users, setUsers] = useState([]);
   const [selectedSession, setSelectedSession] = useState(null);
+  const [leaderboardData, setLeaderboardData] = useState(null); // Added for leaderboards
+  const [guildsList, setGuildsList] = useState([]); // Added for guilds
   const [timeRange, setTimeRange] = useState(7); // 7 days default
   
   const router = useRouter();
@@ -206,6 +208,99 @@ const AdminDashboard = () => {
     }
   }, [API_URL]);
   
+  // Load leaderboard data
+  const fetchLeaderboardData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('authToken');
+      const response = await axios.get(`${API_URL}/admin/leaderboards`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setLeaderboardData(response.data.data);
+      analytics.trackEvent('admin_leaderboards_loaded');
+      setLoading(false);
+    } catch (err) {
+      console.error('Error fetching leaderboard data:', err);
+      setError('Failed to load leaderboard data');
+      analytics.trackEvent('admin_leaderboards_error', { error: err.message });
+      setLoading(false);
+    }
+  }, [API_URL, analytics]);
+
+  // Load guilds list
+  const fetchGuildsList = useCallback(async () => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('authToken');
+      const response = await axios.get(`${API_URL}/admin/guilds`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setGuildsList(response.data.guilds);
+      analytics.trackEvent('admin_guilds_loaded');
+      setLoading(false);
+    } catch (err) {
+      console.error('Error fetching guilds list:', err);
+      setError('Failed to load guilds list');
+      analytics.trackEvent('admin_guilds_error', { error: err.message });
+      setLoading(false);
+    }
+  }, [API_URL, analytics]);
+
+  // Guild CRUD operations
+  const handleCreateGuild = useCallback(async (guildData) => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('authToken');
+      await axios.post(`${API_URL}/admin/guilds`, guildData, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      await fetchGuildsList(); // Refresh list
+      analytics.trackEvent('admin_guild_created', { name: guildData.name });
+    } catch (err) {
+      console.error('Error creating guild:', err);
+      setError(err.response?.data?.message || 'Failed to create guild');
+      analytics.trackEvent('admin_guild_create_error', { error: err.message });
+    } finally {
+      setLoading(false);
+    }
+  }, [API_URL, fetchGuildsList, analytics]);
+
+  const handleUpdateGuild = useCallback(async (guildId, guildData) => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('authToken');
+      await axios.put(`${API_URL}/admin/guilds/${guildId}`, guildData, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      await fetchGuildsList(); // Refresh list
+      analytics.trackEvent('admin_guild_updated', { guildId, name: guildData.name });
+    } catch (err) {
+      console.error('Error updating guild:', err);
+      setError(err.response?.data?.message || 'Failed to update guild');
+      analytics.trackEvent('admin_guild_update_error', { guildId, error: err.message });
+    } finally {
+      setLoading(false);
+    }
+  }, [API_URL, fetchGuildsList, analytics]);
+
+  const handleDeleteGuild = useCallback(async (guildId) => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('authToken');
+      await axios.delete(`${API_URL}/admin/guilds/${guildId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      await fetchGuildsList(); // Refresh list
+      analytics.trackEvent('admin_guild_deleted', { guildId });
+    } catch (err) {
+      console.error('Error deleting guild:', err);
+      setError(err.response?.data?.message || 'Failed to delete guild');
+      analytics.trackEvent('admin_guild_delete_error', { guildId, error: err.message });
+    } finally {
+      setLoading(false);
+    }
+  }, [API_URL, fetchGuildsList, analytics]);
+  
   // When tab changes, load the required data
   useEffect(() => {
     if (!user) return; // Don't fetch if user is not authenticated
@@ -224,24 +319,31 @@ const AdminDashboard = () => {
           case 'users':
             await fetchUsers();
             break;
-          // Add cases for 'leaderboards' and 'guilds' if they fetch data this way
-          // For now, they seem to handle their own data fetching internally via API_URL prop
+          case 'leaderboards':
+            await fetchLeaderboardData();
+            break;
+          case 'guilds':
+            await fetchGuildsList();
+            break;
           default:
             break;
         }
       } catch (tabError) {
-        // It's generally better for individual fetch functions to handle their own errors
-        // and set specific error messages. This is a fallback.
+        // Individual fetch functions handle their own errors and set specific error messages.
+        // This catch block is a general fallback.
         console.error(`Error loading data for tab ${activeTab}:`, tabError);
-        setError(`Failed to load data for ${activeTab}`);
+        // Avoid overwriting specific error messages set by fetch functions unless it's a new error.
+        if (!error) {
+          setError(`Failed to load data for ${activeTab}`);
+        }
       } finally {
-        // setLoading(false); // Set loading false after all data for the tab is fetched
+        // setLoading(false); // Individual fetch functions handle their own loading state.
       }
     };
 
     loadTabData();
 
-  }, [activeTab, user, timeRange, fetchDashboardData, fetchActiveSessions, fetchUsers]); // Removed setError from dependencies as it causes re-runs
+  }, [activeTab, user, timeRange, fetchDashboardData, fetchActiveSessions, fetchUsers, fetchLeaderboardData, fetchGuildsList, error]);
   
   // View session details
   const viewSessionDetails = async (sessionId) => {
@@ -476,12 +578,17 @@ const AdminDashboard = () => {
               </div>
             )}
             
-            {activeTab === 'leaderboards' && (
-              <Leaderboards API_URL={API_URL} />
+            {activeTab === 'leaderboards' && leaderboardData && (
+              <Leaderboards leaderboardData={leaderboardData} />
             )}
             
             {activeTab === 'guilds' && (
-              <GuildManager API_URL={API_URL} />
+              <GuildManager
+                guilds={guildsList}
+                onCreateGuild={handleCreateGuild}
+                onUpdateGuild={handleUpdateGuild}
+                onDeleteGuild={handleDeleteGuild}
+              />
             )}
           </>
         )}

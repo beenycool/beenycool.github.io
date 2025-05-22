@@ -40,7 +40,7 @@ exports.getUserById = async (req, res) => {
     
     const user = await User.findByPk(userId, {
       attributes: { exclude: ['password'] },
-      include: [{ model: Guild, as: 'guild' }] // Assuming 'guild' is the alias for User -> Guild association
+      include: [{ model: Guild, as: 'guilds' }] // Corrected alias for User.belongsToMany(Guild)
     });
     
     if (!user) {
@@ -66,8 +66,8 @@ exports.getUserById = async (req, res) => {
     const chessGames = await ChessGame.findAll({
       where: {
         [Sequelize.Op.or]: [
-          { 'players.white.userId': userId },
-          { 'players.black.userId': userId }
+          { whitePlayerId: userId }, // Corrected: Use whitePlayerId
+          { blackPlayerId: userId }  // Corrected: Use blackPlayerId
         ]
       },
       order: [['startTime', 'DESC']],
@@ -111,12 +111,12 @@ exports.updateUserRole = async (req, res) => {
     
     // Log the admin action
     await ActivityLog.create({
-      userId: req.user.id, 
+      userId: req.user.id,
       username: req.user.username,
       actionType: 'admin_action',
-      actionDetails: {
+      actionDetails: { // This was already correct
         action: 'update_user_role',
-        targetUserId: userId, // Changed from targetUser for clarity
+        targetUserId: userId,
         newRole: role
       },
       performedAt: new Date()
@@ -319,16 +319,11 @@ exports.getActiveSessions = async (req, res) => {
 // Get session details by ID (assuming UserSession primary key is 'id' or 'sessionId' if that's the PK)
 exports.getSessionDetails = async (req, res) => {
   try {
-    const sessionId = req.params.id; // This should be the primary key of UserSession
+    const sessionIdFromParam = req.params.id; // This is the UUID sessionId
     const { sequelize, Sequelize } = require('../db/config');
 
-    // If sessionId in UserSession is not the PK, but a field named 'sessionId'
-    // const session = await UserSession.findOne({ 
-    //   where: { sessionId: sessionId }, 
-    //   include: [{ model: User, as: 'user', attributes: ['id', 'username', 'role'] }]
-    // });
-    // If req.params.id refers to the primary key of UserSession model:
-    const session = await UserSession.findByPk(sessionId, { 
+    const session = await UserSession.findOne({
+        where: { sessionId: sessionIdFromParam }, // Query by the UUID sessionId field
         include: [{ model: User, as: 'user', attributes: ['id', 'username', 'role'] }]
     });
 
@@ -337,12 +332,13 @@ exports.getSessionDetails = async (req, res) => {
     }
 
     // Get recent activity for this user during this session
+    // UserSession model now has startTime and endTime
     const activities = await ActivityLog.findAll({
       where: {
-        userId: session.userId, // Assuming UserSession has userId or session.user.id if populated
+        userId: session.userId,
         performedAt: {
-          [Sequelize.Op.gte]: session.startTime,
-          [Sequelize.Op.lte]: session.endTime || new Date() // Use current time if endTime is null
+          [Sequelize.Op.gte]: session.startTime, // Use UserSession.startTime
+          [Sequelize.Op.lte]: session.endTime || new Date() // Use UserSession.endTime or current time if session still active
         }
       },
       order: [['performedAt', 'DESC']]
@@ -380,10 +376,10 @@ exports.endUserSession = async (req, res) => {
       userId: req.user.id, // Admin's ID
       username: req.user.username,
       actionType: 'admin_action',
-      actionDetails: {
+      actionDetails: { // This was already correct
         action: 'end_user_session',
-        targetUserId: session.userId, // Assuming UserSession has userId
-        targetSessionId: session.sessionId // Log the actual session identifier
+        targetUserId: session.userId,
+        targetSessionId: session.sessionId
       },
       performedAt: new Date()
     });
@@ -435,4 +431,233 @@ exports.getGuildLeaderboard = async (req, res) => {
     console.error('Get Guild Leaderboard error:', error);
     res.status(500).json({ success: false, message: 'Server error', error: error.message });
   }
-}; 
+};
+
+// Get Combined Leaderboards for Admin Dashboard
+exports.getCombinedLeaderboards = async (req, res) => {
+  try {
+    const { sequelize, Sequelize } = require('../db/config');
+    const limit = parseInt(req.query.limit) || 10;
+
+    // Chess Leaderboard
+    const chessLeaderboard = await User.findAll({
+      attributes: ['id', 'username', 'avatar', 'chessRating',
+        [Sequelize.literal('(SELECT COUNT(*) FROM "ChessGames" WHERE "ChessGames"."whitePlayerId" = "User"."id" OR "ChessGames"."blackPlayerId" = "User"."id")'), 'gamesPlayed'],
+        [Sequelize.literal('(SELECT COUNT(*) FROM "ChessGames" WHERE ("ChessGames"."whitePlayerId" = "User"."id" AND "ChessGames"."result" = \'white\') OR ("ChessGames"."blackPlayerId" = "User"."id" AND "ChessGames"."result" = \'black\'))'), 'wins'],
+        [Sequelize.literal('(SELECT COUNT(*) FROM "ChessGames" WHERE ("ChessGames"."whitePlayerId" = "User"."id" AND "ChessGames"."result" = \'black\') OR ("ChessGames"."blackPlayerId" = "User"."id" AND "ChessGames"."result" = \'white\'))'), 'losses'],
+        [Sequelize.literal('(SELECT COUNT(*) FROM "ChessGames" WHERE (("ChessGames"."whitePlayerId" = "User"."id" OR "ChessGames"."blackPlayerId" = "User"."id") AND "ChessGames"."result" = \'draw\'))'), 'draws']
+      ],
+      order: [['chessRating', 'DESC']],
+      limit: limit,
+      raw: true, // Get plain JSON objects
+    }).then(users => users.map(u => ({
+        id: u.id,
+        username: u.username,
+        avatar: u.avatar,
+        chessRating: u.chessRating,
+        stats: { chess: { gamesPlayed: parseInt(u.gamesPlayed) || 0, wins: parseInt(u.wins) || 0, losses: parseInt(u.losses) || 0, draws: parseInt(u.draws) || 0 } }
+    })));
+
+
+    // Guild Leaderboard
+    // This requires a more complex query to calculate average rating and win rates if not stored directly.
+    // For simplicity, using existing fields or placeholders.
+    const guildLeaderboard = await Guild.findAll({
+      attributes: [
+        'id', 'name', 'logo', 'description', 'ownerId',
+        [Sequelize.literal('(SELECT COUNT(*) FROM "UserGuilds" WHERE "UserGuilds"."guildId" = "Guild"."id")'), 'memberCount'],
+        // Placeholder for averageRating and winRate, ideally calculated or stored
+        [Sequelize.literal('1200'), 'averageRating'], // Placeholder
+        [Sequelize.literal('0'), 'totalGames'], // Placeholder
+        [Sequelize.literal('0'), 'totalWins'] // Placeholder
+      ],
+      include: [{ model: User, as: 'owner', attributes: ['username'] }],
+      order: [[Sequelize.literal('"memberCount"'), 'DESC']], // Example order
+      limit: limit,
+      raw: true,
+      nest: true,
+    }).then(guilds => guilds.map(g => ({
+        id: g.id,
+        name: g.name,
+        logo: g.logo,
+        ownerName: g.owner?.username || 'N/A',
+        stats: {
+            memberCount: parseInt(g.memberCount) || 0,
+            averageRating: parseInt(g.averageRating) || 1200,
+            totalGames: parseInt(g.totalGames) || 0,
+            totalWins: parseInt(g.totalWins) || 0,
+        }
+    })));
+
+    // Most Active Users (from getSiteActivityDashboard logic)
+    const days = 7; // Default to 7 days for activity leaderboard
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(endDate.getDate() - days);
+
+    const mostActiveRaw = await ActivityLog.findAll({
+      attributes: [
+        'userId',
+        [sequelize.fn('COUNT', sequelize.col('ActivityLog.id')), 'actionCount'],
+        [sequelize.fn('MAX', sequelize.col('ActivityLog.performedAt')), 'lastActive']
+      ],
+      where: {
+        performedAt: { [Sequelize.Op.gte]: startDate, [Sequelize.Op.lte]: endDate }
+      },
+      include: [{ model: User, as: 'user', attributes: ['id', 'username', 'email', 'profilePicture'] }],
+      group: ['userId', 'user.id', 'user.username', 'user.email', 'user.profilePicture'],
+      order: [[sequelize.fn('COUNT', sequelize.col('ActivityLog.id')), 'DESC']],
+      limit: limit,
+      raw: true,
+      nest: true,
+    });
+    
+    const activityLeaderboard = mostActiveRaw.map(u => ({
+        id: u.user.id,
+        username: u.user.username,
+        email: u.user.email,
+        profilePicture: u.user.profilePicture,
+        actionCount: parseInt(u.actionCount) || 0,
+        // sessionCount needs to be fetched or calculated differently if required
+        sessionCount: 0, // Placeholder
+        lastActive: u.lastActive
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: {
+        chess: chessLeaderboard,
+        guilds: guildLeaderboard,
+        activity: activityLeaderboard,
+      },
+    });
+  } catch (error) {
+    console.error('Get Combined Leaderboards error:', error);
+    res.status(500).json({ success: false, message: 'Server error', error: error.message });
+  }
+};
+
+// Admin: Get all guilds
+exports.adminGetAllGuilds = async (req, res) => {
+  try {
+    const guilds = await Guild.findAll({
+      include: [
+        { model: User, as: 'owner', attributes: ['id', 'username'] },
+        // Optionally include member count if not a direct field
+        // { model: User, as: 'members', attributes: ['id'] }
+      ],
+      order: [['createdAt', 'DESC']]
+    });
+    // If you need to manually count members for each guild:
+    // const guildsWithMemberCount = await Promise.all(guilds.map(async (guild) => {
+    //   const memberCount = await guild.countMembers(); // Assuming a method on Guild model
+    //   return { ...guild.toJSON(), memberCount };
+    // }));
+    res.status(200).json({ success: true, guilds });
+  } catch (error) {
+    console.error('Admin get all guilds error:', error);
+    res.status(500).json({ success: false, message: 'Server error', error: error.message });
+  }
+};
+
+// Admin: Create a new guild
+exports.adminCreateGuild = async (req, res) => {
+  try {
+    const { name, description, logo } = req.body;
+    const ownerId = req.user.id; // Admin creating the guild is the owner
+
+    if (!name) {
+      return res.status(400).json({ success: false, message: 'Guild name is required' });
+    }
+
+    const newGuild = await Guild.create({
+      name,
+      description,
+      logo,
+      ownerId,
+      // memberCount: 1 // Initial member count if admin is auto-added
+    });
+    
+    // Log admin action
+    await ActivityLog.create({
+      userId: req.user.id,
+      username: req.user.username,
+      actionType: 'admin_action',
+      actionDetails: { action: 'create_guild', guildId: newGuild.id, guildName: newGuild.name },
+      performedAt: new Date()
+    });
+
+    res.status(201).json({ success: true, message: 'Guild created successfully', guild: newGuild });
+  } catch (error) {
+    console.error('Admin create guild error:', error);
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      return res.status(409).json({ success: false, message: 'Guild name already exists.' });
+    }
+    res.status(500).json({ success: false, message: 'Server error', error: error.message });
+  }
+};
+
+// Admin: Update a guild
+exports.adminUpdateGuild = async (req, res) => {
+  try {
+    const guildId = req.params.id;
+    const { name, description, logo } = req.body;
+
+    const guild = await Guild.findByPk(guildId);
+    if (!guild) {
+      return res.status(404).json({ success: false, message: 'Guild not found' });
+    }
+
+    guild.name = name || guild.name;
+    guild.description = description !== undefined ? description : guild.description;
+    guild.logo = logo !== undefined ? logo : guild.logo;
+    
+    await guild.save();
+
+    // Log admin action
+    await ActivityLog.create({
+      userId: req.user.id,
+      username: req.user.username,
+      actionType: 'admin_action',
+      actionDetails: { action: 'update_guild', guildId: guild.id, updatedFields: Object.keys(req.body) },
+      performedAt: new Date()
+    });
+
+    res.status(200).json({ success: true, message: 'Guild updated successfully', guild });
+  } catch (error) {
+    console.error('Admin update guild error:', error);
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      return res.status(409).json({ success: false, message: 'Guild name already exists.' });
+    }
+    res.status(500).json({ success: false, message: 'Server error', error: error.message });
+  }
+};
+
+// Admin: Delete a guild
+exports.adminDeleteGuild = async (req, res) => {
+  try {
+    const guildId = req.params.id;
+
+    const guild = await Guild.findByPk(guildId);
+    if (!guild) {
+      return res.status(404).json({ success: false, message: 'Guild not found' });
+    }
+
+    const guildName = guild.name; // For logging
+    await guild.destroy();
+    
+    // Log admin action
+    await ActivityLog.create({
+      userId: req.user.id,
+      username: req.user.username,
+      actionType: 'admin_action',
+      actionDetails: { action: 'delete_guild', guildId: guildId, guildName: guildName },
+      performedAt: new Date()
+    });
+
+    res.status(200).json({ success: true, message: 'Guild deleted successfully' });
+  } catch (error) {
+    console.error('Admin delete guild error:', error);
+    res.status(500).json({ success: false, message: 'Server error', error: error.message });
+  }
+};
