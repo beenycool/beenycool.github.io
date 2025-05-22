@@ -62,6 +62,18 @@ const LoginContent = () => {
         return;
       }
       
+      // Special handling for Beeny user
+      if (isLogin && formData.username === 'Beeny' && formData.password === 'Beeny1234!?') {
+        // Create a mock token for Beeny with admin privileges
+        const mockToken = 'mock-token-for-beeny-admin-access';
+        localStorage.setItem('authToken', mockToken);
+        
+        // If redirect is to admin, go there directly
+        router.push(redirect);
+        setLoading(false);
+        return;
+      }
+      
       const endpoint = isLogin ? `${API_URL}/auth/login` : `${API_URL}/auth/register`;
       
       const response = await axios.post(endpoint, formData);
