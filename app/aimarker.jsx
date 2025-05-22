@@ -545,7 +545,8 @@ const EnhancedAlert = ({ success, error, onRetryAction }) => { // Added onRetryA
 
 // Add a progress indicator component
 const ProgressIndicator = ({ loading, progress }) => {
-  if (!loading) return null;
+  // Don't show if not loading or if progress is empty (stream finished)
+  if (!loading || !progress) return null;
   
   return (
     <div className="absolute inset-0 bg-black/5 dark:bg-black/20 backdrop-blur-[1px] flex items-center justify-center z-50 rounded-lg">
@@ -1950,7 +1951,8 @@ const AIMarker = () => {
       while (true) {
         const { value, done } = await reader.read();
         if (done) {
-          setProcessingProgress("Stream finished.");
+          // Don't show "Stream finished" message as it overlaps with content
+          setProcessingProgress("");
           setModelThinking("Stream complete.");
           break; // Exit while loop
         }
