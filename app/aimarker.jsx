@@ -46,28 +46,26 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog"; // ADDED Dialog for OCR Preview
 import Papa from 'papaparse'; // Import PapaParse
 
-// Import API helper functions from separate file to avoid temporal dead zone issues
-import { getApiBaseUrl, constructApiUrl, initializeApiHelpers, isGitHubPages } from '@/lib/api-helpers';
+// Import API helper functions from separate file
+import { getApiBaseUrl, constructApiUrl, isGitHubPages } from '@/lib/api-helpers';
 
-// API URL for our backend
+// API URL for our backend - Use window functions if available for stability
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ||
-  (typeof window !== 'undefined' &&
-    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-      ? 'http://localhost:3003'  // Local development
-      : 'https://beenycool-github-io.onrender.com'); // Production URL
+  (typeof window !== 'undefined' && window.getApiBaseUrl 
+    ? window.getApiBaseUrl() 
+    : (typeof window !== 'undefined' &&
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+        ? 'http://localhost:3003'
+        : 'https://beenycool-github-io.onrender.com'));
 
-// Log the API URL for debugging
-console.log(`Using API URL: ${API_BASE_URL}`, `GitHub Pages: ${typeof window !== 'undefined' && isGitHubPages()}`);
+// Log the API URL for debugging - carefully check if the functions exist
+const isGHPages = typeof window !== 'undefined' && 
+  (window.isGitHubPages ? window.isGitHubPages() : isGitHubPages());
+console.log(`Using API URL: ${API_BASE_URL}`, `GitHub Pages: ${isGHPages}`);
 
-// Initialize API helpers and backend status
-if (typeof window !== 'undefined') {
-  // Initialize API helpers
-  initializeApiHelpers();
-  
-  // Set default backend status if not already set
-  if (!window.BACKEND_STATUS) {
-    window.BACKEND_STATUS = { status: 'checking', lastChecked: null };
-  }
+// Use existing backend status or provide default
+if (typeof window !== 'undefined' && !window.BACKEND_STATUS) {
+  window.BACKEND_STATUS = { status: 'checking', lastChecked: null };
 }
 
 // Constants moved to a separate section for easier management

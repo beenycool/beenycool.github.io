@@ -78,26 +78,46 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html: `
-              // Define fallback API helper functions to prevent reference errors
+              // Define critical API helper functions to avoid temporal dead zone issues
               if (typeof window !== 'undefined') {
+                const DEFAULT_BACKEND_URL = 'https://beenycool-github-io.onrender.com';
+                
+                // Define these functions before any module loading happens
                 window.getApiBaseUrl = function() {
                   return window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
                     ? 'http://localhost:3003'
-                    : 'https://beenycool-github-io.onrender.com';
+                    : DEFAULT_BACKEND_URL;
                 };
+                
+                window.isGitHubPages = function() {
+                  return window.location.hostname.includes('github.io');
+                };
+                
                 window.constructApiUrl = function(endpoint) {
                   const apiBaseUrl = window.getApiBaseUrl();
+                  const isGH = window.isGitHubPages();
+                  
+                  // Normalize the endpoint
                   if (!endpoint.startsWith('/api/') && !endpoint.startsWith('api/')) {
                     endpoint = 'api/' + endpoint;
                   } else if (endpoint.startsWith('/api/')) {
                     endpoint = endpoint.substring(1);
                   }
+                  
+                  // For GitHub Pages, special handling
+                  if (isGH && endpoint.startsWith('api/')) {
+                    endpoint = endpoint.substring(4);
+                  }
+                  
                   return apiBaseUrl + '/' + endpoint;
                 };
-                window.isGitHubPages = function() {
-                  return window.location.hostname.includes('github.io');
-                };
-                console.log('Fallback API helpers initialized');
+                
+                // Set up minimums to avoid TDZ errors during initialization
+                if (!window.BACKEND_STATUS) {
+                  window.BACKEND_STATUS = { status: 'checking' };
+                }
+                
+                console.log('Critical API helpers initialized in <head>');
               }
             `,
           }}
