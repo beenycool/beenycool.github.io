@@ -1545,28 +1545,33 @@ const AIMarker = () => {
     if (savedExamBoard && EXAM_BOARDS.find(eb => eb.value === savedExamBoard)) {
       setExamBoard(savedExamBoard);
     }
+
+    let initialModel = "gemini-2.5-flash-preview-04-17"; // Default model
     const savedModel = localStorage.getItem(LOCALSTORAGE_KEYS.MODEL);
     if (savedModel && AI_MODELS.find(m => m.value === savedModel)) {
-      setSelectedModel(savedModel);
-      // Initialize the currentModelForRequestRef with the saved model
-      currentModelForRequestRef.current = savedModel;
-    } else {
-      // Initialize with the default model
-      currentModelForRequestRef.current = "gemini-2.5-flash-preview-04-17";
+      initialModel = savedModel;
     }
+
+    if (selectedModel !== initialModel) {
+      setSelectedModel(initialModel);
+    }
+    currentModelForRequestRef.current = initialModel;
+    
+    // Set thinking budget based on the effectively loaded model
+    setThinkingBudget(DEFAULT_THINKING_BUDGETS[initialModel] || 1024);
+
     const savedTier = localStorage.getItem(LOCALSTORAGE_KEYS.TIER);
     if (savedTier === "higher" || savedTier === "foundation") {
       setTier(savedTier);
     }
 
     // Initialize remaining tokens display
-    const tokens = getRequestTokens();
+    // getRequestTokens might depend on state that is being set here,
+    // consider if its invocation needs to be deferred or if its dependencies are stable.
+    const tokens = getRequestTokens(); 
     setRemainingRequestTokens(tokens.count);
 
-    // Add default thinking budget for selected model
-    setThinkingBudget(DEFAULT_THINKING_BUDGETS[selectedModel] || 1024);
-
-  }, [getRequestTokens, selectedModel]); // Empty dependency array means this runs once on mount
+  }, [getRequestTokens]); // Removed selectedModel from dependencies, added it to conditional update
 
   // Effects for saving preferences to localStorage when they change
   useEffect(() => {
