@@ -47,23 +47,21 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import Papa from 'papaparse'; // Import PapaParse
 
 // Import API helper functions from separate file
-import { getApiBaseUrl, constructApiUrl, isGitHubPages } from '@/lib/api-helpers';
+import { getApiBaseUrl, constructApiUrl, isGitHubPages as isGHPagesHelper } from '@/lib/api-helpers'; // Renamed import
 
-// API URL for our backend - Use window functions if available for stability
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ||
-  (typeof window !== 'undefined' && window.getApiBaseUrl 
-    ? window.getApiBaseUrl() 
-    : (typeof window !== 'undefined' &&
-      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-        ? 'http://localhost:3003'
-        : 'https://beenycool-github-io.onrender.com'));
+// API URL for our backend
+// NEXT_PUBLIC_API_BASE_URL should be set in your environment variables.
+// For GitHub Pages, it should point to your Render backend.
+// For local development, it can point to your local backend.
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3003'; // Fallback for local if not set
 
-// Log the API URL for debugging - carefully check if the functions exist
-const isGHPages = typeof window !== 'undefined' && 
-  (window.isGitHubPages ? window.isGitHubPages() : isGitHubPages());
+// Determine if running on GitHub Pages using the helper
+const isGHPages = isGHPagesHelper();
 console.log(`Using API URL: ${API_BASE_URL}`, `GitHub Pages: ${isGHPages}`);
 
 // Use existing backend status or provide default
+// This kind of global window modification can be problematic.
+// Consider managing this state within React or a dedicated state manager.
 if (typeof window !== 'undefined' && !window.BACKEND_STATUS) {
   window.BACKEND_STATUS = { status: 'checking', lastChecked: null };
 }

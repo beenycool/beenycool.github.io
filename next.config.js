@@ -34,19 +34,19 @@ const nextConfig = {
     esmExternals: 'loose'
   },
   // Override headers to remove default Permissions-Policy header for all routes
-  async headers() {
-    return [
-      {
-        source: '/:path*',
-        headers: [
-          {
-            key: 'Permissions-Policy',
-            value: ''
-          }
-        ]
-      }
-    ];
-  }
+  // async headers() {
+  //   return [
+  //     {
+  //       source: '/:path*',
+  //       headers: [
+  //         {
+  //           key: 'Permissions-Policy',
+  //           value: '' // Setting to empty effectively removes it or sets a minimal non-blocking policy
+  //         }
+  //       ]
+  //     }
+  //   ];
+  // }
 }
 
 module.exports = nextConfig; 
