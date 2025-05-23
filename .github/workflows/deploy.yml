@@ -41,6 +41,8 @@ jobs:
         run: npm run build
         env:
           NODE_ENV: production
+          IS_STATIC_EXPORT: 'true'
+          NEXT_PUBLIC_API_URL: 'https://beenycool-github-io.onrender.com'
           NEXT_PUBLIC_OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       
       - name: Add .nojekyll file
