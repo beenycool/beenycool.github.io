@@ -10,20 +10,11 @@ import { initializeApiHelpers } from '@/lib/api-helpers';
  */
 export function APIInitializer() {
   useEffect(() => {
-    // Initialize critical variables immediately - no delay
-    if (typeof window !== 'undefined') {
-      // Make sure aV exists before any code tries to access it
-      if (!window.aV) window.aV = {};
-      window.API_HELPERS = window.API_HELPERS || {};
-      window.BACKEND_STATUS = window.BACKEND_STATUS || { status: 'checking' };
-    }
-
-    // Use a short timeout to ensure DOM is fully ready
-    // This helps avoid the temporal dead zone issues
-    const timer = setTimeout(() => {
+    // verify that critical variables exist, but don't reinitialize
+    if (typeof window !== 'undefined' && window.aV) {
+      // Skip initialization and just set up API helpers
       try {
-        console.log('Initializing API helpers from component...');
-        // Check if we already have initialization
+        console.log('API variables already initialized, setting up API helpers...');
         if (!window.API_HELPERS?.initialized) {
           initializeApiHelpers();
           window.API_HELPERS.initialized = true;
@@ -32,16 +23,8 @@ export function APIInitializer() {
         }
       } catch (error) {
         console.error('Error initializing API helpers from component:', error);
-        // Attempt recovery by reinitializing critical variables
-        if (typeof window !== 'undefined') {
-          if (!window.aV) window.aV = {};
-          window.API_HELPERS = window.API_HELPERS || {};
-          window.BACKEND_STATUS = window.BACKEND_STATUS || { status: 'checking' };
-        }
       }
-    }, 0);
-    
-    return () => clearTimeout(timer);
+    }
   }, []);
 
   // This component doesn't render anything visible
