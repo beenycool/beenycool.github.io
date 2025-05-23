@@ -2,7 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   // For unified server, we don't need static export anymore
-  output: 'export',
+  ...(process.env.NODE_ENV === 'production' ? { output: 'export' } : {}),
   images: {
     unoptimized: true
   },
@@ -31,6 +31,20 @@ const nextConfig = {
   // Use React server-components condition to avoid duplicate React issues
   experimental: {
     esmExternals: 'loose'
+  },
+  // Override headers to remove default Permissions-Policy header for all routes
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          {
+            key: 'Permissions-Policy',
+            value: ''
+          }
+        ]
+      }
+    ];
   }
 }
 
