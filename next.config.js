@@ -19,7 +19,7 @@ const nextConfig = {
   webpack: (config, { dev, isServer }) => {
     // Add optimization settings
     if (!dev && !isServer) {
-      config.optimization.minimize = true;
+      config.optimization.minimize = false;
       config.optimization.minimizer = config.optimization.minimizer || [];
       config.optimization.splitChunks = {
         chunks: 'all',
