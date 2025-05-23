@@ -1630,13 +1630,12 @@ const AIMarker = () => {
       setIsGitHubPages(isGitHubPagesHost);
       
       if (isGitHubPagesHost) {
-        console.log('Running on GitHub Pages - simulating online status for UI rendering');
+        console.log('Running on GitHub Pages - simulating online status for UI rendering (mount effect)');
         backendStatusRef.current = 'online';
-        // Force a re-render
-        setBackendUpdated(prev => !prev);
+        // REMOVED: setBackendUpdated(prev => !prev); // This was likely causing the loop
       }
     }
-  }, [setIsGitHubPages]);
+  }, []); // Empty dependency array to run only on mount
 
   // Effect for automatic subject detection based on question and answer
   useEffect(() => {
