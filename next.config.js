@@ -12,7 +12,7 @@ const nextConfig = {
   trailingSlash: true,
   env: {
     // Use environment variables or default values
-    NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api',
+    NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_URL || 'https://beenycool-github-io.onrender.com/api',
     NEXT_PUBLIC_POSTHOG_KEY: process.env.NEXT_PUBLIC_POSTHOG_KEY || '',
     NEXT_PUBLIC_POSTHOG_HOST: process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://app.posthog.com'
   },
@@ -34,19 +34,19 @@ const nextConfig = {
     esmExternals: 'loose'
   },
   // Override headers to remove default Permissions-Policy header for all routes
-  // async headers() {
-  //   return [
-  //     {
-  //       source: '/:path*',
-  //       headers: [
-  //         {
-  //           key: 'Permissions-Policy',
-  //           value: '' // Setting to empty effectively removes it or sets a minimal non-blocking policy
-  //         }
-  //       ]
-  //     }
-  //   ];
-  // }
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          {
+            key: 'Permissions-Policy',
+            value: 'camera=(), microphone=(), geolocation=()' // Removed interest-cohort and set minimal policy
+          }
+        ]
+      }
+    ];
+  }
 }
 
 module.exports = nextConfig; 

@@ -18,7 +18,7 @@ const nextHandler = nextApp.getRequestHandler();
 // Get port from environment variable
 const PORT = process.env.PORT || 3000;
 
-async function startServer() {
+async function startServer(dbConnected = true) {
   try {
     // Wait for Next.js to be ready
     await nextApp.prepare();
@@ -30,30 +30,40 @@ async function startServer() {
     // Trust proxy for production
     app.set('trust proxy', 1);
 
-    // Initialize chess server with Socket.io
-    const io = require('socket.io')(server, {
-      cors: {
-        origin: '*',
-        methods: ['GET', 'POST']
+    // Initialize chess server with Socket.io only if DB is connected
+    if (dbConnected) {
+      const io = require('socket.io')(server, {
+        cors: {
+          origin: '*',
+          methods: ['GET', 'POST']
+        }
+      });
+
+      // Set up chess server
+      if (typeof chessServer.setup === 'function') {
+        chessServer.setup(io);
       }
-    });
 
-    // Set up chess server
-    if (typeof chessServer.setup === 'function') {
-      chessServer.setup(io);
+      // API routes
+      app.use('/api', apiRoutes);
+    } else {
+      // Fallback API routes for frontend-only mode
+      app.use('/api', (req, res) => {
+        res.status(503).json({
+          error: 'Database connection failed. API endpoints are not available in frontend-only mode.'
+        });
+      });
     }
-
-    // API routes
-    app.use('/api', apiRoutes);
 
     // Health check endpoint
     app.get('/health', (req, res) => {
       res.status(200).json({
-        status: 'ok',
+        status: dbConnected ? 'ok' : 'frontend-only',
         uptime: process.uptime(),
         timestamp: new Date().toISOString(),
         port: PORT,
-        env: process.env.NODE_ENV || 'development'
+        env: process.env.NODE_ENV || 'development',
+        dbConnected
       });
     });
 
@@ -68,8 +78,8 @@ async function startServer() {
 =================================================
 🚀 Unified server running on port ${PORT}
 📱 Next.js frontend: http://localhost:${PORT}
-🎮 Chess server: Integrated on same port
-🔌 API endpoints: http://localhost:${PORT}/api
+${dbConnected ? '🎮 Chess server: Integrated on same port' : '⚠️ Running in FRONTEND-ONLY mode (no database)'}
+${dbConnected ? '🔌 API endpoints: http://localhost:${PORT}/api' : '❌ API endpoints: Disabled (no database)'}
 =================================================
       `);
     });
@@ -102,9 +112,10 @@ async function startServer() {
 sequelize.authenticate()
   .then(() => {
     console.log('Database connected successfully');
-    startServer();
+    startServer(true);
   })
   .catch(err => {
     console.error('Unable to connect to the database:', err);
-    process.exit(1);
+    console.log('Starting in FRONTEND-ONLY mode (no database connection)');
+    startServer(false);
   }); 
