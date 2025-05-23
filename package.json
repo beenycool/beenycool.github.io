@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "node server-start.js",
     "lint": "next lint",
-    "static-build": "next build",
+    "static-build": "cross-env IS_STATIC_EXPORT=true next build",
     "serve": "npx serve@latest out",
     "build-and-serve": "npm run build && npm run serve",
     "backend": "cd backend && node src/index.js",
@@ -83,7 +83,8 @@
     "nodemon": "^3.1.0",
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.1",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "cross-env": "^7.0.3"
   },
   "resolutions": {
     "lucide-react": "0.357.0"

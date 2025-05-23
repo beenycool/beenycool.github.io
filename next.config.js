@@ -1,8 +1,9 @@
 /** @type {import('next').NextConfig} */
+const isStaticExport = process.env.IS_STATIC_EXPORT === 'true';
 const nextConfig = {
   reactStrictMode: true,
-  // For unified server, we don't need static export anymore
-  ...(process.env.NODE_ENV === 'production' ? { output: 'export' } : {}),
+  // Use static export only when IS_STATIC_EXPORT=true
+  ...(isStaticExport ? { output: 'export' } : {}),
   images: {
     unoptimized: true
   },
