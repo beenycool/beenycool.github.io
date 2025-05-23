@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>GitHub Pages API Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+        .info { background: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 5px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>GitHub Pages API Configuration Test</h1>
+    
+    <div id="status"></div>
+    
+    <h2>Console Output:</h2>
+    <pre id="console-output"></pre>
+    
+    <script>
+        const statusDiv = document.getElementById('status');
+        const consoleOutput = document.getElementById('console-output');
+        
+        // Capture console logs
+        const originalLog = console.log;
+        const originalError = console.error;
+        const logs = [];
+        
+        console.log = function(...args) {
+            logs.push('LOG: ' + args.join(' '));
+            originalLog.apply(console, args);
+            updateConsoleOutput();
+        };
+        
+        console.error = function(...args) {
+            logs.push('ERROR: ' + args.join(' '));
+            originalError.apply(console, args);
+            updateConsoleOutput();
+        };
+        
+        function updateConsoleOutput() {
+            consoleOutput.textContent = logs.join('\n');
+        }
+        
+        function addStatus(message, type) {
+            const div = document.createElement('div');
+            div.className = `status ${type}`;
+            div.textContent = message;
+            statusDiv.appendChild(div);
+        }
+        
+        // Test the fixed implementation
+        try {
+            // Check if we're on GitHub Pages
+            const isGitHubPages = window.location.hostname.includes('github.io');
+            addStatus(`Running on GitHub Pages: ${isGitHubPages}`, 'info');
+            
+            // Test aV initialization
+            if (typeof window.aV !== 'undefined') {
+                addStatus('✅ window.aV is defined', 'success');
+            } else {
+                addStatus('❌ window.aV is not defined', 'error');
+            }
+            
+            // Test API_HELPERS initialization
+            if (typeof window.API_HELPERS !== 'undefined') {
+                addStatus('✅ window.API_HELPERS is defined', 'success');
+            } else {
+                addStatus('❌ window.API_HELPERS is not defined', 'error');
+            }
+            
+            // Test API URL construction
+            const testEndpoint = 'test';
+            const apiUrl = window.constructApiUrl ? window.constructApiUrl(testEndpoint) : 'Not available';
+            addStatus(`API URL for '${testEndpoint}': ${apiUrl}`, 'info');
+            
+            // Test if the backend URL is correct
+            if (apiUrl.includes('beenycool-github-io.onrender.com')) {
+                addStatus('✅ Backend URL is correctly configured', 'success');
+            } else {
+                addStatus('⚠️ Backend URL might not be configured correctly', 'error');
+            }
+            
+        } catch (error) {
+            addStatus(`❌ Error during testing: ${error.message}`, 'error');
+            console.error('Test error:', error);
+        }
+        
+        // Log initial state
+        console.log('Test page loaded');
+        console.log('GitHub Pages:', window.location.hostname.includes('github.io'));
+        console.log('Current URL:', window.location.href);
+    </script>
+</body>
+</html>

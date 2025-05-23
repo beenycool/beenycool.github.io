@@ -57,14 +57,6 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3
 
 // Determine if running on GitHub Pages using the helper
 const isGHPages = isGHPagesHelper();
-console.log(`Using API URL: ${API_BASE_URL}`, `GitHub Pages: ${isGHPages}`);
-
-// Use existing backend status or provide default
-// This kind of global window modification can be problematic.
-// Consider managing this state within React or a dedicated state manager.
-if (typeof window !== 'undefined' && !window.BACKEND_STATUS) {
-  window.BACKEND_STATUS = { status: 'checking', lastChecked: null };
-}
 
 // Constants moved to a separate section for easier management
 const HISTORY_LIMIT = 10; // Define the maximum number of history items to keep
@@ -1259,6 +1251,13 @@ const BatchProcessingControls = ({
 // Enhanced AIMarker component with mobile responsiveness
 const AIMarker = () => {
   // console.log('AIMarker component is rendering', { window: typeof window !== 'undefined' ? window.location.hostname : 'SSR' });
+  
+  useEffect(() => {
+    console.log(`Using API URL: ${API_BASE_URL}`, `GitHub Pages: ${isGHPages}`);
+    if (typeof window !== 'undefined' && !window.BACKEND_STATUS) {
+      window.BACKEND_STATUS = { status: 'checking', lastChecked: null };
+    }
+  }, []);
   
   // State for form inputs and data
   const [question, setQuestion] = useState("");
