@@ -1518,6 +1518,19 @@ const AIMarker = () => {
     }
   }, [question, answer, debouncedSaveDraft]);
 
+  // Token management for rate limiting
+  const getRequestTokens = useCallback(() => {
+    const stored = localStorage.getItem('requestTokens');
+    const now = new Date().toDateString();
+    let tokens = stored ? JSON.parse(stored) : { count: 500, lastReset: now };
+    if (tokens.lastReset !== now) {
+      tokens = { count: 500, lastReset: now };
+    }
+    // Don't set localStorage here, do it in consumeToken or a dedicated update function
+    // localStorage.setItem('requestTokens', JSON.stringify(tokens)); 
+    return tokens;
+  }, []);
+
   // Effect for loading persistent user preferences and drafts on initial mount
   useEffect(() => {
     // Load drafts
@@ -1578,19 +1591,6 @@ const AIMarker = () => {
   useEffect(() => {
     localStorage.setItem(LOCALSTORAGE_KEYS.TIER, tier);
   }, [tier]);
-
-  // Token management for rate limiting
-  const getRequestTokens = useCallback(() => {
-    const stored = localStorage.getItem('requestTokens');
-    const now = new Date().toDateString();
-    let tokens = stored ? JSON.parse(stored) : { count: 500, lastReset: now };
-    if (tokens.lastReset !== now) {
-      tokens = { count: 500, lastReset: now };
-    }
-    // Don't set localStorage here, do it in consumeToken or a dedicated update function
-    // localStorage.setItem('requestTokens', JSON.stringify(tokens)); 
-    return tokens;
-  }, []);
 
   // ADDED: Effect to initialize and update remaining tokens display
   useEffect(() => {
