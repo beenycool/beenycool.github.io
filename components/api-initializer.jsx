@@ -10,11 +10,20 @@ import { initializeApiHelpers } from '@/lib/api-helpers';
  */
 export function APIInitializer() {
   useEffect(() => {
-    // verify that critical variables exist, but don't reinitialize
-    if (typeof window !== 'undefined' && window.aV) {
-      // Skip initialization and just set up API helpers
+    // Initialize variables if they don't exist yet
+    if (typeof window !== 'undefined') {
       try {
-        console.log('API variables already initialized, setting up API helpers...');
+        // Initialize aV if it doesn't exist
+        if (!window.aV) {
+          window.aV = {};
+        }
+        
+        // Initialize API_HELPERS if it doesn't exist
+        if (!window.API_HELPERS) {
+          window.API_HELPERS = {};
+        }
+        
+        console.log('API variables ensured, setting up API helpers...');
         if (!window.API_HELPERS?.initialized) {
           initializeApiHelpers();
           window.API_HELPERS.initialized = true;
@@ -23,6 +32,11 @@ export function APIInitializer() {
         }
       } catch (error) {
         console.error('Error initializing API helpers from component:', error);
+        // Fallback: ensure basic variables exist
+        if (typeof window !== 'undefined') {
+          window.aV = window.aV || {};
+          window.API_HELPERS = window.API_HELPERS || {};
+        }
       }
     }
   }, []);
