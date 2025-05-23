@@ -12,7 +12,9 @@ export default function Document() {
           dangerouslySetInnerHTML={{
             __html: `
               // Initialize aV globally before any other scripts can access it
-              window.aV = {};
+              if (typeof window !== 'undefined' && typeof window.aV === 'undefined') {
+                window.aV = {};
+              }
               window.API_HELPERS = {};
               window.BACKEND_STATUS = { status: 'checking' };
               
