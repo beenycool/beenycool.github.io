@@ -3832,17 +3832,20 @@ Please respond to their question clearly and constructively. Keep your answer co
                               value={selectedModel}
                               onValueChange={(value) => {
                                 const now = Date.now();
-                                const modelLimit = MODEL_RATE_LIMITS[value] || 10000;
-                                const lastModelRequest = modelLastRequestTimes[value] || 0;
-                                const timeSince = now - lastModelRequest;
-                                
-                                if (timeSince < modelLimit) {
-                                  const waitTime = Math.ceil((modelLimit - timeSince) / 1000);
-                                  toast.warning(`${AI_MODELS.find(m => m.value === value)?.label || value} was used recently. Please wait ${waitTime} more seconds.`);
-                                  return;
-                                }
+                                const modelRateLimit = MODEL_RATE_LIMITS[value] || 10000; // Renamed for clarity
+                                const lastModelRequestTime = modelLastRequestTimes[value] || 0; // Renamed for clarity
+                                const timeSinceLastRequest = now - lastModelRequestTime; // Renamed for clarity
+
+                                // Always update the selected model in the UI first
                                 setSelectedModel(value);
                                 setThinkingBudget(DEFAULT_THINKING_BUDGETS[value] || 1024);
+                                
+                                // Then, if rate limited, show a toast. 
+                                // The actual API call will be blocked later if they try to use it.
+                                if (timeSinceLastRequest < modelRateLimit) {
+                                  const waitTimeSeconds = Math.ceil((modelRateLimit - timeSinceLastRequest) / 1000);
+                                  toast.warning(`${AI_MODELS.find(m => m.value === value)?.label || value} was used recently. Actual use might be rate-limited for ${waitTimeSeconds} more seconds.`);
+                                }
                               }}
                             >
                               <SelectTrigger>
