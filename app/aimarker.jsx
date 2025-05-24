@@ -10,7 +10,8 @@ import { getSubjectGuidance } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
+import { Select, SelectContent, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
+import { SelectItem as OriginalSelectItem } from "@/components/ui/select";
 import { Loader2, Upload, AlertTriangle, CheckCircle2, RefreshCw, HelpCircle, ChevronDown, ChevronRight, Save, Share2, ExternalLink, Settings, FilePlus, ChevronUp, Zap, X, Keyboard, Pause } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -707,11 +708,16 @@ MotionListItem.displayName = 'MotionListItem';
 
 // Add a wrapped SelectItem component
 const ForwardedSelectItem = forwardRef(({ children, ...props }, ref) => (
-  <SelectItem ref={ref} {...props}>
+  <OriginalSelectItem ref={ref} {...props}>
     {children}
-  </SelectItem>
+  </OriginalSelectItem>
 ));
 ForwardedSelectItem.displayName = 'ForwardedSelectItem';
+
+// Add a safer replacement for all SelectItem usage
+const SafeSelectItem = (props) => {
+  return <ForwardedSelectItem {...props} />;
+};
 
 // Enhanced Feedback UI component
 const EnhancedFeedback = ({ 
@@ -1248,10 +1254,10 @@ const BatchProcessingControls = ({
               <SelectValue placeholder={parallelism} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="1">1</SelectItem>
-              <SelectItem value="2">2</SelectItem>
-              <SelectItem value="3">3</SelectItem>
-              <SelectItem value="4">4</SelectItem>
+              <SafeSelectItem value="1">1</SafeSelectItem>
+              <SafeSelectItem value="2">2</SafeSelectItem>
+              <SafeSelectItem value="3">3</SafeSelectItem>
+              <SafeSelectItem value="4">4</SafeSelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -3519,13 +3525,13 @@ Please respond to their question clearly and constructively. Keep your answer co
                         <SelectGroup>
                           <SelectLabel>Common Subjects</SelectLabel>
                           {allSubjects.map((subj) => (
-                            <SelectItem key={subj.value} value={subj.value}>
+                            <SafeSelectItem key={subj.value} value={subj.value}>
                               {subj.label}
-                            </SelectItem>
+                            </SafeSelectItem>
                           ))}
-                          <SelectItem value="custom" className="text-primary">
+                          <SafeSelectItem value="custom" className="text-primary">
                             + Add Custom Subject
-                          </SelectItem>
+                          </SafeSelectItem>
                         </SelectGroup>
                       </SelectContent>
                     </Select>
@@ -3574,9 +3580,9 @@ Please respond to their question clearly and constructively. Keep your answer co
                       </SelectTrigger>
                       <SelectContent>
                         {EXAM_BOARDS.map((board) => (
-                          <SelectItem key={board.value} value={board.value}>
+                          <SafeSelectItem key={board.value} value={board.value}>
                             {board.label}
-                          </SelectItem>
+                          </SafeSelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -3620,9 +3626,9 @@ Please respond to their question clearly and constructively. Keep your answer co
                         </SelectTrigger>
                         <SelectContent>
                           {QUESTION_TYPES.english.aqa.map((type) => (
-                            <SelectItem key={type.value} value={type.value}>
+                            <SafeSelectItem key={type.value} value={type.value}>
                               {type.label}
-                            </SelectItem>
+                            </SafeSelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -3641,9 +3647,9 @@ Please respond to their question clearly and constructively. Keep your answer co
                       </SelectTrigger>
                       <SelectContent>
                         {USER_TYPES.map((type) => (
-                          <SelectItem key={type.value} value={type.value}>
+                          <ForwardedSelectItem key={type.value} value={type.value}>
                             {type.label}
-                          </SelectItem>
+                          </ForwardedSelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -4101,8 +4107,8 @@ Please respond to their question clearly and constructively. Keep your answer co
                           <SelectValue placeholder="Choose settings source" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="global">Use Global Settings (from Answer tab)</SelectItem>
-                          <SelectItem value="file">Use Settings from File (if available)</SelectItem>
+                          <SafeSelectItem value="global">Use Global Settings (from Answer tab)</SafeSelectItem>
+                          <SafeSelectItem value="file">Use Settings from File (if available)</SafeSelectItem>
                         </SelectContent>
                       </Select>
                       <p className="text-xs text-muted-foreground">
@@ -4137,10 +4143,10 @@ Please respond to their question clearly and constructively. Keep your answer co
                             <SelectValue placeholder={parallelProcessing} />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="1">1 task</SelectItem>
-                            <SelectItem value="2">2 tasks</SelectItem>
-                            <SelectItem value="3">3 tasks</SelectItem>
-                            <SelectItem value="4">4 tasks</SelectItem>
+                            <SafeSelectItem value="1">1 task</SafeSelectItem>
+                            <SafeSelectItem value="2">2 tasks</SafeSelectItem>
+                            <SafeSelectItem value="3">3 tasks</SafeSelectItem>
+                            <SafeSelectItem value="4">4 tasks</SafeSelectItem>
                           </SelectContent>
                         </Select>
                         <TooltipProvider>
