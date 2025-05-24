@@ -1495,12 +1495,12 @@ const AIMarker = () => {
   const [modelLastRequestTimes, setModelLastRequestTimes] = useState({});
   const [imageLoading, setImageLoading] = useState(false);
   const [backendError, setBackendError] = useState(false);
-  const [helpButtonRef, setHelpButtonRef] = useState(null);
-  const [questionInputRef, setQuestionInputRef] = useState(null);
-  const [answerInputRef, setAnswerInputRef] = useState(null);
-  const [marksInputRef, setMarksInputRef] = useState(null);
-  const [markSchemeButtonRef, setMarkSchemeButtonRef] = useState(null);
-  const submitButtonRef = useRef(null); 
+  const helpButtonRef = useRef(null);
+  const questionInputRef = useRef(null);
+  const answerInputRef = useRef(null);
+  const marksInputRef = useRef(null);
+  const markSchemeButtonRef = useRef(null);
+  const submitButtonRef = useRef(null);
   const hasManuallySetSubject = useRef(false);
   const backendStatusRef = useRef('checking');
   const currentModelForRequestRef = useRef(null);
@@ -3407,7 +3407,7 @@ Please respond to their question clearly and constructively. Keep your answer co
                     className="min-h-[60px]"
                     value={question}
                     onChange={(e) => setQuestion(e.target.value)}
-                    ref={node => setQuestionInputRef(node)}
+                    ref={questionInputRef}
                   />
                 </div>
                 
@@ -3446,7 +3446,7 @@ Please respond to their question clearly and constructively. Keep your answer co
                     className="min-h-[150px]"
                     value={answer}
                     onChange={(e) => setAnswer(e.target.value)}
-                    ref={node => setAnswerInputRef(node)}
+                    ref={answerInputRef}
                   />
                   {image && !imageLoading && (
                     <div className="mt-2 flex items-center">
@@ -3665,7 +3665,7 @@ Please respond to their question clearly and constructively. Keep your answer co
                               className="text-xs h-7"
                               onClick={generateMarkScheme}
                               disabled={loading || !question || backendStatusRef.current !== 'online'}
-                              ref={node => setMarkSchemeButtonRef(node)}
+                              ref={markSchemeButtonRef}
                             >
                               {loading ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <FilePlus className="mr-1 h-3 w-3" />}
                               Generate
@@ -3693,7 +3693,7 @@ Please respond to their question clearly and constructively. Keep your answer co
                           value={totalMarks}
                           onChange={(e) => setTotalMarks(e.target.value)}
                           className="max-w-[120px]"
-                          ref={node => setMarksInputRef(node)}
+                          ref={marksInputRef}
                         />
                         <p className="text-xs text-muted-foreground">
                           If not provided, system will attempt to detect total marks from the question (like "8 marks" or "[Total: 10]").
