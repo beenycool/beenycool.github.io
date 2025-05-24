@@ -2,13 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { NavigationHeader } from "@/components/navigation-header";
-import dynamic from 'next/dynamic';
-
-// Import APIInitializer component with dynamic import to ensure it only runs on client
-const APIInitializer = dynamic(
-  () => import('@/components/api-initializer').then(mod => mod.APIInitializer),
-  { ssr: false }
-);
+import ClientLayoutItems from "@/components/layout/client-layout-items";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -84,7 +78,7 @@ export default function RootLayout({
         >
           <NavigationHeader />
           {children}
-          <APIInitializer />
+          <ClientLayoutItems />
         </ThemeProvider>
       </body>
     </html>
