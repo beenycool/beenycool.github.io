@@ -1626,11 +1626,16 @@ const AIMarker = () => {
 
   useEffect(() => {
     localStorage.setItem(LOCALSTORAGE_KEYS.MODEL, selectedModel);
-    // Update thinking budget when model changes
-    setThinkingBudget(DEFAULT_THINKING_BUDGETS[selectedModel] || 1024);
+    
+    // Update thinking budget only if different from current value
+    const newThinkingBudget = DEFAULT_THINKING_BUDGETS[selectedModel] || 1024;
+    if (thinkingBudget !== newThinkingBudget) {
+      setThinkingBudget(newThinkingBudget);
+    }
+    
     // Keep the reference updated with the current model
     currentModelForRequestRef.current = selectedModel;
-  }, [selectedModel]);
+  }, [selectedModel, thinkingBudget]);
 
   useEffect(() => {
     localStorage.setItem(LOCALSTORAGE_KEYS.TIER, tier);
@@ -3814,6 +3819,9 @@ Please respond to their question clearly and constructively. Keep your answer co
                         <Select
                           value={selectedModel}
                           onValueChange={(value) => {
+                            // Prevent re-renders if selecting the same model
+                            if (value === selectedModel) return;
+                            
                             const now = Date.now();
                             const modelRateLimit = MODEL_RATE_LIMITS[value] || 10000;
                             const lastModelRequestTime = modelLastRequestTimes[value] || 0;
@@ -3821,7 +3829,9 @@ Please respond to their question clearly and constructively. Keep your answer co
 
                             // Always update the selected model in the UI first
                             setSelectedModel(value);
-                            setThinkingBudget(DEFAULT_THINKING_BUDGETS[value] || 1024);
+                            
+                            // Don't set thinking budget here - it will be set in the useEffect
+                            // This prevents a double state update
                             
                             // Then, if rate limited, show a toast. 
                             // The actual API call will be blocked later if they try to use it.
@@ -3830,6 +3840,7 @@ Please respond to their question clearly and constructively. Keep your answer co
                               toast.warning(`${AI_MODELS.find(m => m.value === value)?.label || value} was used recently. Actual use might be rate-limited for ${waitTimeSeconds} more seconds.`);
                             }
                           }}
+                          disabled={followUpLoading}
                         >
                           <SelectTrigger>
                             <SelectValue placeholder="Select AI model" />
@@ -3925,7 +3936,7 @@ Please respond to their question clearly and constructively. Keep your answer co
                       
                       {/* Add Thinking Budget control for Gemini 2.5 */}
                       {selectedModel === "gemini-2.5-flash-preview-05-20" && (
-                        <div className="space-y-2 pt-2 border-t border-border mt-4">
+                        <div className="space-y-2 pt-2 border-t border-border mt-4" key="thinking-budget-controls">
                           <div className="flex items-center justify-between">
                             <Label htmlFor="enableThinkingBudget" className="text-sm flex items-center">
                               Enable Thinking Budget
@@ -3943,7 +3954,9 @@ Please respond to their question clearly and constructively. Keep your answer co
                             <Switch
                               id="enableThinkingBudget"
                               checked={enableThinkingBudget}
-                              onCheckedChange={setEnableThinkingBudget}
+                              onCheckedChange={(checked) => {
+                                setEnableThinkingBudget(checked);
+                              }}
                             />
                           </div>
                           
@@ -4323,6 +4336,9 @@ Please respond to their question clearly and constructively. Keep your answer co
             <Select
               value={selectedModel}
               onValueChange={(value) => {
+                // Prevent re-renders if selecting the same model
+                if (value === selectedModel) return;
+                
                 // Check for rate limiting when switching models
                 const now = Date.now();
                 const modelLimit = MODEL_RATE_LIMITS[value] || 10000;
