@@ -1,5 +1,3 @@
-"use client";
-
 import { NextResponse } from 'next/server';
 
 // This endpoint is used to create middleware handlers on the fly

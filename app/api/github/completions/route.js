@@ -1,5 +1,3 @@
-"use client";
-
 import { NextResponse } from 'next/server';
 
 // This file is a placeholder that will be used in non-GitHub Pages environments
