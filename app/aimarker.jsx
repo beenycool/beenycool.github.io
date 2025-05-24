@@ -1652,7 +1652,7 @@ const AIMarker = () => {
   const handleBackendStatusChange = useCallback((status, data) => {
     console.log('Backend status changed:', status, data);
     backendStatusRef.current = status;
-    setBackendUpdated(prev => !prev); // Toggle to force a re-render
+    // setBackendUpdated(prev => !prev); // REMOVE THIS LINE to prevent potential loop
     
     // If backend is offline, show appropriate error
     if (status === 'offline' || status === 'error') {
