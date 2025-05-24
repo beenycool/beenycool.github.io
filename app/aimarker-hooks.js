@@ -158,7 +158,7 @@ export const useBackendStatus = (API_BASE_URL) => {
           // Check if the selected model is available (if provided)
           if (model) {
             // Check for rate limiting or model availability
-            if (model === "gemini-2.5-flash-preview-04-17" && data.rateLimited === true) {
+            if (model === "gemini-2.5-flash-preview-05-20" && data.rateLimited === true) {
               return {
                 ok: false,
                 error: 'Gemini 2.5 Flash Preview is rate limited. Please try again in a minute or choose another model.',

@@ -86,7 +86,8 @@ const AI_MODELS = [
   { value: "o3", label: "O3", description: "Most powerful model, but heavily rate limited." },
   { value: "o4-mini", label: "O4 Mini", description: "Delivers compareable performance to o3, but much faster" },
   { value: "xai/grok-3", label: "Grok-3", description: "X AI Model (Grok)" },
-  { value: "gemini-2.5-flash-preview-04-17", label: "Gemini 2.5 Flash Preview", description: "Best quality with faster response times" },
+  { value: "xai/grok-3-mini", label: "Grok-3 Mini", description: "Smaller, faster X AI Model" },
+  { value: "gemini-2.5-flash-preview-05-20", label: "Gemini 2.5 Flash Preview", description: "Best quality with faster response times" },
   { value: "microsoft/mai-ds-r1:free", label: "R1 (thinking model)", description: "Most thorough reasoning process (may take 1-2 minutes)" }, // Unlimited (OpenRouter, no usage limits)
   { value: "deepseek/deepseek-chat-v3-0324:free", label: "V3 (balanced model)", description: "Balanced speed and quality" },
   { value: "google/gemini-2.0-flash-exp:free", label: "Gemini 2.0 Flash (OpenRouter)", description: "Experimental fast model from Google via OpenRouter" }
@@ -94,9 +95,9 @@ const AI_MODELS = [
 
 // Add fallback models for when primary models are rate limited
 const FALLBACK_MODELS = {
-  "gemini-2.5-flash-preview-04-17": "deepseek/deepseek-chat-v3-0324:free",
+  "gemini-2.5-flash-preview-05-20": "deepseek/deepseek-chat-v3-0324:free",
   "deepseek/deepseek-chat-v3-0324:free": "microsoft/mai-ds-r1:free",
-  "microsoft/mai-ds-r1:free": "gemini-2.5-flash-preview-04-17", // Fallback to Gemini Flash (was Gemini Pro)
+  "microsoft/mai-ds-r1:free": "gemini-2.5-flash-preview-05-20", // Fallback to Gemini Flash (was Gemini Pro)
   "o3": "o4-mini", // Fallback for O3
   "o4-mini": "deepseek/deepseek-chat-v3-0324:free", // Fallback for O4 Mini
   "xai/grok-3": "deepseek/deepseek-chat-v3-0324:free" // Fallback for Grok-3
@@ -106,7 +107,7 @@ const FALLBACK_MODELS = {
 // Based on GitHub Copilot Pro rate limits
 const MODEL_RATE_LIMITS = {
   // Standard models
-  "gemini-2.5-flash-preview-04-17": 60000, // 1 minute
+  "gemini-2.5-flash-preview-05-20": 60000, // 1 minute
   "deepseek/deepseek-chat-v3-0324:free": 10000, // 10 seconds
   
   // DeepSeek-R1 and MAI-DS-R1: 1 request per minute
@@ -126,13 +127,13 @@ const MODEL_RATE_LIMITS = {
 
 // Define specific models for specific tasks
 const TASK_SPECIFIC_MODELS = {
-  "image_processing": "gemini-2.5-flash-preview-04-17", // Updated to use Gemini 2.5 Flash for image processing
+  "image_processing": "gemini-2.5-flash-preview-05-20", // Updated to use Gemini 2.5 Flash for image processing
   "subject_assessment": "google/gemini-2.0-flash-exp:free" // Use Gemini 2.0 Flash for subject assessments
 };
 
 // Define default thinking budgets for models that support it
 const DEFAULT_THINKING_BUDGETS = {
-  "gemini-2.5-flash-preview-04-17": 1024,
+  "gemini-2.5-flash-preview-05-20": 1024,
   "microsoft/mai-ds-r1:free": 0,
   "o3": 4000,
   "o4-mini": 4000,
@@ -482,7 +483,7 @@ const EnhancedAlert = ({ success, error, onRetryAction }) => { // Added onRetryA
               className="text-xs h-7 border-amber-200 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900 text-amber-800 dark:text-amber-300"
               onClick={() => error.onRetryFallback(error.fallbackModel)}
             >
-              <RefreshCw className="h-3 w-3 mr-1" /> Retry with {AI_MODELS.find(m => m.value === error.fallbackModel)?.label || error.fallbackModel}
+              <RefreshCw className="h-3 w-3 mr-1" /> Try with a different model
             </Button>
           )}
 
@@ -511,7 +512,7 @@ const EnhancedAlert = ({ success, error, onRetryAction }) => { // Added onRetryA
               }`}
               onClick={error.onRetry === true ? () => window.location.reload() : error.onRetry}
             >
-              <RefreshCw className="h-3 w-3 mr-1" /> Try Again
+              <RefreshCw className="h-3 w-3 mr-1" /> Try with a different model
             </Button>
           )}
           
@@ -736,11 +737,16 @@ const EnhancedFeedback = ({
       <div className="flex justify-between items-center mb-3">
         <div className="flex items-center gap-2">
           {/* START MODIFIED SECTION */}
-          {grade && achievedMarks && totalMarks && (
-            <div className="flex flex-col items-start">
+          {grade && (
+            <div className="flex flex-col items-start gap-2 mr-2">
               <div className="inline-flex items-center justify-center px-3 py-1.5 bg-gradient-to-br from-indigo-600 to-purple-600 dark:from-indigo-500 dark:to-purple-500 text-white font-bold rounded-md shadow-md">
-                {achievedMarks}/{totalMarks} marks (Grade: {grade})
+                Grade: {grade}
               </div>
+              {achievedMarks && totalMarks && (
+                <div className="inline-flex items-center justify-center px-3 py-1.5 bg-gradient-to-br from-green-600 to-teal-600 dark:from-green-500 dark:to-teal-500 text-white font-bold rounded-md shadow-md">
+                  Mark: {achievedMarks}/{totalMarks}
+                </div>
+              )}
             </div>
           )}
           {/* END MODIFIED SECTION */}
@@ -1546,7 +1552,7 @@ const AIMarker = () => {
       setExamBoard(savedExamBoard);
     }
 
-    let initialModel = "gemini-2.5-flash-preview-04-17"; // Default model
+    let initialModel = "gemini-2.5-flash-preview-05-20"; // Default model
     const savedModel = localStorage.getItem(LOCALSTORAGE_KEYS.MODEL);
     if (savedModel && AI_MODELS.find(m => m.value === savedModel)) {
       initialModel = savedModel;
@@ -2167,7 +2173,7 @@ TOTAL MARKS: ${marksToUse}` : ''}
       let response;
       let data;
 
-      if (currentModel === "gemini-2.5-flash-preview-04-17") {
+      if (currentModel === "gemini-2.5-flash-preview-05-20") {
         const requestBody = {
           contents: [
             {
@@ -3040,7 +3046,7 @@ Please respond to their question clearly and constructively. Keep your answer co
       let response;
       
       // Use different endpoints and request formats based on the model
-      if (selectedModel === "gemini-2.5-flash-preview-04-17") {
+      if (selectedModel === "gemini-2.5-flash-preview-05-20") {
         // Format for Gemini direct API
         const requestBody = {
           contents: [
@@ -3172,7 +3178,7 @@ Please respond to their question clearly and constructively. Keep your answer co
       let responseContent = "";
       
       // Handle different API response formats
-      if (selectedModel === "gemini-2.5-flash-preview-04-17") {
+      if (selectedModel === "gemini-2.5-flash-preview-05-20") {
         // Extract content from Gemini API response
         if (responseData.candidates && responseData.candidates[0] && responseData.candidates[0].content) {
           const content = responseData.candidates[0].content;
@@ -3694,7 +3700,7 @@ Please respond to their question clearly and constructively. Keep your answer co
                             <span className="text-xs text-muted-foreground">
                               Add image as relevant material
                             </span>
-                            {selectedModel !== "gemini-2.5-flash-preview-04-17" && (
+                            {selectedModel !== "gemini-2.5-flash-preview-05-20" && (
                               <Badge variant="outline" className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/50">
                                 Only works with Gemini 2.5 Flash
                               </Badge>
@@ -3706,7 +3712,7 @@ Please respond to their question clearly and constructively. Keep your answer co
                               size="sm" 
                               onClick={() => document.getElementById('relevant-material-image').click()}
                               className="text-xs h-7"
-                              disabled={selectedModel !== "gemini-2.5-flash-preview-04-17" || relevantMaterialImageLoading}
+                              disabled={selectedModel !== "gemini-2.5-flash-preview-05-20" || relevantMaterialImageLoading}
                             >
                               {relevantMaterialImageLoading ? (
                                 <><Loader2 className="mr-1 h-3 w-3 animate-spin" /> Processing...</>
@@ -3714,12 +3720,12 @@ Please respond to their question clearly and constructively. Keep your answer co
                                 <><Upload className="mr-1 h-3 w-3" /> Upload Image</>
                               )}
                             </Button>
-                            {selectedModel !== "gemini-2.5-flash-preview-04-17" && (
+                            {selectedModel !== "gemini-2.5-flash-preview-05-20" && (
                               <Button
                                 variant="link"
                                 size="sm"
                                 className="text-xs h-7 text-amber-600 dark:text-amber-400 px-0"
-                                onClick={() => setSelectedModel("gemini-2.5-flash-preview-04-17")}
+                                onClick={() => setSelectedModel("gemini-2.5-flash-preview-05-20")}
                               >
                                 Switch to Gemini 2.5 Flash
                               </Button>
@@ -3731,7 +3737,7 @@ Please respond to their question clearly and constructively. Keep your answer co
                             accept="image/*"
                             className="hidden"
                             onChange={handleRelevantMaterialImageChange}
-                            disabled={selectedModel !== "gemini-2.5-flash-preview-04-17" || relevantMaterialImageLoading}
+                            disabled={selectedModel !== "gemini-2.5-flash-preview-05-20" || relevantMaterialImageLoading}
                           />
                           {relevantMaterialImage && (
                             <div className="mt-2 flex items-center">
@@ -3789,7 +3795,7 @@ Please respond to their question clearly and constructively. Keep your answer co
                           </SelectContent>
                         </Select>
                         
-                        {selectedModel === "gemini-2.5-flash-preview-04-17" && (
+                        {selectedModel === "gemini-2.5-flash-preview-05-20" && (
                           <div className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center">
                             <AlertTriangle className="h-3 w-3 mr-1" />
                             <span>Uses direct Gemini API with custom key, may need backend updates</span>
@@ -3866,7 +3872,7 @@ Please respond to their question clearly and constructively. Keep your answer co
                       )}
                       
                       {/* Add Thinking Budget control for Gemini 2.5 */}
-                      {selectedModel === "gemini-2.5-flash-preview-04-17" && (
+                      {selectedModel === "gemini-2.5-flash-preview-05-20" && (
                         <div className="space-y-2 pt-2 border-t border-border mt-4">
                           <div className="flex items-center justify-between">
                             <Label htmlFor="enableThinkingBudget" className="text-sm flex items-center">
