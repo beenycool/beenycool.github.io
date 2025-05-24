@@ -3822,9 +3822,9 @@ Please respond to their question clearly and constructively. Keep your answer co
                               value={selectedModel}
                               onValueChange={(value) => {
                                 const now = Date.now();
-                                const modelRateLimit = MODEL_RATE_LIMITS[value] || 10000; // Renamed for clarity
-                                const lastModelRequestTime = modelLastRequestTimes[value] || 0; // Renamed for clarity
-                                const timeSinceLastRequest = now - lastModelRequestTime; // Renamed for clarity
+                                const modelRateLimit = MODEL_RATE_LIMITS[value] || 10000;
+                                const lastModelRequestTime = modelLastRequestTimes[value] || 0;
+                                const timeSinceLastRequest = now - lastModelRequestTime;
 
                                 // Always update the selected model in the UI first
                                 setSelectedModel(value);
