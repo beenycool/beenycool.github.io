@@ -119,4 +119,65 @@ If you encounter issues with API calls:
 
 1. Check that the `NEXT_PUBLIC_API_BASE_URL` is correctly set in `next.config.js`
 2. Verify that CORS is properly configured on your backend
-3. For local testing, you can run the development server with `npm run dev` which will enable API routes 
+3. For local testing, you can run the development server with `npm run dev` which will enable API routes
+
+## Deploying to Render
+
+This application is configured for deployment on Render.com. Follow these steps for a successful deployment:
+
+### Prerequisites
+
+- A Render.com account
+- Your code pushed to a GitHub repository
+
+### Deployment Steps
+
+1. **Log in to Render Dashboard**:
+   - Go to [dashboard.render.com](https://dashboard.render.com)
+   - Log in with your account
+
+2. **Create a New Web Service**:
+   - Click "New" and select "Web Service"
+   - Connect your GitHub repository
+   - Configure the service with these settings:
+     - **Name**: beenycool-github-io (or your preferred name)
+     - **Environment**: Node
+     - **Build Command**: `npm install && npm run build`
+     - **Start Command**: `npm start`
+     - **Node Version**: 18.x
+
+3. **Advanced Options**:
+   - Add the following environment variables:
+     - `NODE_ENV`: production
+     - `NEXT_PUBLIC_API_URL`: (your Render service URL, e.g., https://beenycool-github-io.onrender.com)
+
+4. **Deploy**:
+   - Click "Create Web Service"
+   - Wait for the build and deployment to complete
+
+### Troubleshooting
+
+- **Build Errors**: Check the logs for any build errors. If API routes are causing issues, you can use the static export method by changing the build command to `npm run static-build`.
+  
+- **Runtime Errors**: Check the logs for any runtime errors. Common issues include:
+  - Database connection errors: Make sure your database credentials are correctly set up
+  - Missing environment variables: Check that all required env vars are set
+
+- **Performance Issues**: If your app is slow, consider:
+  - Upgrading your Render plan
+  - Optimizing your code
+  - Using caching
+
+### Monitoring
+
+- Use the Render dashboard to monitor your application
+- Set up alerts for when your service goes down
+- Check logs regularly for any errors or warnings
+
+### Updates
+
+To update your deployed application:
+
+1. Push changes to your GitHub repository
+2. Render will automatically deploy the changes if auto-deploy is enabled
+3. Monitor the build and deployment progress in the Render dashboard 

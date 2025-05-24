@@ -1,0 +1,6 @@
+{
+  "watch": ["server-start.js", "backend/src", "middleware.js"],
+  "ignore": [".next", "node_modules", "out", ".git"],
+  "ext": "js,json,jsx",
+  "exec": "node server-start.js"
+} 

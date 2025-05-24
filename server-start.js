@@ -6,45 +6,27 @@ const dotenv = require('dotenv');
 const { sequelize } = require('./backend/src/models');
 const apiRoutes = require('./backend/src/routes/api');
 const chessServer = require('./backend/src/chess-server');
-const { createServer } = require('http');
-const { parse } = require('url');
 
 // Load environment variables
 dotenv.config();
 
 // Initialize Next.js
 const dev = process.env.NODE_ENV !== 'production';
-const app = next({ dev });
-const handle = app.getRequestHandler();
+const nextApp = next({ dev });
+const nextHandler = nextApp.getRequestHandler();
 const port = process.env.PORT || 3000;
-
-app.prepare().then(() => {
-  createServer((req, res) => {
-    // Parse the URL
-    const parsedUrl = parse(req.url, true);
-    handle(req, res, parsedUrl);
-  }).listen(port, (err) => {
-    if (err) throw err;
-    console.log(`> Ready on http://localhost:${port}`);
-  });
-});
 
 async function startServer(dbConnected = true) {
   try {
     // Wait for Next.js to be ready
-    await app.prepare();
+    await nextApp.prepare();
 
     // Create Express app
-    const expressApp = express();
-    const server = createServer((req, res) => {
-      // Be sure to pass `true` as the second argument to `url.parse`.
-      // This tells it to parse the query portion of the URL.
-      const parsedUrl = parse(req.url, true);
-      handle(req, res, parsedUrl);
-    });
+    const app = express();
+    const server = http.createServer(app);
 
     // Trust proxy for production
-    expressApp.set('trust proxy', 1);
+    app.set('trust proxy', 1);
 
     // Initialize chess server with Socket.io only if DB is connected
     if (dbConnected) {
@@ -61,10 +43,10 @@ async function startServer(dbConnected = true) {
       }
 
       // API routes
-      expressApp.use('/api', apiRoutes);
+      app.use('/api', apiRoutes);
     } else {
       // Fallback API routes for frontend-only mode
-      expressApp.use('/api', (req, res) => {
+      app.use('/api', (req, res) => {
         res.status(503).json({
           error: 'Database connection failed. API endpoints are not available in frontend-only mode.'
         });
@@ -72,7 +54,7 @@ async function startServer(dbConnected = true) {
     }
 
     // Health check endpoint
-    expressApp.get('/health', (req, res) => {
+    app.get('/health', (req, res) => {
       res.status(200).json({
         status: dbConnected ? 'ok' : 'frontend-only',
         uptime: process.uptime(),
@@ -81,6 +63,11 @@ async function startServer(dbConnected = true) {
         env: process.env.NODE_ENV || 'development',
         dbConnected
       });
+    });
+
+    // Handle all other routes with Next.js
+    app.all('*', (req, res) => {
+      return nextHandler(req, res);
     });
 
     // Start the server
