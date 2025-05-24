@@ -38,21 +38,18 @@ if (!fs.existsSync(indexHtml)) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI GCSE Marker - Backend Server</title>
+  <title>AI GCSE Marker</title>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 </head>
 <body class="bg-gray-100 min-h-screen flex flex-col items-center justify-center p-4">
   <div class="bg-white rounded-lg shadow-lg p-8 max-w-md w-full text-center">
     <h1 class="text-2xl font-bold mb-4">AI GCSE Marker</h1>
-    <p class="mb-4">Backend server is running!</p>
-    <p class="mb-4">To access the application:</p>
-    <a href="/" class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Go to Application</a>
+    <p class="mb-4">Welcome to AI GCSE Marker!</p>
+    <p class="mb-4">This application helps students practice exam questions and receive instant feedback.</p>
+    <a href="/" class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Launch Application</a>
     
     <div class="mt-8 pt-6 border-t border-gray-200">
-      <h2 class="text-lg font-semibold mb-2">API Status</h2>
-      <p class="mb-4 text-sm text-gray-700">
-        The API endpoints are available at <code class="bg-gray-200 px-2 py-1 rounded">/api/*</code>
-      </p>
+      <h2 class="text-lg font-semibold mb-2">Status</h2>
       <p class="text-sm text-gray-500">
         Health check: <a href="/health" class="text-blue-600 hover:underline">/health</a>
       </p>
