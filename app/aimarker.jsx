@@ -3333,7 +3333,7 @@ Please respond to their question clearly and constructively. Keep your answer co
         />
         
         {/* Backend Status Checker */}
-        <BackendStatusChecker onStatusChange={handleBackendStatusChange} />
+        {/* <BackendStatusChecker onStatusChange={handleBackendStatusChange} /> */}
         
         {detectedSubject && !hasManuallySetSubject.current && (
           <div className="mb-4 p-3 bg-primary/10 border border-primary/20 rounded-md flex items-center justify-between">
