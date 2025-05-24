@@ -14,7 +14,8 @@
     "backend-dev": "cd backend && nodemon src/index.js",
     "unified-dev": "nodemon server-start.js",
     "unified-build": "next build && npm run start",
-    "postinstall": "node fix-dependencies.js"
+    "postinstall": "node fix-dependencies.js",
+    "render-build": "npm run build && node build-frontend.js"
   },
   "dependencies": {
     "@radix-ui/react-collapsible": "^1.1.10",

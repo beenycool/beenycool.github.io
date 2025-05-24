@@ -10,6 +10,13 @@ const chessServer = require('./backend/src/chess-server');
 // Load environment variables
 dotenv.config();
 
+// Run the build-frontend script to ensure the frontend is built
+try {
+  require('./build-frontend');
+} catch (error) {
+  console.warn('Warning: Could not run build-frontend script', error);
+}
+
 // Initialize Next.js
 const dev = process.env.NODE_ENV !== 'production';
 const nextApp = next({ dev });
@@ -64,6 +71,9 @@ async function startServer(dbConnected = true) {
         dbConnected
       });
     });
+
+    // Serve static files from public directory
+    app.use(express.static(path.join(__dirname, 'public')));
 
     // Handle all other routes with Next.js
     app.all('*', (req, res) => {

@@ -2,7 +2,7 @@ services:
   - type: web
     name: beenycool-github-io
     env: node
-    buildCommand: npm install && npm run build
+    buildCommand: npm install && npm run render-build
     startCommand: npm start
     nodeVersion: 18.x
     autoDeploy: true
