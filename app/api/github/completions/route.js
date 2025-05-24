@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server';
 
 // Remove dynamic export for static build
 // export const dynamic = 'force-dynamic';
+export const dynamic = 'force-static';
 
 // Handle GET requests for GitHub completions
 export async function GET(request) {

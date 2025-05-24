@@ -5,6 +5,9 @@ import { NextResponse } from 'next/server';
 // This endpoint is used to create middleware handlers on the fly
 // It's only needed for local development - on GitHub Pages, this is a no-op
 
+// Add static export for compatibility with static builds
+export const dynamic = 'force-static';
+
 export async function POST(request) {
   // For GitHub Pages, just return success without doing anything
   return NextResponse.json({ 

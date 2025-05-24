@@ -3807,61 +3807,53 @@ Please respond to their question clearly and constructively. Keep your answer co
                       </div>
                       
                       {/* AI Model Selection */}
-                      {hasExtractedText && (
-                        <div className="space-y-2">
-                          <Label htmlFor="aiModel" className="text-sm">
-                            AI Model <span className="text-muted-foreground text-xs">(Optional)</span>
-                          </Label>
-                          {!hasExtractedText ? (
-                            <div className="text-sm text-muted-foreground bg-muted/20 rounded-md p-3 flex items-center">
-                              <Info className="h-4 w-4 mr-2 text-primary" />
-                              <span>Upload and process an image to enable model selection</span>
-                            </div>
-                          ) : (
-                            <Select
-                              value={selectedModel}
-                              onValueChange={(value) => {
-                                const now = Date.now();
-                                const modelRateLimit = MODEL_RATE_LIMITS[value] || 10000;
-                                const lastModelRequestTime = modelLastRequestTimes[value] || 0;
-                                const timeSinceLastRequest = now - lastModelRequestTime;
+                      <div className="space-y-2">
+                        <Label htmlFor="aiModel" className="text-sm">
+                          AI Model <span className="text-muted-foreground text-xs">(Optional)</span>
+                        </Label>
+                        <Select
+                          value={selectedModel}
+                          onValueChange={(value) => {
+                            const now = Date.now();
+                            const modelRateLimit = MODEL_RATE_LIMITS[value] || 10000;
+                            const lastModelRequestTime = modelLastRequestTimes[value] || 0;
+                            const timeSinceLastRequest = now - lastModelRequestTime;
 
-                                // Always update the selected model in the UI first
-                                setSelectedModel(value);
-                                setThinkingBudget(DEFAULT_THINKING_BUDGETS[value] || 1024);
-                                
-                                // Then, if rate limited, show a toast. 
-                                // The actual API call will be blocked later if they try to use it.
-                                if (timeSinceLastRequest < modelRateLimit) {
-                                  const waitTimeSeconds = Math.ceil((modelRateLimit - timeSinceLastRequest) / 1000);
-                                  toast.warning(`${AI_MODELS.find(m => m.value === value)?.label || value} was used recently. Actual use might be rate-limited for ${waitTimeSeconds} more seconds.`);
-                                }
-                              }}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select AI model" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {AI_MODELS.map((model) => (
-                                  <SelectItem key={model.value} value={model.value} className="py-2">
-                                    <div className="flex flex-col">
-                                      <span>{model.label}</span>
-                                      <span className="text-xs text-muted-foreground">{model.description}</span>
-                                    </div>
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          )}
-                          
-                          {selectedModel === "gemini-2.5-flash-preview-05-20" && hasExtractedText && (
-                            <div className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center">
-                              <AlertTriangle className="h-3 w-3 mr-1" />
-                              <span>Uses direct Gemini API with custom key, may need backend updates</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
+                            // Always update the selected model in the UI first
+                            setSelectedModel(value);
+                            setThinkingBudget(DEFAULT_THINKING_BUDGETS[value] || 1024);
+                            
+                            // Then, if rate limited, show a toast. 
+                            // The actual API call will be blocked later if they try to use it.
+                            if (timeSinceLastRequest < modelRateLimit) {
+                              const waitTimeSeconds = Math.ceil((modelRateLimit - timeSinceLastRequest) / 1000);
+                              toast.warning(`${AI_MODELS.find(m => m.value === value)?.label || value} was used recently. Actual use might be rate-limited for ${waitTimeSeconds} more seconds.`);
+                            }
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select AI model" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {AI_MODELS.map((model) => (
+                              <SelectItem key={model.value} value={model.value} className="py-2">
+                                <div className="flex flex-col">
+                                  <span>{model.label}</span>
+                                  <span className="text-xs text-muted-foreground">{model.description}</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        
+                        {selectedModel === "gemini-2.5-flash-preview-05-20" && hasExtractedText && (
+                          <div className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center">
+                            <AlertTriangle className="h-3 w-3 mr-1" />
+                            <span>Uses direct Gemini API with custom key, may need backend updates</span>
+                          </div>
+                        )}
+                      </div>
+                      
                       {/* ADDED: UI for Token Limits */}
                       <div className="space-y-2 pt-2">
                         <div className="flex items-center justify-between">

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
-// For static export compatibility
-export const dynamic = 'error';
+// Add static export for compatibility with static builds
+export const dynamic = 'force-static';
 
 // Generate static params for the catch-all route
 export function generateStaticParams() {

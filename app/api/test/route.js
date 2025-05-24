@@ -5,6 +5,8 @@ import { getApiBaseUrl, isGitHubPages, constructApiUrl } from '@/lib/api-helpers
 
 // This is a simple test endpoint that returns info about the current environment
 
+export const dynamic = "force-static";
+
 export async function GET(request) {
   const isGitHubPagesEnv = typeof window !== 'undefined' && isGitHubPages();
   const apiBaseUrl = getApiBaseUrl();
