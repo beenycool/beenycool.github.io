@@ -357,12 +357,15 @@ const BackendStatusChecker = ({ onStatusChange }) => {
     checkStatus();
   }, [checkStatus]);
   
-  // Skip rendering if online
-  if (status === 'online') return null;
+  // Skip rendering if online - MODIFIED TO USE STYLE FOR VISIBILITY
+  // if (status === 'online') return null;
   
   // Render a prominent notification when backend is offline
   return (
-    <div className="mb-4 p-4 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg shadow-sm">
+    <div 
+      style={{ display: status === 'online' ? 'none' : 'block' }}
+      className="mb-4 p-4 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg shadow-sm"
+    >
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center">
           <AlertTriangle className="h-5 w-5 text-amber-500 mr-2 flex-shrink-0" />
