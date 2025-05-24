@@ -1,6 +1,6 @@
 "use client";
 import * as React from 'react';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, forwardRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import 'katex/dist/katex.min.css'; // Add import for KaTeX CSS
@@ -697,6 +697,22 @@ const printFeedback = (feedbackElement) => {
   }
 };
 
+// Add this new component
+const MotionListItem = forwardRef(({ children, ...props }, ref) => (
+  <motion.li ref={ref} {...props}>
+    {children}
+  </motion.li>
+));
+MotionListItem.displayName = 'MotionListItem';
+
+// Add a wrapped SelectItem component
+const ForwardedSelectItem = forwardRef(({ children, ...props }, ref) => (
+  <SelectItem ref={ref} {...props}>
+    {children}
+  </SelectItem>
+));
+ForwardedSelectItem.displayName = 'ForwardedSelectItem';
+
 // Enhanced Feedback UI component
 const EnhancedFeedback = ({ 
   feedback, 
@@ -917,7 +933,7 @@ const ModelThinkingBox = ({ thinking, loading }) => {
           <ScrollArea className="h-[120px] w-full rounded-md border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 p-3 text-sm">
             <ul className="space-y-1.5 text-gray-700 dark:text-gray-300">
               {thinking.map((thought, index) => (
-                <motion.li
+                <MotionListItem
                   key={index}
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -926,7 +942,7 @@ const ModelThinkingBox = ({ thinking, loading }) => {
                 >
                   <CheckCircle2 className="h-4 w-4 text-green-500 mr-2 mt-0.5 flex-shrink-0" />
                   <span>{thought}</span>
-                </motion.li>
+                </MotionListItem>
               ))}
             </ul>
           </ScrollArea>
@@ -3825,12 +3841,12 @@ Please respond to their question clearly and constructively. Keep your answer co
                               </SelectTrigger>
                               <SelectContent>
                                 {AI_MODELS.map((model) => (
-                                  <SelectItem key={model.value} value={model.value} className="py-2">
+                                  <ForwardedSelectItem key={model.value} value={model.value} className="py-2">
                                     <div className="flex flex-col">
                                       <span>{model.label}</span>
                                       <span className="text-xs text-muted-foreground">{model.description}</span>
                                     </div>
-                                  </SelectItem>
+                                  </ForwardedSelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
@@ -4334,12 +4350,12 @@ Please respond to their question clearly and constructively. Keep your answer co
               </SelectTrigger>
               <SelectContent>
                 {AI_MODELS.map((model) => (
-                  <SelectItem key={model.value} value={model.value} className="py-2">
+                  <ForwardedSelectItem key={model.value} value={model.value} className="py-2">
                     <div className="flex flex-col">
                       <span>{model.label}</span>
                       <span className="text-xs text-muted-foreground">{model.description}</span>
                     </div>
-                  </SelectItem>
+                  </ForwardedSelectItem>
                 ))}
               </SelectContent>
             </Select>
