@@ -3,9 +3,11 @@ import { NextResponse } from 'next/server';
 // Add static export for compatibility with static builds
 export const dynamic = 'force-static';
 
-// Generate static params for the catch-all route
+// For static exports, generate an empty params list
+// This prevents the build from trying to pre-render dynamic API routes
 export function generateStaticParams() {
-  return [{ path: [] }];
+  // Return empty array for static builds
+  return [];
 }
 
 // Simple static response for GitHub Pages

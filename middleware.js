@@ -127,6 +127,22 @@ export function middleware(request) {
     return NextResponse.next();
   }
 
+  // During static export, exclude API routes from being built
+  if (process.env.IS_STATIC_EXPORT === 'true') {
+    // If this is an API route, return a mock response
+    if (pathname.startsWith('/api/')) {
+      return new NextResponse(
+        JSON.stringify({ message: 'This API route is not available in the static export' }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+    }
+  }
+
   return adjustPermissionsPolicy(NextResponse.next());
 }
 

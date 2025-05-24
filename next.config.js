@@ -1,9 +1,14 @@
 /** @type {import('next').NextConfig} */
 const isStaticExport = process.env.IS_STATIC_EXPORT === 'true';
+const path = require('path');
+
 const nextConfig = {
   reactStrictMode: true,
   // Use static export only when IS_STATIC_EXPORT=true
-  ...(isStaticExport ? { output: 'export' } : {}),
+  ...(isStaticExport ? { 
+    output: 'export',
+    images: { unoptimized: true }
+  } : {}),
   images: {
     unoptimized: true
   },
@@ -29,32 +34,22 @@ const nextConfig = {
     }
 
     // Add React alias to ensure all components use the same React instance
+    const reactPath = path.dirname(require.resolve('react/package.json'));
     config.resolve.alias = {
       ...config.resolve.alias,
-      'react': require.resolve('react'),
-      'react-dom': require.resolve('react-dom')
+      'react': reactPath,
+      'react-dom': path.dirname(require.resolve('react-dom/package.json')),
+      'react/jsx-runtime': path.join(reactPath, 'jsx-runtime')
     };
     
     return config;
   },
-  // Use React server-components condition to avoid duplicate React issues
-  experimental: {
-    esmExternals: 'loose'
-  },
-  // Override headers to remove default Permissions-Policy header for all routes
-  async headers() {
-    return [
-      {
-        source: '/:path*',
-        headers: [
-          {
-            key: 'Permissions-Policy',
-            value: 'camera=(), microphone=(), geolocation=()' // Removed interest-cohort and set minimal policy
-          }
-        ]
-      }
-    ];
-  }
+  // Remove experimental settings that may cause issues with static builds
+  experimental: {},
+  
+  // For App Router, we need to explicitly handle route generation
+  // This excludes API routes and dynamic routes
+  staticPageGenerationTimeout: 300,
 }
 
 module.exports = nextConfig; 
