@@ -3775,7 +3775,10 @@ Please respond to their question clearly and constructively. Keep your answer co
                                 variant="link"
                                 size="sm"
                                 className="text-xs h-7 text-amber-600 dark:text-amber-400 px-0"
-                                onClick={() => setSelectedModel("gemini-2.5-flash-preview-05-20")}
+                                onClick={() => {
+                                  setSelectedModel("gemini-2.5-flash-preview-05-20");
+                                  setHasExtractedText(true);
+                                }}
                               >
                                 Switch to Gemini 2.5 Flash
                               </Button>
