@@ -27,7 +27,19 @@ const nextConfig = {
         minSize: 20000
       };
     }
+
+    // Add React alias to ensure all components use the same React instance
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      'react': require.resolve('react'),
+      'react-dom': require.resolve('react-dom')
+    };
+    
     return config;
+  },
+  // Use React server-components condition to avoid duplicate React issues
+  experimental: {
+    esmExternals: 'loose'
   },
   // Override headers to remove default Permissions-Policy header for all routes
   async headers() {
