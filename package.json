@@ -13,7 +13,8 @@
     "backend": "cd backend && node src/index.js",
     "backend-dev": "cd backend && nodemon src/index.js",
     "unified-dev": "nodemon server-start.js",
-    "unified-build": "next build && npm run start"
+    "unified-build": "next build && npm run start",
+    "postinstall": "node fix-dependencies.js"
   },
   "dependencies": {
     "@radix-ui/react-collapsible": "^1.1.10",
