@@ -90,7 +90,7 @@ const AI_MODELS = [
   { value: "gemini-2.5-flash-preview-05-20", label: "Gemini 2.5 Flash Preview", description: "Best quality with faster response times" },
   { value: "microsoft/mai-ds-r1:free", label: "R1 (thinking model)", description: "Most thorough reasoning process (may take 1-2 minutes)" }, // Unlimited (OpenRouter, no usage limits)
   { value: "deepseek/deepseek-chat-v3-0324:free", label: "V3 (balanced model)", description: "Balanced speed and quality" },
-  { value: "google/gemini-2.0-flash-exp:free", label: "Gemini 2.0 Flash (OpenRouter)", description: "Experimental fast model from Google via OpenRouter" }
+  { value: "google/gemini-2.0-flash-exp:free", label: "Gemini 2.0 Flash (OCR only)", description: "Special model for OCR with exam board OCR" }
 ];
 
 // Add fallback models for when primary models are rate limited
@@ -100,7 +100,8 @@ const FALLBACK_MODELS = {
   "microsoft/mai-ds-r1:free": "gemini-2.5-flash-preview-05-20", // Fallback to Gemini Flash (was Gemini Pro)
   "o3": "o4-mini", // Fallback for O3
   "o4-mini": "deepseek/deepseek-chat-v3-0324:free", // Fallback for O4 Mini
-  "xai/grok-3": "deepseek/deepseek-chat-v3-0324:free" // Fallback for Grok-3
+  "xai/grok-3": "deepseek/deepseek-chat-v3-0324:free", // Fallback for Grok-3
+  "google/gemini-2.0-flash-exp:free": "deepseek/deepseek-chat-v3-0324:free" // Fallback for Gemini 2.0 Flash
 };
 
 // Define model-specific rate limits (in milliseconds)
@@ -122,13 +123,19 @@ const MODEL_RATE_LIMITS = {
   "o4": 60000, // 1 minute
   
   // xAI Grok-3
-  "xai/grok-3": 60000 // 1 minute
+  "xai/grok-3": 60000, // 1 minute
+  
+  // Gemini 2.0 Flash (for OCR only)
+  "google/gemini-2.0-flash-exp:free": 60000 // 1 minute
 };
 
 // Define specific models for specific tasks
 const TASK_SPECIFIC_MODELS = {
-  "image_processing": "gemini-2.5-flash-preview-05-20", // Updated to use Gemini 2.5 Flash for image processing
-  "subject_assessment": "google/gemini-2.0-flash-exp:free" // Use Gemini 2.0 Flash for subject assessments
+  "image_processing": {
+    "default": "gemini-2.5-flash-preview-05-20",
+    "ocr": "google/gemini-2.0-flash-exp:free" // Special case for OCR exam board
+  },
+  "subject_assessment": "gemini-2.5-flash-preview-05-20" // Use Gemini 2.5 Flash for subject assessments
 };
 
 // Define default thinking budgets for models that support it
@@ -137,7 +144,8 @@ const DEFAULT_THINKING_BUDGETS = {
   "microsoft/mai-ds-r1:free": 0,
   "o3": 4000,
   "o4-mini": 4000,
-  "xai/grok-3": 2048
+  "xai/grok-3": 2048,
+  "google/gemini-2.0-flash-exp:free": 1024
 };
 
 const subjectKeywords = {
@@ -1293,6 +1301,7 @@ const AIMarker = () => {
   const [achievedMarks, setAchievedMarks] = useState(null); 
   const [ocrTextPreview, setOcrTextPreview] = useState("");
   const [showOcrPreviewDialog, setShowOcrPreviewDialog] = useState(false);
+  const [hasExtractedText, setHasExtractedText] = useState(false);  // Add this line
 
   // ADDED: State for Subject Guidance Dialog
   const [showSubjectGuidanceDialog, setShowSubjectGuidanceDialog] = useState(false);
@@ -1331,8 +1340,9 @@ const AIMarker = () => {
     if (e.target.files && e.target.files[0]) {
       const selectedImage = e.target.files[0];
       setImage(selectedImage);
-      // Clear previous preview if any
+      // Clear previous preview and reset model visibility
       setOcrTextPreview("");
+      setHasExtractedText(false);
     }
   };
   
@@ -1376,11 +1386,23 @@ const AIMarker = () => {
       const formData = new FormData();
       formData.append('image', selectedImage);
       
+      // Select the appropriate model for image processing based on exam board
+      let ocrModel;
+      if (examBoard === "ocr") {
+        ocrModel = TASK_SPECIFIC_MODELS.image_processing.ocr;
+        toast.info("Using OCR-specific model for processing");
+      } else {
+        ocrModel = TASK_SPECIFIC_MODELS.image_processing.default;
+      }
+      
+      // Add the selected model to the form data
+      formData.append('model', ocrModel);
+      
       // Use the CORRECT backend URL when on GitHub Pages
       const isGitHubPagesEnv = typeof window !== 'undefined' && 
         (window.location.hostname.includes('github.io') || window.location.hostname === 'beenycool.github.io');
         
-             // Always use the remote server for GitHub Pages since GitHub Pages can't handle file uploads
+      // Always use the remote server for GitHub Pages since GitHub Pages can't handle file uploads
       // The backend server REQUIRES the /api prefix in the URL
       const apiUrl = isGitHubPagesEnv 
         ? 'https://beenycool-github-io.onrender.com/api/github/completions'
@@ -1437,6 +1459,7 @@ const AIMarker = () => {
         const separator = prev.trim() ? '\n\n' : '';
         return prev + separator + ocrTextPreview;
       });
+      setHasExtractedText(true);  // Set to true when text is confirmed
       toast.success("Text added to answer field.");
     }
     setShowOcrPreviewDialog(false);
@@ -1506,12 +1529,15 @@ const AIMarker = () => {
 
   // Debounced save function for question and answer
   const debouncedSaveDraft = useCallback(
-    debounce((q, a) => {
-      localStorage.setItem(LOCALSTORAGE_KEYS.QUESTION, q);
-      localStorage.setItem(LOCALSTORAGE_KEYS.ANSWER, a);
-      // console.log('Draft saved');
-    }, 1500), // Save after 1.5 seconds of inactivity
-    []
+    (q, a) => {
+      const debouncedFn = debounce((question, answer) => {
+        localStorage.setItem(LOCALSTORAGE_KEYS.QUESTION, question);
+        localStorage.setItem(LOCALSTORAGE_KEYS.ANSWER, answer);
+        // console.log('Draft saved');
+      }, 1500);
+      debouncedFn(q, a);
+    },
+    [] // No dependencies needed with this approach
   );
 
   // Effect for auto-saving question and answer drafts
@@ -1572,12 +1598,10 @@ const AIMarker = () => {
     }
 
     // Initialize remaining tokens display
-    // getRequestTokens might depend on state that is being set here,
-    // consider if its invocation needs to be deferred or if its dependencies are stable.
     const tokens = getRequestTokens(); 
     setRemainingRequestTokens(tokens.count);
 
-  }, [getRequestTokens]); // Removed selectedModel from dependencies, added it to conditional update
+  }, [getRequestTokens, selectedModel]); // Added selectedModel to dependencies
 
   // Effects for saving preferences to localStorage when they change
   useEffect(() => {
@@ -2033,17 +2057,18 @@ const AIMarker = () => {
     }
   }, [
     answer, question, subject, examBoard, questionType, userType, markScheme, totalMarks,
-    textExtract, relevantMaterial, selectedModel, tier, allSubjects, API_BASE_URL,
-    lastRequestDate, modelLastRequestTimes, lastRequestTime, consumeToken,
+    textExtract, relevantMaterial, selectedModel, tier, 
+    // Removed allSubjects, API_BASE_URL as they are outer scope values
+    // Removed lastRequestDate, lastRequestTime, setDailyRequests, setLastRequestDate as they are not used directly
+    modelLastRequestTimes, consumeToken,
     buildSystemPrompt, buildUserPrompt, // Assuming these are stable or correctly memoized
     relevantMaterialImage, relevantMaterialImageBase64, // Added image dependencies
     enableThinkingBudget, thinkingBudget, // Added thinking budget dependencies
     // No need for setFeedback, setGrade etc. here as they are handled by stream or useEffect
-    setLoading, setActiveTab, setDailyRequests, setLastRequestDate, setLastRequestTime,
-    setModelLastRequestTimes, autoMaxTokens, maxTokens, // getRequestTokens,
+    setLoading, setActiveTab, 
+    setModelLastRequestTimes, autoMaxTokens, maxTokens, 
     setSelectedModel, // Keep if used in onRetryFallback
     checkBackendStatus, // Added dependency
-    currentModelForRequestRef, // Add ref if its .current value is used inside callbacks passed to children
     setCurrentModelForRequest
   ]);
 
@@ -2999,7 +3024,7 @@ TOTAL MARKS: ${marksToUse}` : ''}
     // Use a different model for follow-up questions if the current one has issues
     // Prioritize the faster model for follow-ups
     if (selectedModel === "microsoft/mai-ds-r1:free") {
-      const fastModel = "google/gemini-2.0-flash-exp:free";
+      const fastModel = "gemini-2.5-flash-preview-05-20";
       console.log(`Temporarily switching from ${selectedModel} to ${fastModel} for follow-up`);
       setSelectedModel(fastModel);
     }
@@ -3228,7 +3253,13 @@ Please respond to their question clearly and constructively. Keep your answer co
       <TopBar version="2.1.3" backendStatus={backendStatusRef.current} remainingTokens={remainingRequestTokens} />
       
       {/* ADDED: OCR Preview Dialog (Sheet was mentioned, but Dialog is simpler here) */}
-      <Dialog open={showOcrPreviewDialog} onOpenChange={setShowOcrPreviewDialog}>
+      <Dialog open={showOcrPreviewDialog} onOpenChange={(open) => {
+        if (!open) {
+          // If dialog is closed without confirming, reset the state
+          setHasExtractedText(false);
+        }
+        setShowOcrPreviewDialog(open);
+      }}>
         <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
             <DialogTitle>Review Extracted Text</DialogTitle>
@@ -3245,7 +3276,10 @@ Please respond to their question clearly and constructively. Keep your answer co
             />
           </ScrollArea>
           <DialogFooter className="sm:justify-between">
-            <Button variant="outline" onClick={() => setShowOcrPreviewDialog(false)}>
+            <Button variant="outline" onClick={() => {
+              setShowOcrPreviewDialog(false);
+              setHasExtractedText(false);
+            }}>
               Cancel
             </Button>
             <Button onClick={handleConfirmOcrText}>Add to Answer</Button>
@@ -3758,50 +3792,58 @@ Please respond to their question clearly and constructively. Keep your answer co
                       </div>
                       
                       {/* AI Model Selection */}
-                      <div className="space-y-2">
-                        <Label htmlFor="aiModel" className="text-sm">
-                          AI Model <span className="text-muted-foreground text-xs">(Optional)</span>
-                        </Label>
-                        <Select
-                          value={selectedModel}
-                          onValueChange={(value) => { // selectedModel is now persisted
-                            const now = Date.now();
-                            const modelLimit = MODEL_RATE_LIMITS[value] || 10000;
-                            const lastModelRequest = modelLastRequestTimes[value] || 0;
-                            const timeSince = now - lastModelRequest;
-                            
-                            if (timeSince < modelLimit) {
-                              const waitTime = Math.ceil((modelLimit - timeSince) / 1000);
-                              toast.warning(`${AI_MODELS.find(m => m.value === value)?.label || value} was used recently. Please wait ${waitTime} more seconds.`);
-                              return;
-                            }
-                            setSelectedModel(value);
-                            // Update thinking budget when model changes for follow-up
-                            setThinkingBudget(DEFAULT_THINKING_BUDGETS[value] || 1024);
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select AI model" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {AI_MODELS.map((model) => (
-                              <SelectItem key={model.value} value={model.value} className="py-2">
-                                <div className="flex flex-col">
-                                  <span>{model.label}</span>
-                                  <span className="text-xs text-muted-foreground">{model.description}</span>
-                                </div>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        
-                        {selectedModel === "gemini-2.5-flash-preview-05-20" && (
-                          <div className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center">
-                            <AlertTriangle className="h-3 w-3 mr-1" />
-                            <span>Uses direct Gemini API with custom key, may need backend updates</span>
-                          </div>
-                        )}
-                      </div>
+                      {hasExtractedText && (
+                        <div className="space-y-2">
+                          <Label htmlFor="aiModel" className="text-sm">
+                            AI Model <span className="text-muted-foreground text-xs">(Optional)</span>
+                          </Label>
+                          {!hasExtractedText ? (
+                            <div className="text-sm text-muted-foreground bg-muted/20 rounded-md p-3 flex items-center">
+                              <Info className="h-4 w-4 mr-2 text-primary" />
+                              <span>Upload and process an image to enable model selection</span>
+                            </div>
+                          ) : (
+                            <Select
+                              value={selectedModel}
+                              onValueChange={(value) => {
+                                const now = Date.now();
+                                const modelLimit = MODEL_RATE_LIMITS[value] || 10000;
+                                const lastModelRequest = modelLastRequestTimes[value] || 0;
+                                const timeSince = now - lastModelRequest;
+                                
+                                if (timeSince < modelLimit) {
+                                  const waitTime = Math.ceil((modelLimit - timeSince) / 1000);
+                                  toast.warning(`${AI_MODELS.find(m => m.value === value)?.label || value} was used recently. Please wait ${waitTime} more seconds.`);
+                                  return;
+                                }
+                                setSelectedModel(value);
+                                setThinkingBudget(DEFAULT_THINKING_BUDGETS[value] || 1024);
+                              }}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select AI model" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {AI_MODELS.map((model) => (
+                                  <SelectItem key={model.value} value={model.value} className="py-2">
+                                    <div className="flex flex-col">
+                                      <span>{model.label}</span>
+                                      <span className="text-xs text-muted-foreground">{model.description}</span>
+                                    </div>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                          
+                          {selectedModel === "gemini-2.5-flash-preview-05-20" && hasExtractedText && (
+                            <div className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center">
+                              <AlertTriangle className="h-3 w-3 mr-1" />
+                              <span>Uses direct Gemini API with custom key, may need backend updates</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                       {/* ADDED: UI for Token Limits */}
                       <div className="space-y-2 pt-2">
                         <div className="flex items-center justify-between">

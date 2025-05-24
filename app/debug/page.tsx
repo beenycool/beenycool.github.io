@@ -143,7 +143,7 @@ export default function DebugPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: "google/gemini-2.0-flash-exp:free",
+          model: "gemini-2.5-flash-preview-05-20",
           messages: [
             {
               role: "user",
@@ -319,7 +319,7 @@ export default function DebugPage() {
                       question: "Explain how the writer uses language features to create an atmosphere of tension in this extract.",
                       subject: "english",
                       examBoard: "aqa",
-                      model: "google/gemini-2.0-flash-exp:free"
+                      model: "gemini-2.5-flash-preview-05-20"
                     }, null, 2)}
                   </pre>
                 </div>
