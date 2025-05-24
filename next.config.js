@@ -29,10 +29,6 @@ const nextConfig = {
     }
     return config;
   },
-  // Use React server-components condition to avoid duplicate React issues
-  experimental: {
-    esmExternals: 'loose'
-  },
   // Override headers to remove default Permissions-Policy header for all routes
   async headers() {
     return [
